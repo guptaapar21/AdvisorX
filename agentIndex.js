@@ -104,19 +104,32 @@ async function run() {
     }
 
     const isActive = hadExecutionActivity || hasOpenPositions;
+    // Diagnostic logging - temporary, to find out why throttling isn't
+    // behaving as expected. Shows the exact inputs to the decision and the
+    // throttle state file's content before/after, so the Action log tells
+    // us definitively what's happening instead of guessing further.
+    console.log(`[throttle-debug] hadExecutionActivity=${hadExecutionActivity} hasOpenPositions=${hasOpenPositions} isActive=${isActive}`);
+    console.log(`[throttle-debug] idleThrottleState.json before decision: ${idleThrottle.readRawState()}`);
+
     if (isActive) {
       // A position is open or a decision was made this run - message every
       // time (cron runs every 5 min), no throttling. Also reset the idle
       // timer so that once things go quiet again, the next idle message
       // fires immediately rather than waiting out a stale 15-min window.
+      console.log("[throttle-debug] Taking ACTIVE branch (always sends) - resetting idle throttle.");
       idleThrottle.resetIdleThrottle();
       await sendTelegramMessage(`🧠 ${message}`);
-    } else if (idleThrottle.shouldSendIdleMessage()) {
-      // Genuinely nothing going on - only send this routine update once
-      // every 15 minutes even though the cron itself fires every 5.
-      await sendTelegramMessage(`🧠 ${message}`);
     } else {
-      console.log("Idle run - Telegram message suppressed (throttled to every 15 min while nothing is happening).");
+      const shouldSend = idleThrottle.shouldSendIdleMessage();
+      console.log(`[throttle-debug] Taking IDLE branch. shouldSendIdleMessage()=${shouldSend}`);
+      console.log(`[throttle-debug] idleThrottleState.json after decision: ${idleThrottle.readRawState()}`);
+      if (shouldSend) {
+        // Genuinely nothing going on - only send this routine update once
+        // every 15 minutes even though the cron itself fires every 5.
+        await sendTelegramMessage(`🧠 ${message}`);
+      } else {
+        console.log("Idle run - Telegram message suppressed (throttled to every 15 min while nothing is happening).");
+      }
     }
   } else {
     // The model never produced a final answer - almost always means every

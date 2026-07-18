@@ -45,4 +45,14 @@ function resetIdleThrottle() {
   saveThrottleState({ lastIdleMessageSentAt: 0 });
 }
 
-module.exports = { shouldSendIdleMessage, resetIdleThrottle };
+// Returns the raw file content as a string for logging/diagnostics -
+// doesn't parse or interpret it, just shows exactly what's on disk.
+function readRawState() {
+  try {
+    return fs.readFileSync(THROTTLE_FILE, "utf8").trim();
+  } catch (err) {
+    return `(file not found or unreadable: ${err.message})`;
+  }
+}
+
+module.exports = { shouldSendIdleMessage, resetIdleThrottle, readRawState };
