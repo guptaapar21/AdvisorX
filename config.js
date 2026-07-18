@@ -77,7 +77,7 @@ module.exports = {
   },
 
   // Model used for the full reasoning agent (needs function-calling support).
-  agentModel: "gemini-2.5-flash-lite",
+  agentModel: "gemini-3.5-flash",
 
   // Safety cap on how many tool-call turns the agent can take in one run
   // before the loop is forced to stop (prevents a runaway reasoning loop).

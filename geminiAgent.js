@@ -21,7 +21,7 @@ async function callGemini(contents, systemPrompt, toolDeclarations, apiKey, mode
     const body = await res.text();
     throw new Error(
       `Gemini call failed: 404 (model "${model}" not found/unavailable - Google renames these periodically; ` +
-      `set the GEMINI_MODEL secret to override without a code change, e.g. gemini-2.5-flash-lite or gemini-flash-latest) ${body}`
+      `set the GEMINI_MODEL secret to override without a code change, e.g. gemini-3.5-flash or gemini-flash-latest) ${body}`
     );
   }
   if (!res.ok) {

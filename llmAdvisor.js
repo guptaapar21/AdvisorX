@@ -37,7 +37,7 @@ async function callGemini(prompt, apiKey, model) {
   if (res.status === 404) {
     const body = await res.text();
     throw new Error(
-      `Gemini call failed: 404 (model "${model}" not found/unavailable - set the GEMINI_MODEL secret to override, e.g. gemini-2.5-flash-lite) ${body}`
+      `Gemini call failed: 404 (model "${model}" not found/unavailable - set the GEMINI_MODEL secret to override, e.g. gemini-3.5-flash) ${body}`
     );
   }
   if (!res.ok) {
@@ -49,7 +49,7 @@ async function callGemini(prompt, apiKey, model) {
 }
 
 async function craftMessageWithGemini(kind, data, config) {
-  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
   const prompt = `Message type: ${kind}\n\nData:\n${JSON.stringify(data, null, 2)}`;
   return withKeyRotation((key) => callGemini(prompt, key, model), config && config.geminiKeyCooldownMinutes);
 }
