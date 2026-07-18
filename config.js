@@ -26,7 +26,12 @@ module.exports = {
   // The original uses 3 timeframes per cycle: primary (trend direction),
   // confirm (momentum/RSI, also where breakout/mean-reversion look for
   // signals), filter (broader volatility/EMA context). This mapping
-  // matches the "balanced" preset - change if you change STRATEGY above.
+  // matches the "balanced" preset. CoinDCX's FUTURES candles endpoint only
+  // supports 1m/15m/1h/1d directly (confirmed via a real 422: "interval
+  // must be one of [1m, 15m, 1h, 1d]"), so "5m" here is transparently
+  // synthesized by fetching 1m candles and aggregating 5-at-a-time
+  // (coindcxExchangeClient.js's getCandlesForInterval) - not a limitation
+  // you need to work around yourself.
   timeframes: { primary: "5m", confirm: "15m", filter: "1h" },
 
   // How many candles to pull per timeframe for indicator calculation

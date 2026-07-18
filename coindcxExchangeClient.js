@@ -62,6 +62,49 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// CoinDCX's FUTURES candles endpoint only supports 1m, 15m, 1h, 1d
+// (confirmed via a real 422: "interval must be one of [1m, 15m, 1h, 1d]" -
+// their general docs list 5m too, but that's evidently spot-only). For any
+// other interval, fetch the base interval and aggregate N candles into one.
+const SYNTHETIC_INTERVALS = {
+  "5m": { base: "1m", factor: 5 },
+  "30m": { base: "15m", factor: 2 },
+  "4h": { base: "1h", factor: 4 },
+};
+
+// Combines `factor` consecutive base candles into one - standard OHLCV
+// aggregation: first open, last close, max high, min low, summed volume.
+// Assumes candles are already sorted oldest -> newest (as getCandles returns).
+function aggregateCandles(candles, factor) {
+  const out = [];
+  for (let i = 0; i + factor <= candles.length; i += factor) {
+    const group = candles.slice(i, i + factor);
+    out.push({
+      time: group[0].time,
+      open: group[0].open,
+      close: group[group.length - 1].close,
+      high: Math.max(...group.map((c) => c.high)),
+      low: Math.min(...group.map((c) => c.low)),
+      volume: group.reduce((sum, c) => sum + (c.volume || 0), 0),
+    });
+  }
+  return out;
+}
+
+// Fetches candles for one interval, transparently synthesizing it from a
+// supported base interval if CoinDCX futures doesn't offer it directly.
+async function getCandlesForInterval(pair, interval, limit) {
+  const synthetic = SYNTHETIC_INTERVALS[interval];
+  if (!synthetic) return getCandles(pair, interval, limit);
+
+  // Need `limit * factor` base candles to produce `limit` aggregated ones,
+  // plus a little extra buffer in case of any gaps.
+  const baseLimit = Math.min(limit * synthetic.factor + synthetic.factor, 1000);
+  const baseCandles = await getCandles(pair, synthetic.base, baseLimit);
+  const aggregated = aggregateCandles(baseCandles, synthetic.factor);
+  return aggregated.slice(-limit);
+}
+
 // Fetches primary/confirm/filter candles for one symbol, sequentially with
 // a small delay between requests (safety margin - see config.candleFetchDelayMs).
 async function getMultiTimeframeCandles(symbol, marketType, timeframes, candleLimit, delayMs = 300) {
@@ -69,7 +112,7 @@ async function getMultiTimeframeCandles(symbol, marketType, timeframes, candleLi
 
   async function fetchLabeled(label, interval) {
     try {
-      return await getCandles(pair, interval, candleLimit);
+      return await getCandlesForInterval(pair, interval, candleLimit);
     } catch (err) {
       // Re-throw with which of the 3 timeframes actually failed - a bare
       // "candles failed" error looks identical whether it was primary,
@@ -164,6 +207,7 @@ async function closePosition(contract, sizePercent) {
 
 module.exports = {
   getMultiTimeframeCandles,
+  aggregateCandles,
   getOrderBook,
   getBalances,
   getPositions,
