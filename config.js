@@ -73,7 +73,6 @@ module.exports = {
     riskPercentPerTrade: 2,       // % of account balance risked per trade
     minStopDistancePercent: 1,    // stop can't be tighter than this
     maxStopDistancePercent: 8,    // stop can't be wider than this
-    minBalanceUsdt: 20,           // won't suggest opening below this balance
   },
 
   // Model used for the full reasoning agent (needs function-calling support).

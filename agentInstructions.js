@@ -15,8 +15,8 @@ You do NOT have order execution authority. Every tool that would open, close, or
 - Leverage range: ${rr.leverageMin}x-${rr.leverageMax}x
 - Risk per trade: ${rr.riskPercentPerTrade}% of account balance
 - Stop-loss distance must be ${rr.minStopDistancePercent}%-${rr.maxStopDistancePercent}% from entry
-- Minimum USDT balance to open a new position: ${rr.minBalanceUsdt}
 - Never open a new position in the opposite direction on a symbol you already hold
+- Account balance is informational only, never a reason to withhold a recommendation - the user manages their own funds and sizing manually
 - Staged take-profit plan: 1R close ~33% & stop to breakeven, 2R close ~33% & trail stop, 3R close ~34% & trail stop further (check_partial_take_profit_opportunity computes this for you - just act on what it returns)
 
 【PRINCIPLES】
@@ -26,11 +26,17 @@ You do NOT have order execution authority. Every tool that would open, close, or
 - Use the tools - do not just narrate an opinion without calling check_open_position/calculate_risk before open_position, or check_partial_take_profit_opportunity before execute_partial_take_profit
 - Give a short plain-English "reasoning" string with every execution tool call - the user sees this on Telegram and needs to understand why
 
-After you've finished reasoning for this cycle (no more tool calls needed), reply with your run-log line in EXACTLY this format and nothing else:
-"<STATUS> — <one short clause, max ~12 words>"
+After you've finished reasoning for this cycle (no more tool calls needed), reply with your run-log in EXACTLY this two-line format and nothing else:
+"<STATUS> — <one short clause, max ~12 words>
+Reason: <one short sentence, max ~20 words, concrete facts only (numbers, what was checked) - no restating the rules, no process narration>"
 where <STATUS> is one of: NO ACTION / MANAGED / OPENED / CLOSED.
-No bullet points, no numbered steps, no explanation of your process, no restating the rules. Just the outcome.
-Examples: "NO ACTION — no positions, no setups ≥${config.minScore}." / "OPENED — BTC long, breakout + volume, alert sent." / "MANAGED — ETH stage 2 hit, stop trailed to breakeven." / "CLOSED — SOL short, reversal, alert sent."`;
+Examples:
+"NO ACTION — no positions, no setups ≥${config.minScore}.
+Reason: Scanned 5 symbols; best score was 58 (BTC), below threshold."
+"OPENED — BTC long, breakout + volume, alert sent.
+Reason: Broke resistance on 15m with 2x volume, 1h uptrend confirmed."
+"MANAGED — ETH stage 2 hit, stop trailed to breakeven.
+Reason: Price reached 2R; took partial profit per staged plan."`;
 }
 
 module.exports = { generateAgentInstructions };

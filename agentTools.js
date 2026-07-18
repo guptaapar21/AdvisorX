@@ -250,20 +250,17 @@ function buildTools(config, creds) {
         reasons.push(`could not verify position count: ${err.message}`);
       }
 
+      let availableUsdt = null;
       try {
         const balances = await exchange.getBalances(creds);
         const usdt = Array.isArray(balances) ? balances.find((b) => (b.currency || "").toUpperCase() === "USDT") : null;
-        const available = usdt ? Number(usdt.balance ?? usdt.available_balance ?? 0) : null;
-        if (available != null && available < config.riskRules.minBalanceUsdt) {
-          shouldOpen = false;
-          reasons.push(`available USDT balance too low (${available} < ${config.riskRules.minBalanceUsdt})`);
-        }
+        availableUsdt = usdt ? Number(usdt.balance ?? usdt.available_balance ?? 0) : null;
       } catch (err) {
-        reasons.push(`could not verify balance: ${err.message}`);
+        reasons.push(`could not read balance (informational only, not blocking): ${err.message}`);
       }
 
-      if (shouldOpen) reasons.push("passes stop-distance, position-count, and balance checks");
-      return { shouldOpen, symbol, action, reasons };
+      if (shouldOpen) reasons.push("passes stop-distance and position-count checks");
+      return { shouldOpen, symbol, action, availableUsdt, reasons };
     },
 
     async calculate_risk({ accountBalanceUsdt, entryPrice, stopPrice, leverage }) {
