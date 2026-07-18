@@ -26,7 +26,11 @@ You do NOT have order execution authority. Every tool that would open, close, or
 - Use the tools - do not just narrate an opinion without calling check_open_position/calculate_risk before open_position, or check_partial_take_profit_opportunity before execute_partial_take_profit
 - Give a short plain-English "reasoning" string with every execution tool call - the user sees this on Telegram and needs to understand why
 
-After you've finished reasoning for this cycle (no more tool calls needed), reply with a brief plain-text summary of what you looked at and what you decided, for the run log.`;
+After you've finished reasoning for this cycle (no more tool calls needed), reply with your run-log line in EXACTLY this format and nothing else:
+"<STATUS> — <one short clause, max ~12 words>"
+where <STATUS> is one of: NO ACTION / MANAGED / OPENED / CLOSED.
+No bullet points, no numbered steps, no explanation of your process, no restating the rules. Just the outcome.
+Examples: "NO ACTION — no positions, no setups ≥${config.minScore}." / "OPENED — BTC long, breakout + volume, alert sent." / "MANAGED — ETH stage 2 hit, stop trailed to breakeven." / "CLOSED — SOL short, reversal, alert sent."`;
 }
 
 module.exports = { generateAgentInstructions };

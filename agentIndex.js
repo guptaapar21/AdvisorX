@@ -4,6 +4,14 @@ const { generateAgentInstructions } = require("./agentInstructions");
 const { runAgentCycle } = require("./geminiAgent");
 const { sendTelegramMessage } = require("./telegram");
 
+function crispSummary(text) {
+  // Safety net: keep the run-log message short even if the model doesn't
+  // follow the requested one-line format exactly. Take only the first
+  // line, and hard-cap length.
+  const firstLine = text.split("\n").find((l) => l.trim().length > 0) || text;
+  return firstLine.length > 140 ? `${firstLine.slice(0, 137)}...` : firstLine;
+}
+
 async function run() {
   const creds = {
     apiKey: process.env.COINDCX_API_KEY,
@@ -42,7 +50,7 @@ async function run() {
 
   if (finalText) {
     console.log("Agent summary:", finalText);
-    await sendTelegramMessage(`🧠 *Run summary*\n${finalText}`);
+    await sendTelegramMessage(`🧠 ${crispSummary(finalText)}`);
   } else {
     console.log("Agent produced no final text this run (see turn log above).");
   }
