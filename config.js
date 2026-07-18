@@ -1,5 +1,16 @@
 // ---- Edit this file to customize what you watch and alert on ----
 
+const { getStrategyParams } = require("./strategyParams");
+
+// Matches RISK_PARAMS.MAX_LEVERAGE's default in the original (env-overridable there).
+const MAX_LEVERAGE = 15;
+
+// Which of the original's 5 strategy presets to run. Entry-signal logic is
+// identical across all 5 in the original - this only changes leverage
+// bounds, position-size guidance, and the stop-loss ATR multiplier/bounds.
+const STRATEGY = "balanced";
+const strategyParams = getStrategyParams(STRATEGY, MAX_LEVERAGE);
+
 module.exports = {
   // Coins to scan. Use the base symbol only (e.g. "BTC", "ETH").
   symbols: ["BTC", "ETH", "SOL", "DOGE", "XRP"],
@@ -9,76 +20,81 @@ module.exports = {
   //   "spot"    -> INR spot market (pair looks like "I-BTC_INR")
   marketType: "futures",
 
-  // Timeframes used for analysis (CoinDCX candle intervals: 1m,5m,15m,1h,4h,1d ...)
-  entryTimeframe: "15m",   // used to spot the actual signal
-  trendTimeframe: "1h",    // used to confirm the broader trend
+  strategy: STRATEGY,
+  maxLeverage: MAX_LEVERAGE,
 
-  // How many candles to pull for indicator calculation
+  // The original uses 3 timeframes per cycle: primary (trend direction),
+  // confirm (momentum/RSI, also where breakout/mean-reversion look for
+  // signals), filter (broader volatility/EMA context). This mapping
+  // matches the "balanced" preset - change if you change STRATEGY above.
+  timeframes: { primary: "5m", confirm: "15m", filter: "1h" },
+
+  // How many candles to pull per timeframe for indicator calculation
   candleLimit: 100,
+
+  // Small delay (ms) between each CoinDCX candle request, as a safety
+  // margin - CoinDCX doesn't publish an explicit public rate limit for
+  // candles, and our actual volume (15 calls/run) is well within what any
+  // comparable exchange allows, but this costs a few seconds and removes
+  // the risk entirely.
+  candleFetchDelayMs: 300,
 
   // Only alert when the opportunity score (0-100) is at or above this
   minScore: 70,
 
   // Cross-symbol ranking: out of ALL symbols that clear minScore this run,
-  // only send alerts for the top N by score (like the original engine,
-  // which shows the best N opportunities across all coins rather than
-  // alerting on every coin that independently clears the bar).
+  // only send alerts for the top N by score.
   maxAlertsPerRun: 3,
 
   // Minimum minutes between repeat alerts for the same symbol+direction
-  // (prevents spamming you every 15 min while a signal stays valid)
   cooldownMinutes: 120,
-
-  // Once an entry alert is sent, this tool starts tracking a "virtual"
-  // position for that symbol (it assumes you took the trade) so it can
-  // guide you through staged take-profit and a trailing stop as price
-  // moves. Stages are in R-multiples of the initial stop distance.
-  // moveStopTo: "entry" = breakeven, "stage1"/"stage2trail" = trail stop
-  // up to the 1R/2R price level. Purely informational either way.
-  partialTakeProfit: {
-    stages: [
-      { key: "1", r: 1, closePercent: 33, moveStopTo: "entry" },
-      { key: "2", r: 2, closePercent: 33, moveStopTo: "stage1" },
-      { key: "3", r: 3, closePercent: 34, moveStopTo: "stage2trail" },
-    ],
-  },
 
   // Optional LLM layer: after the rule-based scorer/position-tracker flags
   // something, an LLM rewrites the structured numbers into a clear,
-  // plain-English Telegram message (entry zone, stop, staged TP plan,
-  // sizing hint, reasoning). It ONLY writes text - it has no order
+  // plain-English Telegram message. It ONLY writes text - it has no order
   // placement ability and cannot act on your behalf. If every configured
   // key fails, the plain rule-based alert is sent instead, so you're never
   // left without a message.
   useLLMAdvisor: false,
 
-  // "gemini" (default, free tier - see README for GEMINI_API_KEYS setup)
-  // or "anthropic" (pay-per-token, needs ANTHROPIC_API_KEY secret instead).
+  // "gemini" (default, free tier) or "anthropic" (pay-per-token).
   llmProvider: "gemini",
 
   // If a Gemini key hits its quota (HTTP 429), it's put in cooldown for
   // this many minutes and the next configured key is tried automatically.
-  // With multiple keys, this is really just "how long before retrying a
-  // key that was recently rate-limited" — it doesn't block the run.
   geminiKeyCooldownMinutes: 60,
 
   // ---- Full agent mode (agentIndex.js) ----
-  // These are the hard risk rules the agent's system prompt is built from,
-  // and that check_open_position enforces regardless of what the model
-  // decides. Same spirit as the original engine's per-strategy risk config.
+  // maxPositions is a hard limit; leverageMin/Max and positionSize% come
+  // from the selected strategy preset (see strategyParams.js) - the AI
+  // picks a position size as a % of balance within that range, informed
+  // by signal strength, rather than a risk-distance formula (that's how
+  // the original actually works - confirmed no risk-distance sizing tool
+  // exists in the source).
   riskRules: {
     maxPositions: 3,
-    leverageMin: 3,
-    leverageMax: 10,
-    riskPercentPerTrade: 2,       // % of account balance risked per trade
-    minStopDistancePercent: 1,    // stop can't be tighter than this
-    maxStopDistancePercent: 8,    // stop can't be wider than this
+    leverageMin: strategyParams.leverageMin,
+    leverageMax: strategyParams.leverageMax,
+    positionSizeMinPercent: strategyParams.positionSizeMin,
+    positionSizeMaxPercent: strategyParams.positionSizeMax,
+  },
+
+  // Real stop-loss config (from the selected strategy preset)
+  stopLoss: {
+    atrPeriod: 14,
+    atrMultiplier: strategyParams.scientificStopLoss.atrMultiplier,
+    lookbackPeriod: 20,
+    bufferPercent: 0.1,
+    useATR: true,
+    useSupportResistance: true,
+    minStopLossPercent: strategyParams.scientificStopLoss.minDistance,
+    maxStopLossPercent: strategyParams.scientificStopLoss.maxDistance,
+    minQualityScore: 40,
   },
 
   // Model used for the full reasoning agent (needs function-calling support).
   agentModel: "gemini-3.5-flash",
 
-  // Safety cap on how many tool-call turns the agent can take in one run
-  // before the loop is forced to stop (prevents a runaway reasoning loop).
+  // Safety cap on how many tool-call turns the agent can take in one run.
   agentMaxTurns: 10,
 };

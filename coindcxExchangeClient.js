@@ -58,13 +58,59 @@ async function privatePost(path, bodyExtra, creds) {
 
 // ---- READ: market data (public, no key needed) ----
 
-async function getMarketPrice(symbol, marketType, entryTimeframe, trendTimeframe, candleLimit) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Fetches primary/confirm/filter candles for one symbol, sequentially with
+// a small delay between requests (safety margin - see config.candleFetchDelayMs).
+async function getMultiTimeframeCandles(symbol, marketType, timeframes, candleLimit, delayMs = 300) {
   const pair = await resolvePair(symbol, marketType);
-  const [entryCandles, trendCandles] = await Promise.all([
-    getCandles(pair, entryTimeframe, candleLimit),
-    getCandles(pair, trendTimeframe, candleLimit),
-  ]);
-  return { pair, entryCandles, trendCandles, currentPrice: entryCandles[entryCandles.length - 1]?.close };
+  const primary = await getCandles(pair, timeframes.primary, candleLimit);
+  await sleep(delayMs);
+  const confirm = await getCandles(pair, timeframes.confirm, candleLimit);
+  await sleep(delayMs);
+  const filter = await getCandles(pair, timeframes.filter, candleLimit);
+  return { pair, primary, confirm, filter };
+}
+
+// Order book depth (public, no key needed). NOTE: CoinDCX's own docs show
+// two slightly different response shapes across sources (array of
+// {p,s}/{price,size} objects vs. a price-keyed object) - this parses
+// defensively for either and returns null (not throws) if the shape is
+// unrecognized, so a liquidity check can skip gracefully rather than break
+// the run, matching how the original itself wraps this in a try/catch.
+async function getOrderBook(pair) {
+  const url = `https://public.coindcx.com/market_data/orderbook?pair=${encodeURIComponent(pair)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`orderbook failed for ${pair}: ${res.status}`);
+  const raw = await res.json();
+
+  function normalizeSide(side) {
+    if (!side) return null;
+    if (Array.isArray(side)) {
+      return side
+        .map((entry) => {
+          if (Array.isArray(entry)) return { price: Number(entry[0]), size: Number(entry[1]) };
+          const price = Number(entry.p ?? entry.price ?? 0);
+          const size = Number(entry.s ?? entry.size ?? entry.q ?? entry.quantity ?? 0);
+          return { price, size };
+        })
+        .filter((e) => Number.isFinite(e.price) && Number.isFinite(e.size) && e.price > 0 && e.size > 0);
+    }
+    if (typeof side === "object") {
+      // price-keyed object: { "12345.6": "0.5", ... }
+      return Object.entries(side)
+        .map(([price, size]) => ({ price: Number(price), size: Number(size) }))
+        .filter((e) => Number.isFinite(e.price) && Number.isFinite(e.size) && e.price > 0 && e.size > 0);
+    }
+    return null;
+  }
+
+  const bids = normalizeSide(raw.bids);
+  const asks = normalizeSide(raw.asks);
+  if (!bids && !asks) return null; // unrecognized shape - caller should skip the check
+  return { bids: bids || [], asks: asks || [] };
 }
 
 // ---- READ: account (private, needs a READ-ONLY key) ----
@@ -105,7 +151,8 @@ async function closePosition(contract, sizePercent) {
 }
 
 module.exports = {
-  getMarketPrice,
+  getMultiTimeframeCandles,
+  getOrderBook,
   getBalances,
   getPositions,
   placeOrder,

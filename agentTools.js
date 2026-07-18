@@ -1,16 +1,31 @@
-// The tool suite the agent can call, matching the original engine's
-// decision-relevant tools. Read tools (market data, account balance,
-// positions, opportunity scoring) are REAL. Execution tools (open/close
-// position, stop-loss updates, partial take-profit, cancel order) are
-// INTERCEPTED - they never call the exchange. Each execution handler
-// returns { telegramMessage, resultForModel } - the runner sends the
-// message and feeds resultForModel back to Gemini as the tool's result,
-// so the model clearly sees "queued for manual execution", never "done".
+// The tool suite the agent can call. Read tools (market data, account
+// balance, positions, opportunity scoring) use the faithfully-ported
+// modules (marketStateAnalyzer.js, strategyRouter.js, opportunityScorer.js,
+// stopLossCalculator.js, takeProfitManagement.js). Execution tools
+// (open/close position, stop-loss updates, partial take-profit, cancel
+// order) are INTERCEPTED - they never call the exchange.
 
 const exchange = require("./coindcxExchangeClient");
-const { scoreOpportunity } = require("./strategy");
-const { rsi, macd, ema, atrPercent } = require("./indicators");
+const msa = require("./marketStateAnalyzer");
+const strategyRouter = require("./strategyRouter");
+const opportunityScorer = require("./opportunityScorer");
+const stopLossCalculator = require("./stopLossCalculator");
+const takeProfitManagement = require("./takeProfitManagement");
+const { bollingerBands, priceVsBB, atrWilder } = require("./indicators");
 const advisoryStore = require("./advisoryStore");
+const tradeOutcomeLog = require("./tradeOutcomeLog");
+const { getStrategyParams } = require("./strategyParams");
+
+const path = require("path");
+const fs = require("fs");
+const TREND_HISTORY_FILE = path.join(__dirname, "trendScoreHistory.json");
+
+function loadTrendHistory() {
+  try { return JSON.parse(fs.readFileSync(TREND_HISTORY_FILE, "utf8")); } catch { return {}; }
+}
+function saveTrendHistory(store) {
+  fs.writeFileSync(TREND_HISTORY_FILE, JSON.stringify(store, null, 2));
+}
 
 // ---- Gemini function declarations (JSON Schema) ----
 
@@ -28,53 +43,45 @@ const declarations = [
   {
     name: "analyze_opening_opportunities",
     description:
-      "Scans all configured symbols, scores each with the composite rule-based scorer (regime, breakout/trend/reversion setup, RSI/MACD/EMA blend, volatility tier), filters out symbols with an open position, and returns the top-ranked opportunities across all coins (cross-symbol ranking) that clear the minimum score. Also returns allScores: the score for every symbol scanned this run (including ones below the threshold), for reporting in the run summary.",
+      "Scans all configured symbols across 3 timeframes (primary/confirm/filter), classifies each into one of 10 market states, routes to the matching strategy (trend-following, mean-reversion, or - as an added extension not in the original bot - breakout), scores every opportunity with the real per-strategy weighted formula, filters out symbols with an open position, and returns the top-ranked opportunities that clear the minimum score. Also returns allScores: every scanned symbol's score, including ones below threshold. Any candidate with isBreakoutExtension=true came from the breakout strategy, which the original bot never actually used - flag this clearly when reporting it.",
     parameters: { type: "object", properties: {} },
-  },
-  {
-    name: "get_technical_indicators",
-    description: "Get fresh RSI/MACD/EMA/ATR indicators for one symbol on both the entry and trend timeframes.",
-    parameters: {
-      type: "object",
-      properties: { symbol: { type: "string", description: "Base symbol, e.g. BTC" } },
-      required: ["symbol"],
-    },
   },
   {
     name: "check_open_position",
     description:
-      "Validates whether a candidate new entry should actually be opened: checks stop-loss distance is within configured bounds, position count is under the max, and account balance is sufficient. Call this before open_position.",
+      "Validates whether a candidate new entry should actually be opened, using the real scientific stop-loss calculator (hybrid ATR + support/resistance, with a quality score) and position-count limit. Call this before open_position.",
     parameters: {
       type: "object",
       properties: {
         symbol: { type: "string" },
         action: { type: "string", enum: ["long", "short"] },
-        price: { type: "number" },
-        suggestedStop: { type: "number" },
-        atrPercent: { type: "number" },
       },
-      required: ["symbol", "action", "price", "suggestedStop"],
+      required: ["symbol", "action"],
     },
   },
   {
     name: "calculate_risk",
     description:
-      "Calculates a suggested position size given account balance, entry price, stop price, and leverage, using the configured risk-per-trade percentage.",
+      "Reports current account-wide risk exposure across all open positions: total notional value, total margin used, used-margin %, overall risk level (low/medium/high based on margin usage), and return % since the account's tracked starting balance. Takes no parameters - call this to understand overall portfolio risk before sizing a new position, not to size one directly (position size is chosen as a % of balance from the strategy's recommended range, not from a risk-distance formula).",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    name: "check_total_exposure",
+    description:
+      "Checks whether adding a new position of a given USDT margin amount and leverage would push total account exposure (all positions' notional value combined) over the account's max-leverage limit (total exposure <= balance x maxLeverage). Call this alongside check_open_position before opening.",
     parameters: {
       type: "object",
       properties: {
-        accountBalanceUsdt: { type: "number" },
-        entryPrice: { type: "number" },
-        stopPrice: { type: "number" },
+        amountUsdt: { type: "number", description: "Margin amount (USDT) for the new position" },
         leverage: { type: "number" },
       },
-      required: ["accountBalanceUsdt", "entryPrice", "stopPrice", "leverage"],
+      required: ["amountUsdt", "leverage"],
     },
   },
   {
     name: "check_partial_take_profit_opportunity",
     description:
-      "Checks an open position against the staged take-profit plan (1R/2R/3R) using the AI's own original entry/stop recommendation for that position, and reports whether a new stage has been reached.",
+      "Checks an open position against the real staged take-profit plan (1R/2R/3R at 33.33%/33.33%/0%, adjusted for current volatility 0.8x-1.5x) using the AI's own original entry/stop recommendation for that position, and reports whether a new stage has been reached.",
     parameters: {
       type: "object",
       properties: {
@@ -83,6 +90,35 @@ const declarations = [
         currentPrice: { type: "number" },
       },
       required: ["contract", "action", "currentPrice"],
+    },
+  },
+  {
+    name: "check_reversal",
+    description:
+      "Checks an open position for a trend reversal using the real weighted score (primary timeframe 40%, confirm 25%, filter 15%, MACD divergence 10%, RSI divergence 10%). Score >=70 means close immediately regardless of take-profit stage; 30-70 is an early warning to factor into judgment, not an automatic action.",
+    parameters: {
+      type: "object",
+      properties: {
+        symbol: { type: "string" },
+        action: { type: "string", enum: ["long", "short"] },
+      },
+      required: ["symbol", "action"],
+    },
+  },
+  {
+    name: "check_liquidity",
+    description:
+      "Checks liquidity conditions for a candidate new position, matching the original's pre-trade checks: (1) time-of-day/weekend low-liquidity position-size reduction (UTC 2-6am, or the weekend window), (2) order-book depth vs. the position's exposure - ask depth for longs, bid depth for shorts, since that's the side a market order actually consumes (the original's own code checks bid depth regardless of direction, which is only correct for shorts - fixed here to check the right side for both), (3) a separate 1h-ATR-based volatility adjustment to leverage and size (different from the take-profit volatility check). Returns adjusted amount/leverage suggestions - apply them before calling open_position.",
+    parameters: {
+      type: "object",
+      properties: {
+        symbol: { type: "string" },
+        action: { type: "string", enum: ["long", "short"] },
+        amountUsdt: { type: "number", description: "Your proposed position margin (USDT), before adjustment" },
+        leverage: { type: "number", description: "Your proposed leverage, before adjustment" },
+        totalBalanceUsdt: { type: "number" },
+      },
+      required: ["symbol", "action", "amountUsdt", "leverage", "totalBalanceUsdt"],
     },
   },
   {
@@ -106,22 +142,24 @@ const declarations = [
   {
     name: "close_position",
     description:
-      "Decide to close (fully or partially) an open position. This does NOT close a real position - it sends your decision and reasoning to the user via Telegram for manual execution.",
+      "Decide to close (fully or partially) an open position. This does NOT close a real position - it sends your decision and reasoning to the user via Telegram for manual execution. Provide currentPrice so this bot can automatically compute and log the outcome of ITS OWN suggested trade (based on its own advised entry price) for future risk decisions - this happens regardless of whether the user actually took the trade, since it tracks the AI's own suggestion quality.",
     parameters: {
       type: "object",
       properties: {
         contract: { type: "string" },
         action: { type: "string", enum: ["long", "short"] },
         sizePercent: { type: "number", description: "Percent of the position to close, 1-100" },
+        currentPrice: { type: "number", description: "Current market price, used to auto-compute the outcome of this bot's own suggested trade" },
+        closeReason: { type: "string", enum: ["trend_reversal", "take_profit", "stop_loss", "manual", "other"] },
         reasoning: { type: "string" },
       },
-      required: ["contract", "action", "sizePercent", "reasoning"],
+      required: ["contract", "action", "sizePercent", "currentPrice", "reasoning"],
     },
   },
   {
     name: "update_position_stop_loss",
     description:
-      "Decide to move the stop-loss (e.g. trailing stop, or moving to breakeven). This does NOT modify a real order - it sends the new stop level to the user via Telegram for manual execution.",
+      "Decide to move the stop-loss. This does NOT modify a real order - it sends the new stop level to the user via Telegram for manual execution.",
     parameters: {
       type: "object",
       properties: {
@@ -136,7 +174,7 @@ const declarations = [
   {
     name: "execute_partial_take_profit",
     description:
-      "Decide to take partial profit at a reached R-multiple stage. This does NOT execute a real order - it sends the stage, close percent, and new stop to the user via Telegram for manual execution.",
+      "Decide to take partial profit at a reached R-multiple stage. This does NOT execute a real order - it sends the stage, close percent, and new stop to the user via Telegram for manual execution. Provide currentPrice so the partial outcome can be auto-logged the same way as close_position.",
     parameters: {
       type: "object",
       properties: {
@@ -145,9 +183,10 @@ const declarations = [
         stage: { type: "string" },
         closePercent: { type: "number" },
         newStop: { type: "number" },
+        currentPrice: { type: "number" },
         reasoning: { type: "string" },
       },
-      required: ["contract", "action", "stage", "closePercent", "newStop", "reasoning"],
+      required: ["contract", "action", "stage", "closePercent", "newStop", "currentPrice", "reasoning"],
     },
   },
   {
@@ -166,15 +205,60 @@ const declarations = [
   },
 ];
 
-const STAGES = [
-  { key: "1", r: 1, closePercent: 33, moveStopTo: "entry" },
-  { key: "2", r: 2, closePercent: 33, moveStopTo: "stage1" },
-  { key: "3", r: 3, closePercent: 34, moveStopTo: "stage2trail" },
-];
+// Builds the full analysis (market state, strategy result, opportunity
+// score) for one symbol. Mutates trendHistoryStore in place.
+async function analyzeSymbol(symbol, config, trendHistoryStore) {
+  const { primary, confirm, filter } = await exchange.getMultiTimeframeCandles(
+    symbol, config.marketType, config.timeframes, config.candleLimit, config.candleFetchDelayMs
+  );
+  if (primary.length < 55 || confirm.length < 55 || filter.length < 55) {
+    return { symbol, error: "insufficient candle history" };
+  }
+
+  const tfPrimary = msa.buildTimeframeIndicators(primary);
+  const tfConfirm = msa.buildTimeframeIndicators(confirm);
+  const tfFilter = msa.buildTimeframeIndicators(filter);
+
+  const confirmCloses = confirm.map((c) => c.close);
+  const bb = bollingerBands(confirmCloses, 20, 2);
+  tfConfirm.bollingerUpper = bb.upper;
+  tfConfirm.bollingerLower = bb.lower;
+  tfConfirm.bollingerMiddle = bb.middle;
+  const priceVsUpperBB = priceVsBB(tfConfirm.currentPrice, bb.upper, bb.middle);
+  const priceVsLowerBB = priceVsBB(tfConfirm.currentPrice, bb.lower, bb.middle);
+
+  const trendStrength = msa.determineTrendStrength(tfPrimary);
+  const momentumState = msa.determineMomentumState(tfConfirm);
+  const volatilityState = msa.determineVolatilityState(tfFilter);
+  const { state, confidence } = msa.determineMarketState(trendStrength, momentumState, tfConfirm);
+  const alignmentScore = msa.calculateTripleTimeframeConsistency(tfPrimary, tfConfirm, tfFilter);
+
+  const history = msa.getHistory(trendHistoryStore, symbol);
+  const trendScores = { primary: msa.calculateTrendScore(tfPrimary), confirm: msa.calculateTrendScore(tfConfirm), filter: msa.calculateTrendScore(tfFilter) };
+  const trendChanges = history.primary.length > 0 ? {
+    primary: msa.detectTrendWeakening(trendScores.primary, history.primary),
+    confirm: msa.detectTrendWeakening(trendScores.confirm, history.confirm),
+    filter: msa.detectTrendWeakening(trendScores.filter, history.filter),
+  } : null;
+  msa.updateHistory(trendHistoryStore, symbol, trendScores);
+
+  const marketState = {
+    state, trendStrength, momentumState, volatilityState, confidence,
+    timeframeAlignment: { alignmentScore, is15mAnd1hAligned: alignmentScore > 0.6 },
+    keyMetrics: { atr_ratio: tfFilter.atrRatio, priceVsLowerBB, priceVsUpperBB, distanceToEMA20: tfConfirm.deviationFromEMA20, price: tfConfirm.currentPrice },
+    trendChanges,
+  };
+
+  const strategyResult = strategyRouter.routeStrategy(symbol, marketState, tfConfirm, tfFilter, config.riskRules.leverageMax);
+  const opportunity = await opportunityScorer.scoreOpportunity(strategyResult, marketState, config.strategy, tradeOutcomeLog.historicalPenaltyFn);
+
+  return { symbol, marketState, strategyResult, opportunity, tfPrimary, tfConfirm, tfFilter, currentPrice: tfConfirm.currentPrice };
+}
 
 function buildTools(config, creds) {
   const advisories = advisoryStore.loadAdvisories();
-  let dirty = false;
+  let advisoriesDirty = false;
+  const runWarnings = [];
 
   const handlers = {
     async get_account_balance() {
@@ -186,68 +270,65 @@ function buildTools(config, creds) {
     },
 
     async analyze_opening_opportunities() {
+      const trendHistoryStore = loadTrendHistory();
       const candidates = [];
       const allScores = [];
+
       for (const symbol of config.symbols) {
+        const cooldown = tradeOutcomeLog.isSymbolInCooldown(symbol);
+        if (cooldown.inCooldown) {
+          allScores.push({ symbol, score: 0, note: `in cooldown: ${cooldown.reason} (${cooldown.remainingHours}h remaining)` });
+          continue;
+        }
         try {
-          const { entryCandles, trendCandles } = await exchange.getMarketPrice(
-            symbol, config.marketType, config.entryTimeframe, config.trendTimeframe, config.candleLimit
-          );
-          if (entryCandles.length < 30 || trendCandles.length < 30) {
-            allScores.push({ symbol, score: 0, note: "not enough candle history yet" });
+          const analysis = await analyzeSymbol(symbol, config, trendHistoryStore);
+          if (analysis.error) {
+            allScores.push({ symbol, score: 0, note: analysis.error });
             continue;
           }
-          const opp = scoreOpportunity(symbol, entryCandles, trendCandles);
-          if (opp) {
-            allScores.push({ symbol, score: opp.score, action: opp.action, setupType: opp.setupType });
-            if (opp.score >= config.minScore) candidates.push(opp);
-          } else {
-            allScores.push({ symbol, score: 0, note: "no setup detected" });
+          allScores.push({
+            symbol, score: analysis.opportunity.totalScore, action: analysis.strategyResult.action,
+            setupType: analysis.strategyResult.strategyType, isBreakoutExtension: analysis.opportunity.isBreakoutExtension,
+          });
+          if (analysis.strategyResult.action !== "wait" && analysis.opportunity.totalScore >= config.minScore) {
+            candidates.push(analysis);
           }
         } catch (err) {
-          console.error(`analyze_opening_opportunities: ${symbol} - ${err.message}`);
           allScores.push({ symbol, score: 0, note: `error: ${err.message}` });
+          runWarnings.push(`${symbol}: scan failed - ${err.message}`);
         }
       }
-      candidates.sort((a, b) => b.score - a.score);
-      return { opportunities: candidates.slice(0, config.maxAlertsPerRun), allScores };
-    },
 
-    async get_technical_indicators({ symbol }) {
-      const { entryCandles, trendCandles } = await exchange.getMarketPrice(
-        symbol, config.marketType, config.entryTimeframe, config.trendTimeframe, config.candleLimit
-      );
-      const entryCloses = entryCandles.map((c) => c.close);
-      const trendCloses = trendCandles.map((c) => c.close);
+      saveTrendHistory(trendHistoryStore);
+
+      candidates.sort((a, b) => b.opportunity.totalScore - a.opportunity.totalScore);
+      const top = candidates.slice(0, config.maxAlertsPerRun);
+
       return {
-        entryTimeframe: {
-          rsi7: rsi(entryCloses, 7),
-          rsi14: rsi(entryCloses, 14),
-          macd: macd(entryCloses),
-          atrPercent: atrPercent(entryCandles),
-        },
-        trendTimeframe: {
-          ema20: ema(trendCloses, 20).slice(-1)[0],
-          ema50: ema(trendCloses, 50).slice(-1)[0],
-          macd: macd(trendCloses),
-        },
-        currentPrice: entryCloses[entryCloses.length - 1],
+        opportunities: top.map((c) => ({
+          symbol: c.symbol,
+          score: c.opportunity.totalScore,
+          action: c.strategyResult.action,
+          setupType: c.strategyResult.strategyType,
+          marketState: c.marketState.state,
+          reason: c.strategyResult.reason,
+          recommendedLeverage: c.strategyResult.recommendedLeverage,
+          price: c.currentPrice,
+          isBreakoutExtension: c.opportunity.isBreakoutExtension,
+          scoreBreakdown: c.opportunity.breakdown,
+        })),
+        allScores,
       };
     },
 
-    async check_open_position({ symbol, action, price, suggestedStop, atrPercent: atr }) {
-      const reasons = [];
-      let shouldOpen = true;
+    async check_open_position({ symbol, action }) {
+      const analysis = await analyzeSymbol(symbol, config, loadTrendHistory());
+      if (analysis.error) return { shouldOpen: false, reasons: [analysis.error] };
 
-      const stopDistancePercent = (Math.abs(price - suggestedStop) / price) * 100;
-      if (stopDistancePercent < config.riskRules.minStopDistancePercent) {
-        shouldOpen = false;
-        reasons.push(`stop too tight (${stopDistancePercent.toFixed(2)}% < ${config.riskRules.minStopDistancePercent}% minimum)`);
-      }
-      if (stopDistancePercent > config.riskRules.maxStopDistancePercent) {
-        shouldOpen = false;
-        reasons.push(`stop too wide (${stopDistancePercent.toFixed(2)}% > ${config.riskRules.maxStopDistancePercent}% maximum)`);
-      }
+      const stopCheck = stopLossCalculator.shouldOpenPosition(analysis.tfFilter.candles, action, analysis.currentPrice, config.stopLoss);
+      const reasons = [stopCheck.reason];
+
+      let shouldOpen = stopCheck.shouldOpen;
 
       try {
         const positions = await exchange.getPositions(creds);
@@ -258,61 +339,208 @@ function buildTools(config, creds) {
         }
       } catch (err) {
         reasons.push(`could not verify position count: ${err.message}`);
+        runWarnings.push(`${symbol}: could not verify position count before opening - ${err.message}`);
       }
 
-      let availableUsdt = null;
-      try {
-        const balances = await exchange.getBalances(creds);
-        const usdt = Array.isArray(balances) ? balances.find((b) => (b.currency || "").toUpperCase() === "USDT") : null;
-        availableUsdt = usdt ? Number(usdt.balance ?? usdt.available_balance ?? 0) : null;
-      } catch (err) {
-        reasons.push(`could not read balance (informational only, not blocking): ${err.message}`);
-      }
-
-      if (shouldOpen) reasons.push("passes stop-distance and position-count checks");
-      return { shouldOpen, symbol, action, availableUsdt, reasons };
+      return {
+        shouldOpen, symbol, action, reasons,
+        stopLossPrice: stopCheck.stopLossResult?.stopLossPrice,
+        stopLossDistancePercent: stopCheck.stopLossResult?.stopLossDistancePercent,
+        qualityScore: stopCheck.stopLossResult?.qualityScore,
+        volatilityLevel: stopCheck.stopLossResult?.riskAssessment.volatilityLevel,
+      };
     },
 
-    async calculate_risk({ accountBalanceUsdt, entryPrice, stopPrice, leverage }) {
-      const riskAmountUsdt = accountBalanceUsdt * (config.riskRules.riskPercentPerTrade / 100);
-      const stopDistancePerUnit = Math.abs(entryPrice - stopPrice);
-      const positionSizeUnderlying = stopDistancePerUnit > 0 ? riskAmountUsdt / stopDistancePerUnit : 0;
-      const notionalUsdt = positionSizeUnderlying * entryPrice;
-      const marginRequiredUsdt = leverage > 0 ? notionalUsdt / leverage : notionalUsdt;
+    async calculate_risk() {
+      const account = await exchange.getBalances(creds); // array of {currency, balance, ...}
+      const positionsRaw = await exchange.getPositions(creds);
+      const positions = Array.isArray(positionsRaw) ? positionsRaw : (positionsRaw?.data || []);
+
+      const usdt = Array.isArray(account) ? account.find((b) => (b.currency || "").toUpperCase() === "USDT") : null;
+      const availableBalance = usdt ? Number(usdt.balance ?? usdt.available_balance ?? 0) : 0;
+
+      let totalNotional = 0;
+      let totalMargin = 0;
+      const positionRisks = positions.map((p) => {
+        const size = Math.abs(Number(p.active_pos ?? p.size ?? 0));
+        const entryPrice = Number(p.avg_price ?? p.entryPrice ?? 0);
+        const leverage = Number(p.leverage ?? 1);
+        const notionalValue = size * entryPrice;
+        const margin = leverage > 0 ? notionalValue / leverage : notionalValue;
+        totalNotional += notionalValue;
+        totalMargin += margin;
+        return { contract: p.pair ?? p.contract, notionalValue, margin, leverage, pnl: Number(p.pnl ?? p.unrealisedPnl ?? 0) };
+      });
+
+      const totalBalance = availableBalance + totalMargin; // approx: available + margin already committed
+      const usedMarginPercent = totalBalance > 0 ? (totalMargin / totalBalance) * 100 : 0;
+      let riskLevel = "low";
+      if (usedMarginPercent > 80) riskLevel = "high";
+      else if (usedMarginPercent > 50) riskLevel = "medium";
+
       return {
-        riskAmountUsdt: Number(riskAmountUsdt.toFixed(2)),
-        suggestedQuantity: Number(positionSizeUnderlying.toFixed(6)),
-        notionalUsdt: Number(notionalUsdt.toFixed(2)),
-        marginRequiredUsdt: Number(marginRequiredUsdt.toFixed(2)),
+        totalBalance: Number(totalBalance.toFixed(2)),
+        availableBalance: Number(availableBalance.toFixed(2)),
+        totalNotional: Number(totalNotional.toFixed(2)),
+        totalMargin: Number(totalMargin.toFixed(2)),
+        usedMarginPercent: Number(usedMarginPercent.toFixed(1)),
+        positionCount: positionRisks.length,
+        positions: positionRisks,
+        riskLevel,
+      };
+    },
+
+    async check_total_exposure({ amountUsdt, leverage }) {
+      const account = await exchange.getBalances(creds);
+      const positionsRaw = await exchange.getPositions(creds);
+      const positions = Array.isArray(positionsRaw) ? positionsRaw : (positionsRaw?.data || []);
+
+      const usdt = Array.isArray(account) ? account.find((b) => (b.currency || "").toUpperCase() === "USDT") : null;
+      const availableBalance = usdt ? Number(usdt.balance ?? usdt.available_balance ?? 0) : 0;
+
+      let currentExposure = 0;
+      for (const p of positions) {
+        const size = Math.abs(Number(p.active_pos ?? p.size ?? 0));
+        const entryPrice = Number(p.avg_price ?? p.entryPrice ?? 0);
+        currentExposure += size * entryPrice;
+      }
+
+      const totalBalance = availableBalance + currentExposure / Math.max(1, ...positions.map((p) => Number(p.leverage ?? 1)));
+      const newExposure = amountUsdt * leverage;
+      const totalExposure = currentExposure + newExposure;
+      const maxAllowedExposure = totalBalance * config.riskRules.leverageMax;
+
+      const withinLimit = totalExposure <= maxAllowedExposure;
+      return {
+        withinLimit,
+        currentExposure: Number(currentExposure.toFixed(2)),
+        newExposure: Number(newExposure.toFixed(2)),
+        totalExposure: Number(totalExposure.toFixed(2)),
+        maxAllowedExposure: Number(maxAllowedExposure.toFixed(2)),
+        reason: withinLimit
+          ? "within total exposure limit"
+          : `total exposure ${totalExposure.toFixed(2)} USDT would exceed the limit of ${maxAllowedExposure.toFixed(2)} USDT (balance x max leverage)`,
+      };
+    },
+
+    async check_liquidity({ symbol, action, amountUsdt, leverage, totalBalanceUsdt }) {
+      const notes = [];
+      let adjustedAmountUsdt = amountUsdt;
+
+      // 1. Time-of-day / weekend low-liquidity reduction (matches source
+      // exactly, including that both can compound if they overlap).
+      const now = new Date();
+      const hourUTC = now.getUTCHours();
+      const dayOfWeek = now.getUTCDay(); // 0=Sun, 6=Sat
+
+      if (hourUTC >= 2 && hourUTC <= 6) {
+        adjustedAmountUsdt = Math.max(10, adjustedAmountUsdt * 0.7);
+        notes.push(`low-liquidity UTC hour (${hourUTC}:00) - size reduced to 70%`);
+      }
+      if ((dayOfWeek === 5 && hourUTC >= 22) || dayOfWeek === 6 || (dayOfWeek === 0 && hourUTC < 20)) {
+        adjustedAmountUsdt = Math.max(10, adjustedAmountUsdt * 0.8);
+        notes.push("weekend low-liquidity window - size reduced to 80% (of whatever it already was)");
+      }
+
+      // 2. Order-book depth check (public, no key needed). A market LONG
+      // (buy) consumes the ASK side; a market SHORT (sell) consumes the
+      // BID side - checking the wrong side would validate against
+      // liquidity that isn't actually relevant to the order direction.
+      // Skips gracefully (doesn't block) if the order book can't be
+      // fetched or parsed, same as the original's own try/catch behavior.
+      let bookDepthUsdt = null;
+      let requiredDepthUsdt = null;
+      let sufficientLiquidity = true;
+      try {
+        const pair = `B-${symbol}_USDT`; // matches this bot's futures pair convention
+        const book = await exchange.getOrderBook(pair);
+        const relevantSide = action === "long" ? book?.asks : book?.bids;
+        if (relevantSide && relevantSide.length > 0) {
+          bookDepthUsdt = relevantSide.slice(0, 5).reduce((sum, b) => sum + b.price * b.size, 0);
+          requiredDepthUsdt = adjustedAmountUsdt * leverage * 5;
+          sufficientLiquidity = bookDepthUsdt >= requiredDepthUsdt;
+          if (!sufficientLiquidity) notes.push(`order book ${action === "long" ? "ask" : "bid"} depth ${bookDepthUsdt.toFixed(2)} USDT < required ${requiredDepthUsdt.toFixed(2)} USDT`);
+        } else {
+          notes.push("order book unavailable or empty - liquidity depth check skipped");
+        }
+      } catch (err) {
+        notes.push(`order book check failed (${err.message}) - skipped, not blocking`);
+        runWarnings.push(`${symbol}: order book check failed - ${err.message}`);
+      }
+
+      // 3. Separate 1h-ATR-based volatility adjustment to leverage/size
+      // (distinct from takeProfitManagement's own volatility levels - this
+      // one uses 1h candles, >5%=high/<2%=low/else normal, and factors
+      // come from the strategy preset, not a fixed 0.8-1.5x scale).
+      let volatilityLevel = "normal";
+      let adjustedLeverage = leverage;
+      let volAdjustedAmountUsdt = adjustedAmountUsdt;
+      try {
+        const { filter } = await exchange.getMultiTimeframeCandles(symbol, config.marketType, config.timeframes, config.candleLimit, config.candleFetchDelayMs);
+        const candles1h = filter; // "filter" timeframe is 1h for the balanced preset
+        if (candles1h.length > 14) {
+          const atr14 = atrWilder(candles1h, 14);
+          const currentPrice = candles1h[candles1h.length - 1].close;
+          const atrPercent = (atr14 / currentPrice) * 100;
+          if (atrPercent > 5) volatilityLevel = "high";
+          else if (atrPercent < 2) volatilityLevel = "low";
+
+          const params = getStrategyParams(config.strategy, config.maxLeverage);
+          const adj = params.volatilityAdjustment[volatilityLevel];
+          if (volatilityLevel === "high") {
+            adjustedLeverage = Math.max(1, Math.round(leverage * adj.leverageFactor));
+            volAdjustedAmountUsdt = Math.max(10, adjustedAmountUsdt * adj.positionFactor);
+            notes.push(`high volatility (1h ATR ${atrPercent.toFixed(2)}%) - leverage/size reduced`);
+          } else if (volatilityLevel === "low") {
+            adjustedLeverage = Math.min(config.maxLeverage, Math.round(leverage * adj.leverageFactor));
+            volAdjustedAmountUsdt = Math.min(totalBalanceUsdt * 0.32, adjustedAmountUsdt * adj.positionFactor);
+            notes.push(`low volatility (1h ATR ${atrPercent.toFixed(2)}%) - leverage/size may increase, capped at 32% of balance`);
+          }
+        }
+      } catch (err) {
+        notes.push(`volatility adjustment check failed (${err.message}) - using unadjusted values`);
+        runWarnings.push(`${symbol}: volatility adjustment check failed - ${err.message}`);
+      }
+
+      return {
+        originalAmountUsdt: amountUsdt,
+        originalLeverage: leverage,
+        suggestedAmountUsdt: Number(volAdjustedAmountUsdt.toFixed(2)),
+        suggestedLeverage: adjustedLeverage,
+        bookDepthUsdt: bookDepthUsdt !== null ? Number(bookDepthUsdt.toFixed(2)) : null,
+        requiredDepthUsdt: requiredDepthUsdt !== null ? Number(requiredDepthUsdt.toFixed(2)) : null,
+        sufficientLiquidity,
+        volatilityLevel,
+        notes,
       };
     },
 
     async check_partial_take_profit_opportunity({ contract, action, currentPrice }) {
       const adv = advisoryStore.getAdvisory(advisories, contract, action);
-      if (!adv) {
-        return { canExecute: false, reason: "no recorded entry advisory for this position - was it opened by this bot?" };
-      }
-      const r = Math.abs(adv.entryPrice - adv.initialStop);
-      const dir = action === "long" ? 1 : -1;
-      const currentR = r > 0 ? ((currentPrice - adv.entryPrice) * dir) / r : 0;
+      if (!adv) return { canExecute: false, reason: "no recorded entry advisory for this position - was it opened by this bot?" };
 
-      for (const stage of STAGES) {
-        if (adv.stagesAdvised[stage.key]) continue;
-        if (currentR >= stage.r) {
-          let newStop;
-          if (stage.moveStopTo === "entry") newStop = adv.entryPrice;
-          else if (stage.moveStopTo === "stage1") newStop = adv.entryPrice + dir * r * 1;
-          else newStop = adv.entryPrice + dir * r * 2;
-          return {
-            canExecute: true,
-            stage: stage.key,
-            rMultiple: Number(currentR.toFixed(2)),
-            closePercent: stage.closePercent,
-            suggestedNewStop: Number(newStop.toFixed(6)),
-          };
-        }
+      const symbol = contract.replace(/^[A-Z]-/, "").replace(/_USDT$/, "");
+      let candles15m = [];
+      try {
+        const { confirm } = await exchange.getMultiTimeframeCandles(symbol, config.marketType, config.timeframes, config.candleLimit, config.candleFetchDelayMs);
+        candles15m = confirm;
+      } catch (err) {
+        runWarnings.push(`${symbol}: couldn't fetch candles for take-profit volatility check - ${err.message} (used normal-volatility default)`);
       }
-      return { canExecute: false, rMultiple: Number(currentR.toFixed(2)), reason: "no new stage reached" };
+
+      return takeProfitManagement.checkPartialTakeProfitOpportunity(
+        adv.entryPrice, currentPrice, adv.initialStop, action, adv.stagesAdvised, candles15m
+      );
+    },
+
+    async check_reversal({ symbol, action }) {
+      const trendHistoryStore = loadTrendHistory();
+      const analysis = await analyzeSymbol(symbol, config, trendHistoryStore);
+      saveTrendHistory(trendHistoryStore);
+      if (analysis.error) return { reversalScore: 0, error: analysis.error };
+
+      const history = msa.getHistory(trendHistoryStore, symbol);
+      return msa.calculateReversalScore(analysis.tfPrimary, analysis.tfConfirm, analysis.tfFilter, action, history);
     },
 
     // ---- Execution tools: intercepted, Telegram-only ----
@@ -320,7 +548,7 @@ function buildTools(config, creds) {
     async open_position({ contract, action, entryPrice, stopPrice, leverage, positionSizeUsdt, reasoning }) {
       await exchange.placeOrder({ contract, action, entryPrice, stopPrice, leverage, positionSizeUsdt });
       advisoryStore.recordOpen(advisories, contract, action, entryPrice, stopPrice);
-      dirty = true;
+      advisoriesDirty = true;
       const dirEmoji = action === "long" ? "🟢 LONG" : "🔴 SHORT";
       return {
         telegramMessage: [
@@ -335,10 +563,25 @@ function buildTools(config, creds) {
       };
     },
 
-    async close_position({ contract, action, sizePercent, reasoning }) {
+    async close_position({ contract, action, sizePercent, currentPrice, closeReason, reasoning }) {
       await exchange.closePosition(contract, sizePercent);
-      if (sizePercent >= 100) advisoryStore.clearAdvisory(advisories, contract, action);
-      dirty = true;
+
+      // Auto-record the outcome based on THIS bot's own advised entry price
+      // vs currentPrice - happens regardless of whether the user actually
+      // acted on the suggestion, since this tracks the AI's own suggestion
+      // quality, not the user's real trades.
+      const adv = advisoryStore.getAdvisory(advisories, contract, action);
+      if (adv && currentPrice) {
+        const dir = action === "long" ? 1 : -1;
+        const pnlPercent = ((currentPrice - adv.entryPrice) * dir / adv.entryPrice) * 100;
+        const symbol = contract.replace(/^[A-Z]-/, "").replace(/_USDT$/, "");
+        tradeOutcomeLog.recordOutcome(symbol, Number(pnlPercent.toFixed(2)), closeReason || "manual");
+      }
+
+      if (sizePercent >= 100) {
+        advisoryStore.clearAdvisory(advisories, contract, action);
+        advisoriesDirty = true;
+      }
       const dirEmoji = action === "long" ? "🟢 LONG" : "🔴 SHORT";
       return {
         telegramMessage: [
@@ -354,7 +597,7 @@ function buildTools(config, creds) {
     async update_position_stop_loss({ contract, action, newStop, reasoning }) {
       await exchange.setPositionStopLoss(contract, newStop);
       advisoryStore.recordStopUpdate(advisories, contract, action, newStop);
-      dirty = true;
+      advisoriesDirty = true;
       const dirEmoji = action === "long" ? "🟢 LONG" : "🔴 SHORT";
       return {
         telegramMessage: [
@@ -367,11 +610,21 @@ function buildTools(config, creds) {
       };
     },
 
-    async execute_partial_take_profit({ contract, action, stage, closePercent, newStop, reasoning }) {
+    async execute_partial_take_profit({ contract, action, stage, closePercent, newStop, currentPrice, reasoning }) {
       await exchange.closePosition(contract, closePercent);
+
+      // Auto-record the partial outcome too, same logic as close_position.
+      const adv = advisoryStore.getAdvisory(advisories, contract, action);
+      if (adv && currentPrice) {
+        const dir = action === "long" ? 1 : -1;
+        const pnlPercent = ((currentPrice - adv.entryPrice) * dir / adv.entryPrice) * 100;
+        const symbol = contract.replace(/^[A-Z]-/, "").replace(/_USDT$/, "");
+        tradeOutcomeLog.recordOutcome(symbol, Number(pnlPercent.toFixed(2)), "take_profit");
+      }
+
       advisoryStore.recordStageAdvised(advisories, contract, action, stage);
       advisoryStore.recordStopUpdate(advisories, contract, action, newStop);
-      dirty = true;
+      advisoriesDirty = true;
       const dirEmoji = action === "long" ? "🟢 LONG" : "🔴 SHORT";
       return {
         telegramMessage: [
@@ -387,7 +640,6 @@ function buildTools(config, creds) {
 
     async cancel_order({ orderId, contract, reasoning }) {
       await exchange.cancelOrder(orderId, contract);
-      dirty = true;
       return {
         telegramMessage: [
           `🤖 *AI wants to CANCEL an order* on *${contract}*${orderId ? ` (order ${orderId})` : ""}`,
@@ -406,8 +658,9 @@ function buildTools(config, creds) {
     isExecutionTool: (name) =>
       ["open_position", "close_position", "update_position_stop_loss", "execute_partial_take_profit", "cancel_order"].includes(name),
     persistAdvisories: () => {
-      if (dirty) advisoryStore.saveAdvisories(advisories);
+      if (advisoriesDirty) advisoryStore.saveAdvisories(advisories);
     },
+    getWarnings: () => runWarnings,
   };
 }
 
