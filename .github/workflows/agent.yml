@@ -1,9 +1,13 @@
 name: CoinDCX AI Trading Agent (advisory only)
 
 on:
-  schedule:
-    - cron: "*/15 * * * *"
   workflow_dispatch: {}
+  # No `schedule:` trigger here anymore - GitHub's own cron is best-effort
+  # and can slip by 5-30+ minutes under load. Triggering is now handled by
+  # an external scheduler (see README) that calls this workflow's
+  # workflow_dispatch via the GitHub API on a real schedule instead.
+  # Removing the built-in schedule also avoids two overlapping runs both
+  # trying to commit the same state files at once.
 
 permissions:
   contents: write # needed so the workflow can commit advisories.json / geminiKeyState.json
@@ -31,7 +35,7 @@ jobs:
         run: |
           git config user.name "coindcx-agent-bot"
           git config user.email "actions@github.com"
-          for f in advisories.json geminiKeyState.json trendScoreHistory.json tradeOutcomeLog.json runtimeConfig.json; do
+          for f in advisories.json geminiKeyState.json trendScoreHistory.json tradeOutcomeLog.json runtimeConfig.json idleThrottleState.json; do
             [ -f "$f" ] && git add "$f"
           done
           git diff --staged --quiet || git commit -m "Update agent state [skip ci]"
