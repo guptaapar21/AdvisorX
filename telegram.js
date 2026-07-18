@@ -6,18 +6,35 @@ async function sendTelegramMessage(text) {
   }
 
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      parse_mode: "Markdown",
-    }),
-  });
+
+  async function attempt(parseMode) {
+    const body = { chat_id: chatId, text };
+    if (parseMode) body.parse_mode = parseMode;
+    return fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  let res = await attempt("Markdown");
 
   if (!res.ok) {
     const body = await res.text();
+    // Dynamic content (symbol names, error messages, reasoning text) can
+    // contain characters that break Telegram's Markdown parser (stray _
+    // or * that don't form a valid pair). Rather than let one bad
+    // character crash the entire run's notification, retry once as plain
+    // text - this can never fail the same way since there's no parse_mode.
+    const isEntityParseError = res.status === 400 && /can't (parse entities|find end of the entity)/i.test(body);
+    if (isEntityParseError) {
+      res = await attempt(null);
+      if (!res.ok) {
+        const retryBody = await res.text();
+        throw new Error(`Telegram send failed even as plain text: ${res.status} ${retryBody}`);
+      }
+      return;
+    }
     throw new Error(`Telegram send failed: ${res.status} ${body}`);
   }
 }

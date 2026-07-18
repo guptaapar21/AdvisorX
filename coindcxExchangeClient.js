@@ -66,11 +66,23 @@ function sleep(ms) {
 // a small delay between requests (safety margin - see config.candleFetchDelayMs).
 async function getMultiTimeframeCandles(symbol, marketType, timeframes, candleLimit, delayMs = 300) {
   const pair = await resolvePair(symbol, marketType);
-  const primary = await getCandles(pair, timeframes.primary, candleLimit);
+
+  async function fetchLabeled(label, interval) {
+    try {
+      return await getCandles(pair, interval, candleLimit);
+    } catch (err) {
+      // Re-throw with which of the 3 timeframes actually failed - a bare
+      // "candles failed" error looks identical whether it was primary,
+      // confirm, or filter that broke.
+      throw new Error(`[${label}/${interval}] ${err.message}`);
+    }
+  }
+
+  const primary = await fetchLabeled("primary", timeframes.primary);
   await sleep(delayMs);
-  const confirm = await getCandles(pair, timeframes.confirm, candleLimit);
+  const confirm = await fetchLabeled("confirm", timeframes.confirm);
   await sleep(delayMs);
-  const filter = await getCandles(pair, timeframes.filter, candleLimit);
+  const filter = await fetchLabeled("filter", timeframes.filter);
   return { pair, primary, confirm, filter };
 }
 

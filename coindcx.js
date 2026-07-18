@@ -7,7 +7,10 @@ let marketsCache = null;
 async function resolvePair(symbol, marketType) {
   if (!marketsCache) {
     const res = await fetch(`${API_BASE}/exchange/v1/markets_details`);
-    if (!res.ok) throw new Error(`markets_details failed: ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`markets_details failed: ${res.status} ${body}`);
+    }
     marketsCache = await res.json();
   }
 
@@ -34,7 +37,10 @@ async function resolvePair(symbol, marketType) {
 async function getCandles(pair, interval, limit) {
   const url = `${BASE}/market_data/candles?pair=${encodeURIComponent(pair)}&interval=${interval}&limit=${limit}`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`candles failed for ${pair}: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`candles failed for ${pair} @ ${interval}: ${res.status} ${body}`);
+  }
   const raw = await res.json();
   // API returns newest-first; normalize to oldest -> newest for indicator math
   return raw
