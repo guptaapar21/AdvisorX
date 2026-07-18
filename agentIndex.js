@@ -6,10 +6,25 @@ const { sendTelegramMessage } = require("./telegram");
 
 function crispSummary(text) {
   // Safety net: keep the run-log message short even if the model doesn't
-  // follow the requested one-line format exactly. Take only the first
-  // line, and hard-cap length.
-  const firstLine = text.split("\n").find((l) => l.trim().length > 0) || text;
-  return firstLine.length > 140 ? `${firstLine.slice(0, 137)}...` : firstLine;
+  // follow the requested two-line format exactly. Keep at most the status
+  // line plus one reason line, each hard-capped in length.
+  const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  const cap = (l, n) => (l.length > n ? `${l.slice(0, n - 3)}...` : l);
+  const statusLine = lines[0] ? cap(lines[0], 100) : "";
+  const reasonLine = lines[1] ? cap(lines[1], 140) : "";
+  return [statusLine, reasonLine].filter(Boolean).join("\n");
+}
+
+// Builds "Scores: BTC 45, ETH 58, SOL 73, ..." deterministically from the
+// real allScores data, rather than trusting the model to always include
+// every symbol in its free-text reasoning.
+function formatScoresLine(allScores) {
+  if (!allScores || allScores.length === 0) return null;
+  const parts = allScores
+    .slice()
+    .sort((a, b) => b.score - a.score)
+    .map((s) => `${s.symbol} ${s.score}`);
+  return `Scores: ${parts.join(", ")}`;
 }
 
 async function run() {
@@ -32,6 +47,8 @@ async function run() {
 
   console.log("Starting agent reasoning cycle...");
 
+  let lastAllScores = null;
+
   const { finalText, turnLog } = await runAgentCycle({
     userPrompt,
     systemPrompt,
@@ -44,13 +61,26 @@ async function run() {
         await sendTelegramMessage(result.telegramMessage);
       }
     },
+    onReadToolResult: (name, args, result) => {
+      if (name === "analyze_opening_opportunities" && result && result.allScores) {
+        lastAllScores = result.allScores;
+      }
+    },
   });
 
   turnLog.forEach((line) => console.log(line));
 
   if (finalText) {
     console.log("Agent summary:", finalText);
-    await sendTelegramMessage(`🧠 ${crispSummary(finalText)}`);
+    let message = crispSummary(finalText);
+    // If this run scanned for new opportunities, always append the real
+    // per-symbol scores ourselves - don't rely on the model to have
+    // included them in its free-text reason line.
+    const scoresLine = formatScoresLine(lastAllScores);
+    if (scoresLine && !message.includes("Scores:")) {
+      message = `${message}\n${scoresLine}`;
+    }
+    await sendTelegramMessage(`🧠 ${message}`);
   } else {
     console.log("Agent produced no final text this run (see turn log above).");
   }

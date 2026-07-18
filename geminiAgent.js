@@ -35,7 +35,7 @@ async function callGemini(contents, systemPrompt, toolDeclarations, apiKey, mode
 // results back, until the model responds with plain text and no more tool
 // calls (or `maxTurns` is hit as a safety cap). `onToolCall` is invoked for
 // every tool call so the caller can log/relay execution-tool messages.
-async function runAgentCycle({ userPrompt, systemPrompt, tools, model, cooldownMinutes, maxTurns, onToolCall }) {
+async function runAgentCycle({ userPrompt, systemPrompt, tools, model, cooldownMinutes, maxTurns, onToolCall, onReadToolResult }) {
   const contents = [{ role: "user", parts: [{ text: userPrompt }] }];
   const turnLog = [];
 
@@ -78,6 +78,7 @@ async function runAgentCycle({ userPrompt, systemPrompt, tools, model, cooldownM
             resultForModel = result.resultForModel;
             turnLog.push(`[execution] ${call.name}(${JSON.stringify(call.args)})`);
           } else {
+            if (onReadToolResult) onReadToolResult(call.name, call.args, result);
             resultForModel = result;
             turnLog.push(`[read] ${call.name}(${JSON.stringify(call.args)})`);
           }
