@@ -87,8 +87,15 @@ async function runAgentCycle({ userPrompt, systemPrompt, tools, model, cooldownM
         }
       }
 
+      // Gemini's functionResponse.response field must be a JSON object,
+      // not a bare array or scalar - several of our read tools (get_positions,
+      // get_account_balance) return raw arrays straight from CoinDCX, so wrap
+      // anything that isn't already a plain object.
+      const isPlainObject = resultForModel != null && typeof resultForModel === "object" && !Array.isArray(resultForModel);
+      const wrappedResponse = isPlainObject ? resultForModel : { result: resultForModel ?? null };
+
       functionResponseParts.push({
-        functionResponse: { name: call.name, response: resultForModel },
+        functionResponse: { name: call.name, response: wrappedResponse },
       });
     }
 
