@@ -44,8 +44,12 @@ module.exports = {
   // the risk entirely.
   candleFetchDelayMs: 300,
 
-  // Only alert when the opportunity score (0-100) is at or above this
-  minScore: 70,
+  // Only alert when the opportunity score (0-100) is at or above this.
+  // Matches STRATEGY_SCORE_WEIGHTS.balanced.minScore in opportunityScorer.js
+  // exactly - runtimeConfig.js's applyRuntimeOverrides swaps this to the
+  // right value automatically when a different strategy is selected via
+  // Telegram, so it stays in sync no matter which preset is active.
+  minScore: 75,
 
   // Cross-symbol ranking: out of ALL symbols that clear minScore this run,
   // only send alerts for the top N by score.

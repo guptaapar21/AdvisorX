@@ -6,6 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const { getTelegramUpdates, sendTelegramMessage } = require("./telegram");
 const { getStrategyParams } = require("./strategyParams");
+const { STRATEGY_SCORE_WEIGHTS } = require("./opportunityScorer");
 
 const RUNTIME_FILE = path.join(__dirname, "runtimeConfig.json");
 const VALID_STRATEGIES = ["ultra-short", "swing-trend", "conservative", "balanced", "aggressive"];
@@ -58,6 +59,12 @@ function applyRuntimeOverrides(baseConfig, runtimeState) {
   return {
     ...baseConfig,
     strategy: runtimeState.strategy,
+    // This was a real gap: config.minScore is the actual gate deciding what
+    // shows up as a candidate at all, but it previously stayed fixed at
+    // config.js's value regardless of which strategy was active - so
+    // switching strategy silently didn't change the threshold you'd see,
+    // even though each preset has its own real minScore. Fixed here.
+    minScore: STRATEGY_SCORE_WEIGHTS[runtimeState.strategy]?.minScore ?? baseConfig.minScore,
     riskRules: {
       ...baseConfig.riskRules,
       leverageMin: params.leverageMin,
