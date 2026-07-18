@@ -255,6 +255,16 @@ async function analyzeSymbol(symbol, config, trendHistoryStore) {
   return { symbol, marketState, strategyResult, opportunity, tfPrimary, tfConfirm, tfFilter, currentPrice: tfConfirm.currentPrice };
 }
 
+// CoinDCX's getPositions response includes an entry per contract even when
+// flat (size 0) - counting raw array length treats every configured symbol
+// as "an open position" regardless of whether anything is actually open.
+// This filters down to genuinely active positions only, matching the size
+// check already used correctly elsewhere (calculate_risk, check_total_exposure).
+function getActivePositions(positionsRaw) {
+  const positions = Array.isArray(positionsRaw) ? positionsRaw : (positionsRaw?.data || []);
+  return positions.filter((p) => Math.abs(Number(p.active_pos ?? p.size ?? 0)) > 0);
+}
+
 function buildTools(config, creds) {
   const advisories = advisoryStore.loadAdvisories();
   let advisoriesDirty = false;
@@ -331,8 +341,8 @@ function buildTools(config, creds) {
       let shouldOpen = stopCheck.shouldOpen;
 
       try {
-        const positions = await exchange.getPositions(creds);
-        const openCount = Array.isArray(positions) ? positions.length : (positions?.data?.length || 0);
+        const positionsRaw = await exchange.getPositions(creds);
+        const openCount = getActivePositions(positionsRaw).length;
         if (openCount >= config.riskRules.maxPositions) {
           shouldOpen = false;
           reasons.push(`already at max positions (${openCount}/${config.riskRules.maxPositions})`);
@@ -354,7 +364,7 @@ function buildTools(config, creds) {
     async calculate_risk() {
       const account = await exchange.getBalances(creds); // array of {currency, balance, ...}
       const positionsRaw = await exchange.getPositions(creds);
-      const positions = Array.isArray(positionsRaw) ? positionsRaw : (positionsRaw?.data || []);
+      const positions = getActivePositions(positionsRaw);
 
       const usdt = Array.isArray(account) ? account.find((b) => (b.currency || "").toUpperCase() === "USDT") : null;
       const availableBalance = usdt ? Number(usdt.balance ?? usdt.available_balance ?? 0) : 0;
@@ -393,7 +403,7 @@ function buildTools(config, creds) {
     async check_total_exposure({ amountUsdt, leverage }) {
       const account = await exchange.getBalances(creds);
       const positionsRaw = await exchange.getPositions(creds);
-      const positions = Array.isArray(positionsRaw) ? positionsRaw : (positionsRaw?.data || []);
+      const positions = getActivePositions(positionsRaw);
 
       const usdt = Array.isArray(account) ? account.find((b) => (b.currency || "").toUpperCase() === "USDT") : null;
       const availableBalance = usdt ? Number(usdt.balance ?? usdt.available_balance ?? 0) : 0;

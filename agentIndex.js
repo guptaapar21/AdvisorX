@@ -79,8 +79,13 @@ async function run() {
         lastAllScores = result.allScores;
       }
       if (name === "get_positions") {
+        // CoinDCX returns an entry per configured contract even when flat
+        // (size 0) - a bare positions.length>0 check was wrongly treating
+        // every run as "a position is open" even with nothing active,
+        // which is why the idle throttle never actually throttled anything.
         const positions = Array.isArray(result) ? result : (result?.data || []);
-        if (Array.isArray(positions) && positions.length > 0) hasOpenPositions = true;
+        const activeCount = positions.filter((p) => Math.abs(Number(p.active_pos ?? p.size ?? 0)) > 0).length;
+        if (activeCount > 0) hasOpenPositions = true;
       }
     },
   });
