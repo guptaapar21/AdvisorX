@@ -12,6 +12,18 @@ on:
 permissions:
   contents: write # needed so the workflow can commit advisories.json / geminiKeyState.json
 
+# Prevents two runs of this workflow from ever executing at the same time.
+# Without this, a 5-minute external trigger can start a new run before the
+# previous one has finished committing its state (idleThrottleState.json,
+# advisories.json, etc.) - both runs read the same "last state" before
+# either has pushed, whichever commits second gets rejected, and that
+# run's update is silently lost. This queues runs instead: if one is still
+# in progress when the next trigger fires, the new one waits its turn
+# rather than racing.
+concurrency:
+  group: coindcx-agent
+  cancel-in-progress: false
+
 jobs:
   agent:
     runs-on: ubuntu-latest
@@ -38,5 +50,17 @@ jobs:
           for f in advisories.json geminiKeyState.json trendScoreHistory.json tradeOutcomeLog.json runtimeConfig.json idleThrottleState.json; do
             [ -f "$f" ] && git add "$f"
           done
-          git diff --staged --quiet || git commit -m "Update agent state [skip ci]"
-          git push
+          git diff --staged --quiet && exit 0
+          git commit -m "Update agent state [skip ci]"
+          # Retry the push a few times with a rebase in between, in case
+          # something else updated the branch between checkout and here -
+          # belt-and-suspenders alongside the concurrency group above.
+          for i in 1 2 3; do
+            if git push; then
+              exit 0
+            fi
+            echo "Push rejected (attempt $i), pulling and retrying..."
+            git pull --rebase
+          done
+          echo "Failed to push state after 3 attempts."
+          exit 1
