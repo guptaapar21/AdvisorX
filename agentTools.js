@@ -28,7 +28,7 @@ const declarations = [
   {
     name: "analyze_opening_opportunities",
     description:
-      "Scans all configured symbols, scores each with the composite rule-based scorer (regime, breakout/trend/reversion setup, RSI/MACD/EMA blend, volatility tier), filters out symbols with an open position, and returns the top-ranked opportunities across all coins (cross-symbol ranking) that clear the minimum score.",
+      "Scans all configured symbols, scores each with the composite rule-based scorer (regime, breakout/trend/reversion setup, RSI/MACD/EMA blend, volatility tier), filters out symbols with an open position, and returns the top-ranked opportunities across all coins (cross-symbol ranking) that clear the minimum score. Also returns allScores: the score for every symbol scanned this run (including ones below the threshold), for reporting in the run summary.",
     parameters: { type: "object", properties: {} },
   },
   {
@@ -187,20 +187,30 @@ function buildTools(config, creds) {
 
     async analyze_opening_opportunities() {
       const candidates = [];
+      const allScores = [];
       for (const symbol of config.symbols) {
         try {
           const { entryCandles, trendCandles } = await exchange.getMarketPrice(
             symbol, config.marketType, config.entryTimeframe, config.trendTimeframe, config.candleLimit
           );
-          if (entryCandles.length < 30 || trendCandles.length < 30) continue;
+          if (entryCandles.length < 30 || trendCandles.length < 30) {
+            allScores.push({ symbol, score: 0, note: "not enough candle history yet" });
+            continue;
+          }
           const opp = scoreOpportunity(symbol, entryCandles, trendCandles);
-          if (opp && opp.score >= config.minScore) candidates.push(opp);
+          if (opp) {
+            allScores.push({ symbol, score: opp.score, action: opp.action, setupType: opp.setupType });
+            if (opp.score >= config.minScore) candidates.push(opp);
+          } else {
+            allScores.push({ symbol, score: 0, note: "no setup detected" });
+          }
         } catch (err) {
           console.error(`analyze_opening_opportunities: ${symbol} - ${err.message}`);
+          allScores.push({ symbol, score: 0, note: `error: ${err.message}` });
         }
       }
       candidates.sort((a, b) => b.score - a.score);
-      return { opportunities: candidates.slice(0, config.maxAlertsPerRun) };
+      return { opportunities: candidates.slice(0, config.maxAlertsPerRun), allScores };
     },
 
     async get_technical_indicators({ symbol }) {

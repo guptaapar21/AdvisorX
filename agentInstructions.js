@@ -32,11 +32,12 @@ Reason: <one short sentence, max ~20 words, concrete facts only (numbers, what w
 where <STATUS> is one of: NO ACTION / MANAGED / OPENED / CLOSED.
 Examples:
 "NO ACTION — no positions, no setups ≥${config.minScore}.
-Reason: Scanned 5 symbols; best score was 58 (BTC), below threshold."
+Reason: SOL 73 (failed stop check). Others: BTC 45, ETH 58, DOGE 30, XRP 41."
 "OPENED — BTC long, breakout + volume, alert sent.
 Reason: Broke resistance on 15m with 2x volume, 1h uptrend confirmed."
 "MANAGED — ETH stage 2 hit, stop trailed to breakeven.
-Reason: Price reached 2R; took partial profit per staged plan."`;
+Reason: Price reached 2R; took partial profit per staged plan."
+When your reason references analyze_opening_opportunities, use its allScores field to list every scanned symbol's score in the reason line (short "SYMBOL score" pairs), not just the winning one.`;
 }
 
 module.exports = { generateAgentInstructions };
