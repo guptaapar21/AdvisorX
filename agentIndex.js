@@ -5,6 +5,7 @@ const { runAgentCycle } = require("./geminiAgent");
 const { sendTelegramMessage } = require("./telegram");
 const runtimeConfig = require("./runtimeConfig");
 const idleThrottle = require("./idleThrottle");
+const { runPreFilter } = require("./preFilter");
 
 function crispSummary(text) {
   // Safety net: keep the run-log message short even if the model doesn't
@@ -29,6 +30,22 @@ function formatScoresLine(allScores) {
   return `Scores: ${parts.join(", ")}`;
 }
 
+// Builds the routine "nothing to do" message directly from the pre-filter's
+// own real data - no Gemini call needed for this, the common case.
+function formatIdleMessage(preFilterResult, config) {
+  const scored = preFilterResult.allScores.filter((s) => typeof s.score === "number");
+  scored.sort((a, b) => b.score - a.score);
+  const best = scored[0];
+
+  const statusLine = "NO ACTION — no positions, no setups cleared threshold.";
+  const reasonLine = best
+    ? `Reason: Best candidate ${best.symbol} scored ${best.score}${best.setupType ? ` (${best.setupType})` : ""}, below the required ${config.minScore}.`
+    : "Reason: No valid candidates this run.";
+  const scoresLine = formatScoresLine(preFilterResult.allScores);
+
+  return [statusLine, reasonLine, scoresLine].filter(Boolean).join("\n");
+}
+
 async function run() {
   const creds = {
     apiKey: process.env.COINDCX_API_KEY,
@@ -40,11 +57,39 @@ async function run() {
 
   // Check for any Telegram command (e.g. "/strategy aggressive") sent
   // since the last run, and apply it. Always sends a confirmation/
-  // rejection reply itself, so this never fails silently.
+  // rejection reply itself, so this never fails silently. Cheap - no
+  // Gemini involved, just a Telegram API call.
   let rtState = runtimeConfig.loadRuntimeConfig();
   rtState = await runtimeConfig.processIncomingCommands(rtState);
   const config = runtimeConfig.applyRuntimeOverrides(baseConfig, rtState);
   runtimeConfig.saveRuntimeConfig(rtState);
+
+  console.log("Running pre-filter (no Gemini calls)...");
+  const preFilterResult = await runPreFilter(config, creds);
+  console.log(
+    `Pre-filter result: hasOpenPositions=${preFilterResult.hasOpenPositions}, ` +
+    `qualifyingCandidates=${preFilterResult.candidates.length}, isActive=${preFilterResult.isActive}`
+  );
+
+  if (!preFilterResult.isActive) {
+    // Nothing worth spending a Gemini call on this run - skip the agent
+    // entirely and just report the pre-filter's own real findings,
+    // throttled to once every 15 min like before.
+    console.log("Skipping Gemini this run - pre-filter found nothing active.");
+    const message = formatIdleMessage(preFilterResult, config);
+    if (idleThrottle.shouldSendIdleMessage()) {
+      await sendTelegramMessage(`🧠 ${message}`);
+    } else {
+      console.log("Idle run - Telegram message suppressed (throttled to every 15 min while nothing is happening).");
+    }
+    console.log("Run complete (pre-filter only, no Gemini used).");
+    return;
+  }
+
+  // Something's active (a real position, or a candidate cleared minScore) -
+  // worth spending a Gemini call to actually reason about it.
+  console.log("Pre-filter found activity - invoking the full Gemini agent...");
+  idleThrottle.resetIdleThrottle();
 
   const tools = buildTools(config, creds);
   const systemPrompt = generateAgentInstructions(config);
@@ -57,9 +102,7 @@ async function run() {
 
   console.log("Starting agent reasoning cycle...");
 
-  let lastAllScores = null;
-  let hadExecutionActivity = false;
-  let hasOpenPositions = false;
+  let lastAllScores = preFilterResult.allScores;
 
   const { finalText, turnLog } = await runAgentCycle({
     userPrompt,
@@ -69,7 +112,6 @@ async function run() {
     cooldownMinutes: config.geminiKeyCooldownMinutes,
     maxTurns: config.agentMaxTurns,
     onToolCall: async (name, args, result) => {
-      hadExecutionActivity = true; // any execution tool firing counts as activity
       if (result.telegramMessage) {
         await sendTelegramMessage(result.telegramMessage);
       }
@@ -77,15 +119,6 @@ async function run() {
     onReadToolResult: (name, args, result) => {
       if (name === "analyze_opening_opportunities" && result && result.allScores) {
         lastAllScores = result.allScores;
-      }
-      if (name === "get_positions") {
-        // CoinDCX returns an entry per configured contract even when flat
-        // (size 0) - a bare positions.length>0 check was wrongly treating
-        // every run as "a position is open" even with nothing active,
-        // which is why the idle throttle never actually throttled anything.
-        const positions = Array.isArray(result) ? result : (result?.data || []);
-        const activeCount = positions.filter((p) => Math.abs(Number(p.active_pos ?? p.size ?? 0)) > 0).length;
-        if (activeCount > 0) hasOpenPositions = true;
       }
     },
   });
@@ -97,9 +130,6 @@ async function run() {
   if (finalText) {
     console.log("Agent summary:", finalText);
     let message = crispSummary(finalText);
-    // If this run scanned for new opportunities, always append the real
-    // per-symbol scores ourselves - don't rely on the model to have
-    // included them in its free-text reason line.
     const scoresLine = formatScoresLine(lastAllScores);
     if (scoresLine && !message.includes("Scores:")) {
       message = `${message}\n${scoresLine}`;
@@ -107,35 +137,7 @@ async function run() {
     if (warnings.length > 0) {
       message = `${message}\n⚠️ ${warnings.length} issue(s) this run: ${warnings.join(" | ")}`;
     }
-
-    const isActive = hadExecutionActivity || hasOpenPositions;
-    // Diagnostic logging - temporary, to find out why throttling isn't
-    // behaving as expected. Shows the exact inputs to the decision and the
-    // throttle state file's content before/after, so the Action log tells
-    // us definitively what's happening instead of guessing further.
-    console.log(`[throttle-debug] hadExecutionActivity=${hadExecutionActivity} hasOpenPositions=${hasOpenPositions} isActive=${isActive}`);
-    console.log(`[throttle-debug] idleThrottleState.json before decision: ${idleThrottle.readRawState()}`);
-
-    if (isActive) {
-      // A position is open or a decision was made this run - message every
-      // time (cron runs every 5 min), no throttling. Also reset the idle
-      // timer so that once things go quiet again, the next idle message
-      // fires immediately rather than waiting out a stale 15-min window.
-      console.log("[throttle-debug] Taking ACTIVE branch (always sends) - resetting idle throttle.");
-      idleThrottle.resetIdleThrottle();
-      await sendTelegramMessage(`🧠 ${message}`);
-    } else {
-      const shouldSend = idleThrottle.shouldSendIdleMessage();
-      console.log(`[throttle-debug] Taking IDLE branch. shouldSendIdleMessage()=${shouldSend}`);
-      console.log(`[throttle-debug] idleThrottleState.json after decision: ${idleThrottle.readRawState()}`);
-      if (shouldSend) {
-        // Genuinely nothing going on - only send this routine update once
-        // every 15 minutes even though the cron itself fires every 5.
-        await sendTelegramMessage(`🧠 ${message}`);
-      } else {
-        console.log("Idle run - Telegram message suppressed (throttled to every 15 min while nothing is happening).");
-      }
-    }
+    await sendTelegramMessage(`🧠 ${message}`);
   } else {
     // The model never produced a final answer - almost always means every
     // configured Gemini key failed/exhausted this run. This MUST be

@@ -674,4 +674,4 @@ function buildTools(config, creds) {
   };
 }
 
-module.exports = { buildTools };
+module.exports = { buildTools, analyzeSymbol, getActivePositions };
