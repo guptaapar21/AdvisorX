@@ -4,6 +4,7 @@ const { generateAgentInstructions } = require("./agentInstructions");
 const { runAgentCycle } = require("./geminiAgent");
 const { sendTelegramMessage } = require("./telegram");
 const runtimeConfig = require("./runtimeConfig");
+const idleThrottle = require("./idleThrottle");
 
 function crispSummary(text) {
   // Safety net: keep the run-log message short even if the model doesn't
@@ -57,6 +58,8 @@ async function run() {
   console.log("Starting agent reasoning cycle...");
 
   let lastAllScores = null;
+  let hadExecutionActivity = false;
+  let hasOpenPositions = false;
 
   const { finalText, turnLog } = await runAgentCycle({
     userPrompt,
@@ -66,6 +69,7 @@ async function run() {
     cooldownMinutes: config.geminiKeyCooldownMinutes,
     maxTurns: config.agentMaxTurns,
     onToolCall: async (name, args, result) => {
+      hadExecutionActivity = true; // any execution tool firing counts as activity
       if (result.telegramMessage) {
         await sendTelegramMessage(result.telegramMessage);
       }
@@ -73,6 +77,10 @@ async function run() {
     onReadToolResult: (name, args, result) => {
       if (name === "analyze_opening_opportunities" && result && result.allScores) {
         lastAllScores = result.allScores;
+      }
+      if (name === "get_positions") {
+        const positions = Array.isArray(result) ? result : (result?.data || []);
+        if (Array.isArray(positions) && positions.length > 0) hasOpenPositions = true;
       }
     },
   });
@@ -94,7 +102,22 @@ async function run() {
     if (warnings.length > 0) {
       message = `${message}\n⚠️ ${warnings.length} issue(s) this run: ${warnings.join(" | ")}`;
     }
-    await sendTelegramMessage(`🧠 ${message}`);
+
+    const isActive = hadExecutionActivity || hasOpenPositions;
+    if (isActive) {
+      // A position is open or a decision was made this run - message every
+      // time (cron runs every 5 min), no throttling. Also reset the idle
+      // timer so that once things go quiet again, the next idle message
+      // fires immediately rather than waiting out a stale 15-min window.
+      idleThrottle.resetIdleThrottle();
+      await sendTelegramMessage(`🧠 ${message}`);
+    } else if (idleThrottle.shouldSendIdleMessage()) {
+      // Genuinely nothing going on - only send this routine update once
+      // every 15 minutes even though the cron itself fires every 5.
+      await sendTelegramMessage(`🧠 ${message}`);
+    } else {
+      console.log("Idle run - Telegram message suppressed (throttled to every 15 min while nothing is happening).");
+    }
   } else {
     // The model never produced a final answer - almost always means every
     // configured Gemini key failed/exhausted this run. This MUST be
