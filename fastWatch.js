@@ -39,7 +39,16 @@ async function run(config, creds) {
 
   if (activePositions.length === 0) {
     console.log("Fast watch: no open positions, nothing to check.");
-    await scorecard.updateScorecard([], config.strategy);
+    // Only push a scorecard update if we just transitioned from having a
+    // position to being flat (one final "closed out" refresh). Otherwise
+    // every 1-minute fastwatch cycle would spam a fresh "No open positions"
+    // message forever while flat.
+    const watchState = loadWatchState();
+    if (watchState.__hadOpenPositions) {
+      await scorecard.updateScorecard([], config.strategy);
+      watchState.__hadOpenPositions = false;
+      saveWatchState(watchState);
+    }
     return;
   }
 
@@ -117,6 +126,10 @@ async function run(config, creds) {
     }
   }
 
+  if (!watchState.__hadOpenPositions) {
+    watchState.__hadOpenPositions = true;
+    watchStateDirty = true;
+  }
   if (watchStateDirty) saveWatchState(watchState);
   await scorecard.updateScorecard(scorecardPositions, config.strategy);
   console.log("Fast watch run complete.");
