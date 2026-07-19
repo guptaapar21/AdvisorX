@@ -1,0 +1,86 @@
+// A single Telegram message that gets EDITED in place every fast-watch
+// cycle (~1 min) instead of a new message being sent each time - this is
+// what "live" means here: not instant push updates, but a refreshed
+// snapshot on a tight, predictable cadence. Shows real position P&L (using
+// the reconciled real entry price) and the most recent scan scores from
+// the main 5-min cycle.
+
+const fs = require("fs");
+const path = require("path");
+const { editTelegramMessage, sendTelegramMessage } = require("./telegram");
+
+const SCORECARD_STATE_FILE = path.join(__dirname, "scorecardState.json");
+const LATEST_SCORES_FILE = path.join(__dirname, "latestScores.json");
+
+function loadScorecardState() {
+  try { return JSON.parse(fs.readFileSync(SCORECARD_STATE_FILE, "utf8")); } catch { return { messageId: null }; }
+}
+function saveScorecardState(state) {
+  fs.writeFileSync(SCORECARD_STATE_FILE, JSON.stringify(state, null, 2));
+}
+
+function loadLatestScores() {
+  try { return JSON.parse(fs.readFileSync(LATEST_SCORES_FILE, "utf8")); } catch { return null; }
+}
+
+// Called by preFilter.js after every scan so the scorecard always has
+// something reasonably fresh to show, even though the scorecard itself
+// only runs the cheap fast-watch cycle.
+function saveLatestScores(allScores) {
+  fs.writeFileSync(LATEST_SCORES_FILE, JSON.stringify({ scores: allScores, timestamp: Date.now() }, null, 2));
+}
+
+function formatPositionLine(p) {
+  const emoji = p.action === "long" ? "🟢" : "🔴";
+  const pnlStr = p.pnlPercent !== null ? `${p.pnlPercent >= 0 ? "+" : ""}${p.pnlPercent.toFixed(2)}%` : "n/a";
+  return `${emoji} *${p.contract}* ${p.action} | Entry: ${p.entryPrice} | Now: ${p.currentPrice} | P&L: ${pnlStr} | Stop: ${p.currentStop}`;
+}
+
+// `positions` is an array of { contract, action, entryPrice, currentPrice,
+// currentStop, pnlPercent } - built by fastWatch.js during its own loop,
+// since it already fetches all of this. `strategyName` is just for
+// context in the header.
+async function updateScorecard(positions, strategyName) {
+  const state = loadScorecardState();
+  const latestScores = loadLatestScores();
+
+  const lines = [];
+  lines.push(`📊 *Live Scorecard* (strategy: ${strategyName})`);
+  lines.push(`_Updated: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour12: true })} IST_`);
+  lines.push("");
+
+  if (positions.length > 0) {
+    lines.push("*Open positions:*");
+    positions.forEach((p) => lines.push(formatPositionLine(p)));
+  } else {
+    lines.push("_No open positions._");
+  }
+
+  if (latestScores && latestScores.scores && latestScores.scores.length > 0) {
+    lines.push("");
+    lines.push("*Latest scan scores:*");
+    const sorted = latestScores.scores.slice().sort((a, b) => b.score - a.score);
+    lines.push(sorted.map((s) => `${s.symbol} ${s.score}`).join(", "));
+    const ageMin = Math.round((Date.now() - latestScores.timestamp) / 60000);
+    lines.push(`_(from ${ageMin} min ago)_`);
+  }
+
+  const text = lines.join("\n");
+
+  if (state.messageId) {
+    const edited = await editTelegramMessage(state.messageId, text);
+    if (edited) {
+      console.log("Scorecard: updated existing message.");
+      return;
+    }
+    console.log("Scorecard: edit failed (message may be too old/deleted) - sending a fresh one.");
+  }
+
+  const newId = await sendTelegramMessage(text);
+  if (newId) {
+    saveScorecardState({ messageId: newId });
+    console.log("Scorecard: sent new message, tracking its ID for future edits.");
+  }
+}
+
+module.exports = { updateScorecard, saveLatestScores };

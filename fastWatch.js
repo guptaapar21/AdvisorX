@@ -16,6 +16,7 @@ const exchange = require("./coindcxExchangeClient");
 const advisoryStore = require("./advisoryStore");
 const { sendTelegramMessage } = require("./telegram");
 const { getActivePositions } = require("./agentTools");
+const scorecard = require("./scorecard");
 
 const fs = require("fs");
 const path = require("path");
@@ -38,12 +39,20 @@ async function run(config, creds) {
 
   if (activePositions.length === 0) {
     console.log("Fast watch: no open positions, nothing to check.");
+    await scorecard.updateScorecard([], config.strategy);
     return;
   }
 
   const advisories = advisoryStore.loadAdvisories();
+  const reconciled = advisoryStore.reconcileWithRealPositions(advisories, activePositions);
+  if (reconciled) {
+    advisoryStore.saveAdvisories(advisories);
+    console.log("Fast watch: reconciled advisory entry price(s) with real CoinDCX fill price.");
+  }
+
   const watchState = loadWatchState();
   let watchStateDirty = false;
+  const scorecardPositions = [];
 
   for (const pos of activePositions) {
     const contract = pos.pair ?? pos.contract;
@@ -70,6 +79,11 @@ async function run(config, creds) {
     const r = Math.abs(adv.entryPrice - adv.initialStop);
     const currentStop = adv.lastAdvisedStop;
     const stopCrossed = action === "long" ? currentPrice <= currentStop : currentPrice >= currentStop;
+
+    scorecardPositions.push({
+      contract, action, entryPrice: adv.entryPrice, currentPrice, currentStop,
+      pnlPercent: ((currentPrice - adv.entryPrice) * dir / adv.entryPrice) * 100,
+    });
 
     // Next target the AI hasn't already advised on
     const stages = [
@@ -104,6 +118,7 @@ async function run(config, creds) {
   }
 
   if (watchStateDirty) saveWatchState(watchState);
+  await scorecard.updateScorecard(scorecardPositions, config.strategy);
   console.log("Fast watch run complete.");
 }
 

@@ -14,6 +14,7 @@
 const exchange = require("./coindcxExchangeClient");
 const { analyzeSymbol, getActivePositions } = require("./agentTools");
 const tradeOutcomeLog = require("./tradeOutcomeLog");
+const advisoryStore = require("./advisoryStore");
 
 const path = require("path");
 const fs = require("fs");
@@ -36,6 +37,17 @@ async function runPreFilter(config, creds) {
   const positionsRaw = await exchange.getPositions(creds);
   const activePositions = getActivePositions(positionsRaw);
   const hasOpenPositions = activePositions.length > 0;
+
+  // Correct the AI's tracked entry price to the real CoinDCX fill price,
+  // if a position now genuinely exists - your real fill can differ from
+  // the suggested entry due to execution delay.
+  if (hasOpenPositions) {
+    const advisories = advisoryStore.loadAdvisories();
+    if (advisoryStore.reconcileWithRealPositions(advisories, activePositions)) {
+      advisoryStore.saveAdvisories(advisories);
+      console.log("Pre-filter: reconciled advisory entry price(s) with real CoinDCX fill price.");
+    }
+  }
 
   const trendHistoryStore = loadTrendHistory();
   const candidates = [];
@@ -67,6 +79,12 @@ async function runPreFilter(config, creds) {
 
   saveTrendHistory(trendHistoryStore);
   candidates.sort((a, b) => b.opportunity.totalScore - a.opportunity.totalScore);
+
+  try {
+    require("./scorecard").saveLatestScores(allScores);
+  } catch (err) {
+    console.log(`Pre-filter: couldn't persist scores for the scorecard - ${err.message}`);
+  }
 
   return {
     hasOpenPositions,

@@ -62,6 +62,43 @@ function getAdvisory(advisories, contract, action) {
   return advisories[keyFor(contract, action)] || null;
 }
 
+// Once a real position shows up on CoinDCX, its avg_price is the price you
+// ACTUALLY paid - not the price the AI suggested when it made the call.
+// Execution delay, slippage, or just taking a few minutes to act all mean
+// these can differ. This corrects the tracked entry price to your real
+// fill, so R-multiple/target math is based on what you actually paid.
+//
+// The stop price is deliberately left UNCHANGED: if you placed your real
+// stop-loss order on CoinDCX at the exact price the bot suggested, that
+// real order sits at that price regardless of your exact fill - shifting
+// it here would describe a stop you didn't actually place. R is simply
+// recomputed fresh from (real entry, unchanged stop).
+//
+// Only corrects meaningfully-different prices (>0.05%) to avoid noisy
+// no-op updates from float rounding.
+function reconcileWithRealPositions(advisories, activePositions) {
+  let changed = false;
+  for (const pos of activePositions) {
+    const contract = pos.pair ?? pos.contract;
+    const rawSize = Number(pos.active_pos ?? pos.size ?? 0);
+    const action = rawSize > 0 ? "long" : "short";
+    const realEntry = Number(pos.avg_price ?? 0);
+    if (!contract || !realEntry) continue;
+
+    const key = keyFor(contract, action);
+    const adv = advisories[key];
+    if (!adv) continue;
+
+    const diffPercent = Math.abs(realEntry - adv.entryPrice) / adv.entryPrice * 100;
+    if (diffPercent > 0.05) {
+      if (!adv.reconciledFrom) adv.reconciledFrom = adv.entryPrice;
+      adv.entryPrice = realEntry;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 module.exports = {
   loadAdvisories,
   saveAdvisories,
@@ -70,4 +107,5 @@ module.exports = {
   recordStageAdvised,
   clearAdvisory,
   getAdvisory,
+  reconcileWithRealPositions,
 };

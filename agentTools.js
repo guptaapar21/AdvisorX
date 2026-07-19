@@ -276,7 +276,12 @@ function buildTools(config, creds) {
     },
 
     async get_positions() {
-      return exchange.getPositions(creds);
+      const positionsRaw = await exchange.getPositions(creds);
+      const activePositions = getActivePositions(positionsRaw);
+      if (advisoryStore.reconcileWithRealPositions(advisories, activePositions)) {
+        advisoriesDirty = true;
+      }
+      return positionsRaw;
     },
 
     async analyze_opening_opportunities() {
