@@ -335,10 +335,39 @@ function buildTools(config, creds) {
       const analysis = await analyzeSymbol(symbol, config, loadTrendHistory());
       if (analysis.error) return { shouldOpen: false, reasons: [analysis.error] };
 
-      const stopCheck = stopLossCalculator.shouldOpenPosition(analysis.tfFilter.candles, action, analysis.currentPrice, config.stopLoss);
-      const reasons = [stopCheck.reason];
+      const reasons = [];
+      let shouldOpen = true;
 
-      let shouldOpen = stopCheck.shouldOpen;
+      // Guard against repeatedly recommending the same symbol+direction
+      // across consecutive 5-min cycles before the user has had a chance
+      // to act on the earlier one (or before a real position shows up on
+      // the exchange). Without this, every cycle that still likes a setup
+      // re-suggests it as a "new" trade - if several near-identical
+      // suggestions get executed, positions stack unintentionally.
+      const contract = `B-${symbol}_USDT`; // matches this bot's futures pair convention
+      const existingAdvisory = advisoryStore.getAdvisory(advisories, contract, action);
+      const ADVISORY_DEDUPE_MS = 60 * 60 * 1000; // 60 min
+      if (existingAdvisory) {
+        const ageMs = Date.now() - existingAdvisory.openedAt;
+        if (ageMs < ADVISORY_DEDUPE_MS) {
+          shouldOpen = false;
+          reasons.push(
+            `already recommended opening ${contract} ${action} ${Math.round(ageMs / 60000)} min ago ` +
+            `(entry ${existingAdvisory.entryPrice}, stop ${existingAdvisory.initialStop}) - avoiding a duplicate/stacked suggestion. ` +
+            `If that one wasn't executed, treat this as the same trade, not a new one.`
+          );
+        } else {
+          // Stale enough that a fresh look is reasonable - clear it so a
+          // genuinely new advisory can be recorded if this gets opened.
+          advisoryStore.clearAdvisory(advisories, contract, action);
+          advisoriesDirty = true;
+          reasons.push(`a prior recommendation for ${contract} ${action} was over ${Math.round(ageMs / 60000)} min old and has expired - treating this as a fresh evaluation`);
+        }
+      }
+
+      const stopCheck = stopLossCalculator.shouldOpenPosition(analysis.tfFilter.candles, action, analysis.currentPrice, config.stopLoss);
+      reasons.push(stopCheck.reason);
+      shouldOpen = shouldOpen && stopCheck.shouldOpen;
 
       try {
         const positionsRaw = await exchange.getPositions(creds);
@@ -560,14 +589,30 @@ function buildTools(config, creds) {
       advisoryStore.recordOpen(advisories, contract, action, entryPrice, stopPrice);
       advisoriesDirty = true;
       const dirEmoji = action === "long" ? "🟢 LONG" : "🔴 SHORT";
+
+      // Show the actual 1R/2R/3R staged take-profit price levels upfront,
+      // not just entry/stop - so there's a concrete target to watch on
+      // CoinDCX yourself, without waiting for a later follow-up message.
+      const r = Math.abs(entryPrice - stopPrice);
+      const dir = action === "long" ? 1 : -1;
+      const target1 = entryPrice + dir * r * 1;
+      const target2 = entryPrice + dir * r * 2;
+      const target3 = entryPrice + dir * r * 3;
+      // Use 2 decimals for higher-value assets (BTC/ETH-style prices),
+      // more precision for sub-$1 coins where 2 decimals would round away
+      // all the meaningful movement.
+      const decimals = entryPrice >= 1 ? 2 : 6;
+      const fmt = (n) => n.toFixed(decimals);
+
       return {
         telegramMessage: [
           `🤖 *AI wants to OPEN* ${dirEmoji} *${contract}*`,
           `Entry: ${entryPrice} | Stop: ${stopPrice} | Leverage: ${leverage}x`,
           `Suggested size: ${positionSizeUsdt} USDT margin`,
+          `Targets (staged take-profit): 1R ${fmt(target1)} (close ~33%) | 2R ${fmt(target2)} (close ~33%) | 3R ${fmt(target3)} (trail rest)`,
           `Reasoning: ${reasoning}`,
           ``,
-          `_No order has been placed. Execute manually on CoinDCX if you agree._`,
+          `_No order has been placed. Execute manually on CoinDCX if you agree. You'll get a follow-up message when a target is reached, but you can also watch these levels yourself - your live P&L is always visible on CoinDCX's Positions tab, it doesn't wait for this bot._`,
         ].join("\n"),
         resultForModel: { status: "queued_for_manual_execution", note: "Sent to user via Telegram. Not executed." },
       };

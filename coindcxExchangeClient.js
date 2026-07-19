@@ -105,6 +105,15 @@ async function getCandlesForInterval(pair, interval, limit) {
   return aggregated.slice(-limit);
 }
 
+// Cheap current-price check (single 1m candle, not a full 3-timeframe
+// fetch) - for the fast position watcher, which only needs "what's the
+// price right now", not a full re-analysis.
+async function getCurrentPrice(symbol, marketType) {
+  const pair = await resolvePair(symbol, marketType);
+  const candles = await getCandles(pair, "1m", 2);
+  return candles[candles.length - 1].close;
+}
+
 // Fetches primary/confirm/filter candles for one symbol, sequentially with
 // a small delay between requests (safety margin - see config.candleFetchDelayMs).
 async function getMultiTimeframeCandles(symbol, marketType, timeframes, candleLimit, delayMs = 300) {
@@ -207,6 +216,7 @@ async function closePosition(contract, sizePercent) {
 
 module.exports = {
   getMultiTimeframeCandles,
+  getCurrentPrice,
   aggregateCandles,
   getOrderBook,
   getBalances,
