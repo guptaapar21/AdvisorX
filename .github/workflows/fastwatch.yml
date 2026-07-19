@@ -1,0 +1,50 @@
+name: CoinDCX Fast Position Watcher (advisory only)
+
+on:
+  workflow_dispatch: {}
+  # No schedule here either - triggered by a SECOND external cron-job.org
+  # job pointed at this workflow specifically, on a faster interval (e.g.
+  # every 1 minute) than the main agent workflow. Costs 0 Gemini calls -
+  # pure arithmetic against real prices, so a tight interval is safe.
+
+permissions:
+  contents: write
+
+concurrency:
+  group: coindcx-fastwatch
+  cancel-in-progress: false
+
+jobs:
+  fastwatch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run fast position watch
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          COINDCX_API_KEY: ${{ secrets.COINDCX_API_KEY }}
+          COINDCX_API_SECRET: ${{ secrets.COINDCX_API_SECRET }}
+        run: node fastWatchIndex.js
+
+      - name: Persist fast-watch state
+        run: |
+          git config user.name "coindcx-fastwatch-bot"
+          git config user.email "actions@github.com"
+          [ -f fastWatchState.json ] && git add fastWatchState.json
+          git diff --staged --quiet && exit 0
+          git commit -m "Update fast-watch state [skip ci]"
+          for i in 1 2 3; do
+            if git push; then
+              exit 0
+            fi
+            echo "Push rejected (attempt $i), pulling and retrying..."
+            git pull --rebase
+          done
+          echo "Failed to push state after 3 attempts."
+          exit 1
