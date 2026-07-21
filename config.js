@@ -97,10 +97,12 @@ module.exports = {
     positionSizeMaxPercent: strategyParams.positionSizeMax,
     // Real dollar-risk cap: max % of total account balance that can be
     // lost if a trade hits its stop, regardless of what leverage/size the
-    // AI picked within its normal ranges. 5% is a standard, moderately
-    // conservative retail risk-management ceiling (common range is 1-5%
-    // per trade) - change this directly if you want tighter/looser.
-    maxRiskPercentPerTrade: 5,
+    // AI picked within its normal ranges. Settled on 7% - a middle ground
+    // between the original 5% default and her initial 10% ask, after
+    // discussing the drawdown tradeoff (a realistic 5-loss streak at
+    // ~45% trade loss rate means roughly -30% drawdown at 7%, vs -23% at
+    // 5% and -41% at 10%).
+    maxRiskPercentPerTrade: 7,
   },
 
   // Real stop-loss config (from the selected strategy preset)
