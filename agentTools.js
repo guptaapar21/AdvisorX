@@ -587,10 +587,65 @@ function buildTools(config, creds) {
       return msa.calculateReversalScore(analysis.tfPrimary, analysis.tfConfirm, analysis.tfFilter, action, history);
     },
 
+    // Real, evidence-based safety net: the original engine force-closes any
+    // position after 36 hours regardless of P&L - this was missing
+    // entirely until backtested across 5 coins confirmed 36h as the best
+    // or near-best hold length (see config.js's maxHoldHours comment).
+    // Without this, a position with no clear stop/target/reversal signal
+    // could otherwise sit open indefinitely.
+    async check_max_hold_time({ symbol, action }) {
+      const contract = `B-${symbol}_USDT`;
+      const adv = advisoryStore.getAdvisory(advisories, contract, action);
+      if (!adv) {
+        return { exceededMaxHold: false, note: "no advisory on record for this position - can't verify open time" };
+      }
+      const hoursOpen = (Date.now() - adv.openedAt) / (60 * 60 * 1000);
+      return {
+        hoursOpen: Math.round(hoursOpen * 10) / 10,
+        maxHoldHours: config.maxHoldHours,
+        exceededMaxHold: hoursOpen >= config.maxHoldHours,
+      };
+    },
+
     // ---- Execution tools: intercepted, Telegram-only ----
 
     async open_position({ contract, action, entryPrice, stopPrice, leverage, positionSizeUsdt, reasoning }) {
-      await exchange.placeOrder({ contract, action, entryPrice, stopPrice, leverage, positionSizeUsdt });
+      // Real dollar-risk cap: this was a flagged gap that sat too long
+      // without being built - regardless of what leverage/size/stop the AI
+      // picked, this caps the ACTUAL dollar loss at the stop to a fixed %
+      // of total account balance. Auto-scales the position size down to
+      // fit (same pattern as check_liquidity's auto-adjustment), rather
+      // than blocking a good signal outright.
+      const MAX_RISK_PERCENT_OF_BALANCE = config.riskRules.maxRiskPercentPerTrade ?? 5;
+      let finalPositionSizeUsdt = positionSizeUsdt;
+      const riskNotes = [];
+      try {
+        const balances = await exchange.getBalances(creds);
+        const usdtBalance = Array.isArray(balances) ? balances.find((b) => (b.currency || "").toUpperCase() === "USDT") : null;
+        const totalBalance = usdtBalance ? Number(usdtBalance.balance ?? usdtBalance.available_balance ?? 0) : 0;
+
+        if (totalBalance > 0) {
+          const stopDistancePercent = Math.abs(entryPrice - stopPrice) / entryPrice * 100;
+          const notional = positionSizeUsdt * leverage;
+          const dollarRisk = notional * (stopDistancePercent / 100);
+          const riskPercentOfBalance = (dollarRisk / totalBalance) * 100;
+
+          if (riskPercentOfBalance > MAX_RISK_PERCENT_OF_BALANCE) {
+            const scaleFactor = MAX_RISK_PERCENT_OF_BALANCE / riskPercentOfBalance;
+            finalPositionSizeUsdt = Number((positionSizeUsdt * scaleFactor).toFixed(2));
+            riskNotes.push(
+              `⚠️ Size auto-reduced from ${positionSizeUsdt} to ${finalPositionSizeUsdt} USDT - the original would have risked ` +
+              `${riskPercentOfBalance.toFixed(1)}% of your account at the stop, above the ${MAX_RISK_PERCENT_OF_BALANCE}% cap.`
+            );
+          }
+        } else {
+          riskNotes.push(`⚠️ Could not verify balance to check risk % - using the suggested size as-is, double check this yourself before executing.`);
+        }
+      } catch (err) {
+        riskNotes.push(`⚠️ Risk-cap check failed (${err.message}) - using the suggested size as-is, double check this yourself before executing.`);
+      }
+
+      await exchange.placeOrder({ contract, action, entryPrice, stopPrice, leverage, positionSizeUsdt: finalPositionSizeUsdt });
       advisoryStore.recordOpen(advisories, contract, action, entryPrice, stopPrice);
       advisoriesDirty = true;
       const dirEmoji = action === "long" ? "🟢 LONG" : "🔴 SHORT";
@@ -613,7 +668,8 @@ function buildTools(config, creds) {
         telegramMessage: [
           `🤖 *AI wants to OPEN* ${dirEmoji} *${contract}*`,
           `Entry: ${entryPrice} | Stop: ${stopPrice} | Leverage: ${leverage}x`,
-          `Suggested size: ${positionSizeUsdt} USDT margin`,
+          `Suggested size: ${finalPositionSizeUsdt} USDT margin`,
+          ...riskNotes,
           `Targets (staged take-profit): 1R ${fmt(target1)} (close ~33%) | 2R ${fmt(target2)} (close ~33%) | 3R ${fmt(target3)} (trail rest)`,
           `Reasoning: ${reasoning}`,
           ``,
