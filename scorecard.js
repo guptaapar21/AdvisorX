@@ -31,9 +31,15 @@ function saveLatestScores(allScores) {
 }
 
 function formatPositionLine(p) {
-  const emoji = p.action === "long" ? "🟢" : "🔴";
+  // Direction (long/short) and P&L (winning/losing) are two DIFFERENT
+  // things - a long position can easily be sitting at a loss. The old
+  // version used 🟢/🔴 for direction only, which looked like a P&L color
+  // even when it wasn't (e.g. a losing long still showed green). Now
+  // direction gets a neutral arrow, and 🟢/🔴 reflects the actual P&L sign.
+  const directionArrow = p.action === "long" ? "▲" : "▼";
+  const pnlEmoji = p.pnlPercent !== null ? (p.pnlPercent >= 0 ? "🟢" : "🔴") : "⚪";
   const pnlStr = p.pnlPercent !== null ? `${p.pnlPercent >= 0 ? "+" : ""}${p.pnlPercent.toFixed(2)}%` : "n/a";
-  return `${emoji} *${p.contract}* ${p.action} | Entry: ${p.entryPrice} | Now: ${p.currentPrice} | P&L: ${pnlStr} | Stop: ${p.currentStop}`;
+  return `${pnlEmoji} *${p.contract}* ${directionArrow} ${p.action} | Entry: ${p.entryPrice} | Now: ${p.currentPrice} | P&L: ${pnlStr} | Stop: ${p.currentStop}`;
 }
 
 // `positions` is an array of { contract, action, entryPrice, currentPrice,

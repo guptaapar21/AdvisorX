@@ -624,7 +624,18 @@ function buildTools(config, creds) {
         const usdtBalance = Array.isArray(balances) ? balances.find((b) => (b.currency || "").toUpperCase() === "USDT") : null;
         const totalBalance = usdtBalance ? Number(usdtBalance.balance ?? usdtBalance.available_balance ?? 0) : 0;
 
-        if (totalBalance > 0) {
+        // CoinDCX keeps SPOT and FUTURES balances in separate wallets - if
+        // this balance fetch is reading the spot wallet (likely near-empty
+        // for someone trading futures, since trading funds live in the
+        // separate Futures Wallet), totalBalance could come back as a tiny
+        // but still >0 number, which would previously make the risk% come
+        // out astronomically wrong and scale the position to near zero.
+        // MIN_PLAUSIBLE_BALANCE guards against exactly this: if the
+        // balance looks implausibly small to be someone's real trading
+        // capital, treat it as unverifiable rather than acting on it.
+        const MIN_PLAUSIBLE_BALANCE = 1; // USDT
+
+        if (totalBalance >= MIN_PLAUSIBLE_BALANCE) {
           const stopDistancePercent = Math.abs(entryPrice - stopPrice) / entryPrice * 100;
           const notional = positionSizeUsdt * leverage;
           const dollarRisk = notional * (stopDistancePercent / 100);
@@ -639,7 +650,10 @@ function buildTools(config, creds) {
             );
           }
         } else {
-          riskNotes.push(`⚠️ Could not verify balance to check risk % - using the suggested size as-is, double check this yourself before executing.`);
+          riskNotes.push(
+            `⚠️ Could not verify a plausible balance to check risk % (this may be reading your spot wallet, not your futures wallet) ` +
+            `- using the suggested size as-is, double check your real risk yourself before executing.`
+          );
         }
       } catch (err) {
         riskNotes.push(`⚠️ Risk-cap check failed (${err.message}) - using the suggested size as-is, double check this yourself before executing.`);
