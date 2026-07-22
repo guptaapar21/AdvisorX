@@ -42,7 +42,23 @@ async function processIncomingCommands(runtimeState) {
       }
     } else if (msg.text.trim() === "/status") {
       const current = runtimeState.strategy || "balanced (default)";
-      await sendTelegramMessage(`ℹ️ Current strategy: *${current}*`);
+      // Show the REAL currently-used balance (auto-tracked, may have
+      // drifted from whatever was last manually set via P&L on trades
+      // this bot has closed) - not just the raw seed value, since that's
+      // what actually gets used in the risk-cap calculation each run.
+      const balanceTracker = require("./balanceTracker");
+      const seedBalance = runtimeState.manualBalanceOverride;
+      let balanceLine = "ℹ️ Futures balance: not set - send /setbalance <amount> to enable the risk cap.";
+      if (typeof seedBalance === "number" && seedBalance > 0) {
+        const trackedBalance = balanceTracker.getCurrentBalance(seedBalance);
+        if (typeof trackedBalance === "number") {
+          const drifted = Math.abs(trackedBalance - seedBalance) > 0.01;
+          balanceLine = drifted
+            ? `ℹ️ Futures balance in use: *${trackedBalance.toFixed(2)} USDT* (auto-tracked from your last /setbalance of ${seedBalance}, adjusted by trades this bot has closed since)`
+            : `ℹ️ Futures balance in use: *${trackedBalance.toFixed(2)} USDT* (as last set via /setbalance, no closed trades yet to adjust it)`;
+        }
+      }
+      await sendTelegramMessage(`ℹ️ Current strategy: *${current}*\n${balanceLine}`);
     }
 
     // Lets her correct/update the tracked futures balance straight from
