@@ -266,6 +266,43 @@ function getActivePositions(positionsRaw) {
   return positions.filter((p) => Math.abs(Number(p.active_pos ?? p.size ?? 0)) > 0);
 }
 
+// Single source of truth for "what balance should risk/exposure checks use"
+// - used by BOTH open_position's risk-cap AND check_total_exposure, so
+// they can never drift apart again (this exact drift was a real bug: this
+// fix used to live only inside open_position, while check_total_exposure
+// kept calling the old spot-wallet API directly and blocking trades with
+// "zero USDT balance" even after a real manual/tracked balance was set).
+//
+// CoinDCX doesn't expose futures wallet balance over REST at all
+// (confirmed from their official Futures API doc - only a websocket
+// event, which doesn't fit this bot's short-lived Action-per-run
+// architecture). Prefers her manually-set real balance (auto-tracked
+// from real P&L after that); only falls back to the spot-wallet API
+// check as a last resort, clearly labeled as unreliable.
+async function getEffectiveBalance(config, creds) {
+  if (typeof config.manualFuturesBalanceUsdt === "number" && config.manualFuturesBalanceUsdt > 0) {
+    const trackedBalance = balanceTracker.getCurrentBalance(config.manualFuturesBalanceUsdt);
+    if (typeof trackedBalance === "number" && trackedBalance > 0) {
+      return { totalBalance: trackedBalance, balanceSource: "tracked" };
+    }
+  }
+  try {
+    const balances = await exchange.getBalances(creds);
+    const usdtBalance = Array.isArray(balances) ? balances.find((b) => (b.currency || "").toUpperCase() === "USDT") : null;
+    const apiBalance = usdtBalance ? Number(usdtBalance.balance ?? usdtBalance.available_balance ?? 0) : 0;
+    // MIN_PLAUSIBLE_BALANCE guards against the spot-wallet-near-zero case -
+    // if it looks implausibly small to be real trading capital, don't
+    // trust it at all rather than act on a wrong near-zero number.
+    const MIN_PLAUSIBLE_BALANCE = 1; // USDT
+    if (apiBalance >= MIN_PLAUSIBLE_BALANCE) {
+      return { totalBalance: apiBalance, balanceSource: "api_unreliable" }; // SPOT wallet, not futures - fallback only
+    }
+  } catch {
+    // fall through
+  }
+  return { totalBalance: 0, balanceSource: null };
+}
+
 function buildTools(config, creds) {
   const advisories = advisoryStore.loadAdvisories();
   let advisoriesDirty = false;
@@ -436,12 +473,10 @@ function buildTools(config, creds) {
     },
 
     async check_total_exposure({ amountUsdt, leverage }) {
-      const account = await exchange.getBalances(creds);
       const positionsRaw = await exchange.getPositions(creds);
       const positions = getActivePositions(positionsRaw);
 
-      const usdt = Array.isArray(account) ? account.find((b) => (b.currency || "").toUpperCase() === "USDT") : null;
-      const availableBalance = usdt ? Number(usdt.balance ?? usdt.available_balance ?? 0) : 0;
+      const { totalBalance: availableBalance, balanceSource } = await getEffectiveBalance(config, creds);
 
       let currentExposure = 0;
       for (const p of positions) {
@@ -456,15 +491,20 @@ function buildTools(config, creds) {
       const maxAllowedExposure = totalBalance * config.riskRules.leverageMax;
 
       const withinLimit = totalExposure <= maxAllowedExposure;
+      const sourceNote = balanceSource === "api_unreliable"
+        ? " (⚠️ using your SPOT wallet balance as a fallback - set config.manualFuturesBalanceUsdt or /setbalance for an accurate check)"
+        : balanceSource === null
+          ? " (⚠️ no real balance available - set config.manualFuturesBalanceUsdt or send /setbalance)"
+          : "";
       return {
         withinLimit,
         currentExposure: Number(currentExposure.toFixed(2)),
         newExposure: Number(newExposure.toFixed(2)),
         totalExposure: Number(totalExposure.toFixed(2)),
         maxAllowedExposure: Number(maxAllowedExposure.toFixed(2)),
-        reason: withinLimit
+        reason: (withinLimit
           ? "within total exposure limit"
-          : `total exposure ${totalExposure.toFixed(2)} USDT would exceed the limit of ${maxAllowedExposure.toFixed(2)} USDT (balance x max leverage)`,
+          : `total exposure ${totalExposure.toFixed(2)} USDT would exceed the limit of ${maxAllowedExposure.toFixed(2)} USDT (balance x max leverage)`) + sourceNote,
       };
     },
 
@@ -621,41 +661,7 @@ function buildTools(config, creds) {
       let finalPositionSizeUsdt = positionSizeUsdt;
       const riskNotes = [];
 
-      // CoinDCX doesn't expose futures wallet balance over REST at all
-      // (confirmed from their official Futures API doc - only a websocket
-      // event, which doesn't fit this bot's short-lived Action-per-run
-      // architecture). Prefer her manually-set real balance; only fall
-      // back to the API check (which reads the SEPARATE spot wallet, not
-      // futures) as a last resort, clearly labeled as unreliable.
-      let totalBalance = 0;
-      let balanceSource = null;
-
-      if (typeof config.manualFuturesBalanceUsdt === "number" && config.manualFuturesBalanceUsdt > 0) {
-        // Automatically-tracked balance: seeded once from her manual base
-        // figure, then updated by this bot itself on every close/partial
-        // close it tracks - no need to re-enter a number after every trade.
-        const trackedBalance = balanceTracker.getCurrentBalance(config.manualFuturesBalanceUsdt);
-        if (typeof trackedBalance === "number" && trackedBalance > 0) {
-          totalBalance = trackedBalance;
-          balanceSource = "tracked";
-        }
-      } else {
-        try {
-          const balances = await exchange.getBalances(creds);
-          const usdtBalance = Array.isArray(balances) ? balances.find((b) => (b.currency || "").toUpperCase() === "USDT") : null;
-          const apiBalance = usdtBalance ? Number(usdtBalance.balance ?? usdtBalance.available_balance ?? 0) : 0;
-          // MIN_PLAUSIBLE_BALANCE guards against the spot-wallet-near-zero
-          // case - if it looks implausibly small to be real trading
-          // capital, don't trust it at all.
-          const MIN_PLAUSIBLE_BALANCE = 1; // USDT
-          if (apiBalance >= MIN_PLAUSIBLE_BALANCE) {
-            totalBalance = apiBalance;
-            balanceSource = "api_unreliable"; // this is the SPOT wallet, not futures - only a fallback
-          }
-        } catch {
-          // fall through - totalBalance stays 0, handled below
-        }
-      }
+      const { totalBalance, balanceSource } = await getEffectiveBalance(config, creds);
 
       if (totalBalance > 0) {
         const stopDistancePercent = Math.abs(entryPrice - stopPrice) / entryPrice * 100;
@@ -700,7 +706,7 @@ function buildTools(config, creds) {
 
       return {
         telegramMessage: [
-          `🤖 *AI wants to OPEN* ${dirEmoji} *${contract}*`,
+          `🤖 *AI SUGGESTS OPENING* ${dirEmoji} *${contract}*`,
           `Entry: ${entryPrice} | Stop: ${stopPrice} | Leverage: ${leverage}x`,
           `Suggested size: ${finalPositionSizeUsdt} USDT margin`,
           ...riskNotes,
@@ -745,7 +751,7 @@ function buildTools(config, creds) {
       const dirEmoji = action === "long" ? "🟢 LONG" : "🔴 SHORT";
       return {
         telegramMessage: [
-          `🤖 *AI wants to CLOSE* ${dirEmoji} *${contract}* (${sizePercent}%)`,
+          `🤖 *AI SUGGESTS CLOSING* ${dirEmoji} *${contract}* (${sizePercent}%)`,
           `Reasoning: ${reasoning}`,
           ``,
           `_No order has been placed. Execute manually on CoinDCX if you agree._`,

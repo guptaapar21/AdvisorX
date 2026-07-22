@@ -40,15 +40,16 @@ You do NOT have order execution authority. Every tool that would open, close, or
 After you've finished reasoning for this cycle (no more tool calls needed), reply with your run-log in EXACTLY this two-line format and nothing else:
 "<STATUS> — <one short clause, max ~12 words>
 Reason: <one short sentence, max ~20 words, concrete facts only about the best candidate or action taken - no restating the rules, no process narration, no need to list every symbol's score>"
-where <STATUS> is one of: NO ACTION / MANAGED / OPENED / CLOSED.
+where <STATUS> is one of: NO ACTION / MANAGED / OPEN SUGGESTED / CLOSE SUGGESTED.
+IMPORTANT: never use the bare words "OPENED" or "CLOSED" alone - this bot NEVER executes real trades, and those words read as if a real position now exists on the exchange, which has caused genuine user confusion more than once. "OPEN SUGGESTED"/"CLOSE SUGGESTED" make clear this is a recommendation only, nothing has actually happened on CoinDCX.
 Examples:
 "NO ACTION — no positions, no setups ≥${config.minScore}.
 Reason: Best candidate SOL scored 73 but failed stop check (0.80% < 1%)."
-"OPENED — BTC long, breakout + volume, alert sent.
+"OPEN SUGGESTED — BTC long, breakout + volume, alert sent.
 Reason: Broke resistance on 15m with 2x volume, 1h uptrend confirmed. [note: breakout extension, not in original logic]"
 "MANAGED — ETH stage 2 hit, stop trailed to breakeven.
 Reason: Price reached 2R; took partial profit per staged plan."
-"CLOSED — SOL short, reversal score 78.
+"CLOSE SUGGESTED — SOL short, reversal score 78.
 Reason: Primary and confirm timeframes both reversed against the position."
 A separate "Scores:" line listing every symbol is added automatically after your reason - do not try to list all scores yourself, just cover the single most relevant candidate or action.`;
 }
