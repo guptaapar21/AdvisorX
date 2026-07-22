@@ -30,15 +30,34 @@ function keyFor(contract, action) {
 
 // Called when the agent decides to open a position - records its own
 // entry/stop recommendation as the reference point for later stage/R math.
-function recordOpen(advisories, contract, action, entryPrice, stopPrice) {
+function recordOpen(advisories, contract, action, entryPrice, stopPrice, positionSizeUsdt, leverage) {
   advisories[keyFor(contract, action)] = {
     entryPrice,
     initialStop: stopPrice,
     lastAdvisedStop: stopPrice,
     stagesAdvised: {},
     openedAt: Date.now(),
+    // Needed to compute real dollar P&L on close, so the running balance
+    // tracker can update automatically without asking her to do it by
+    // hand. remainingSizeUsdt shrinks as partial take-profits close
+    // portions of the position.
+    positionSizeUsdt,
+    leverage,
+    remainingSizeUsdt: positionSizeUsdt,
   };
   return advisories;
+}
+
+// Call when a portion of a position closes (partial take-profit or a full
+// close). Returns the dollar amount that was just closed, for computing
+// its P&L contribution - and shrinks remainingSizeUsdt so the NEXT close
+// is computed against what's actually still open, not the original size.
+function recordPartialClose(advisories, contract, action, closePercent) {
+  const rec = advisories[keyFor(contract, action)];
+  if (!rec || typeof rec.remainingSizeUsdt !== "number") return null;
+  const closedSizeUsdt = rec.remainingSizeUsdt * (closePercent / 100);
+  rec.remainingSizeUsdt = Math.max(0, rec.remainingSizeUsdt - closedSizeUsdt);
+  return { closedSizeUsdt, leverage: rec.leverage };
 }
 
 function recordStopUpdate(advisories, contract, action, newStop) {
@@ -103,6 +122,7 @@ module.exports = {
   loadAdvisories,
   saveAdvisories,
   recordOpen,
+  recordPartialClose,
   recordStopUpdate,
   recordStageAdvised,
   clearAdvisory,

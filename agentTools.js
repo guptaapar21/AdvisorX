@@ -13,6 +13,7 @@ const stopLossCalculator = require("./stopLossCalculator");
 const takeProfitManagement = require("./takeProfitManagement");
 const { bollingerBands, priceVsBB, atrWilder } = require("./indicators");
 const advisoryStore = require("./advisoryStore");
+const balanceTracker = require("./balanceTracker");
 const tradeOutcomeLog = require("./tradeOutcomeLog");
 const { getStrategyParams } = require("./strategyParams");
 
@@ -619,48 +620,67 @@ function buildTools(config, creds) {
       const MAX_RISK_PERCENT_OF_BALANCE = config.riskRules.maxRiskPercentPerTrade ?? 5;
       let finalPositionSizeUsdt = positionSizeUsdt;
       const riskNotes = [];
-      try {
-        const balances = await exchange.getBalances(creds);
-        const usdtBalance = Array.isArray(balances) ? balances.find((b) => (b.currency || "").toUpperCase() === "USDT") : null;
-        const totalBalance = usdtBalance ? Number(usdtBalance.balance ?? usdtBalance.available_balance ?? 0) : 0;
 
-        // CoinDCX keeps SPOT and FUTURES balances in separate wallets - if
-        // this balance fetch is reading the spot wallet (likely near-empty
-        // for someone trading futures, since trading funds live in the
-        // separate Futures Wallet), totalBalance could come back as a tiny
-        // but still >0 number, which would previously make the risk% come
-        // out astronomically wrong and scale the position to near zero.
-        // MIN_PLAUSIBLE_BALANCE guards against exactly this: if the
-        // balance looks implausibly small to be someone's real trading
-        // capital, treat it as unverifiable rather than acting on it.
-        const MIN_PLAUSIBLE_BALANCE = 1; // USDT
+      // CoinDCX doesn't expose futures wallet balance over REST at all
+      // (confirmed from their official Futures API doc - only a websocket
+      // event, which doesn't fit this bot's short-lived Action-per-run
+      // architecture). Prefer her manually-set real balance; only fall
+      // back to the API check (which reads the SEPARATE spot wallet, not
+      // futures) as a last resort, clearly labeled as unreliable.
+      let totalBalance = 0;
+      let balanceSource = null;
 
-        if (totalBalance >= MIN_PLAUSIBLE_BALANCE) {
-          const stopDistancePercent = Math.abs(entryPrice - stopPrice) / entryPrice * 100;
-          const notional = positionSizeUsdt * leverage;
-          const dollarRisk = notional * (stopDistancePercent / 100);
-          const riskPercentOfBalance = (dollarRisk / totalBalance) * 100;
-
-          if (riskPercentOfBalance > MAX_RISK_PERCENT_OF_BALANCE) {
-            const scaleFactor = MAX_RISK_PERCENT_OF_BALANCE / riskPercentOfBalance;
-            finalPositionSizeUsdt = Number((positionSizeUsdt * scaleFactor).toFixed(2));
-            riskNotes.push(
-              `⚠️ Size auto-reduced from ${positionSizeUsdt} to ${finalPositionSizeUsdt} USDT - the original would have risked ` +
-              `${riskPercentOfBalance.toFixed(1)}% of your account at the stop, above the ${MAX_RISK_PERCENT_OF_BALANCE}% cap.`
-            );
+      if (typeof config.manualFuturesBalanceUsdt === "number" && config.manualFuturesBalanceUsdt > 0) {
+        // Automatically-tracked balance: seeded once from her manual base
+        // figure, then updated by this bot itself on every close/partial
+        // close it tracks - no need to re-enter a number after every trade.
+        const trackedBalance = balanceTracker.getCurrentBalance(config.manualFuturesBalanceUsdt);
+        if (typeof trackedBalance === "number" && trackedBalance > 0) {
+          totalBalance = trackedBalance;
+          balanceSource = "tracked";
+        }
+      } else {
+        try {
+          const balances = await exchange.getBalances(creds);
+          const usdtBalance = Array.isArray(balances) ? balances.find((b) => (b.currency || "").toUpperCase() === "USDT") : null;
+          const apiBalance = usdtBalance ? Number(usdtBalance.balance ?? usdtBalance.available_balance ?? 0) : 0;
+          // MIN_PLAUSIBLE_BALANCE guards against the spot-wallet-near-zero
+          // case - if it looks implausibly small to be real trading
+          // capital, don't trust it at all.
+          const MIN_PLAUSIBLE_BALANCE = 1; // USDT
+          if (apiBalance >= MIN_PLAUSIBLE_BALANCE) {
+            totalBalance = apiBalance;
+            balanceSource = "api_unreliable"; // this is the SPOT wallet, not futures - only a fallback
           }
-        } else {
+        } catch {
+          // fall through - totalBalance stays 0, handled below
+        }
+      }
+
+      if (totalBalance > 0) {
+        const stopDistancePercent = Math.abs(entryPrice - stopPrice) / entryPrice * 100;
+        const notional = positionSizeUsdt * leverage;
+        const dollarRisk = notional * (stopDistancePercent / 100);
+        const riskPercentOfBalance = (dollarRisk / totalBalance) * 100;
+
+        if (riskPercentOfBalance > MAX_RISK_PERCENT_OF_BALANCE) {
+          const scaleFactor = MAX_RISK_PERCENT_OF_BALANCE / riskPercentOfBalance;
+          finalPositionSizeUsdt = Number((positionSizeUsdt * scaleFactor).toFixed(2));
+          const sourceNote = balanceSource === "tracked" ? "" : " (⚠️ using your SPOT wallet balance as a fallback - set config.manualFuturesBalanceUsdt for an accurate check)";
           riskNotes.push(
-            `⚠️ Could not verify a plausible balance to check risk % (this may be reading your spot wallet, not your futures wallet) ` +
-            `- using the suggested size as-is, double check your real risk yourself before executing.`
+            `⚠️ Size auto-reduced from ${positionSizeUsdt} to ${finalPositionSizeUsdt} USDT - the original would have risked ` +
+            `${riskPercentOfBalance.toFixed(1)}% of your account at the stop, above the ${MAX_RISK_PERCENT_OF_BALANCE}% cap.${sourceNote}`
           );
         }
-      } catch (err) {
-        riskNotes.push(`⚠️ Risk-cap check failed (${err.message}) - using the suggested size as-is, double check this yourself before executing.`);
+      } else {
+        riskNotes.push(
+          `⚠️ No real futures balance available to check risk % - set config.manualFuturesBalanceUsdt to your real futures wallet balance ` +
+          `(CoinDCX doesn't expose this over REST). Using the suggested size as-is, double check your real risk yourself before executing.`
+        );
       }
 
       await exchange.placeOrder({ contract, action, entryPrice, stopPrice, leverage, positionSizeUsdt: finalPositionSizeUsdt });
-      advisoryStore.recordOpen(advisories, contract, action, entryPrice, stopPrice);
+      advisoryStore.recordOpen(advisories, contract, action, entryPrice, stopPrice, finalPositionSizeUsdt, leverage);
       advisoriesDirty = true;
       const dirEmoji = action === "long" ? "🟢 LONG" : "🔴 SHORT";
 
@@ -706,6 +726,16 @@ function buildTools(config, creds) {
         const pnlPercent = ((currentPrice - adv.entryPrice) * dir / adv.entryPrice) * 100;
         const symbol = contract.replace(/^[A-Z]-/, "").replace(/_USDT$/, "");
         tradeOutcomeLog.recordOutcome(symbol, Number(pnlPercent.toFixed(2)), closeReason || "manual");
+
+        // Automatic balance tracking: compute the REAL dollar P&L of the
+        // portion just closed (using the leverage/size recorded at open)
+        // and feed it into the running balance tracker, so it updates
+        // itself on every close this bot advises - no manual re-entry needed.
+        const closeInfo = advisoryStore.recordPartialClose(advisories, contract, action, sizePercent);
+        if (closeInfo) {
+          const dollarPnl = closeInfo.closedSizeUsdt * closeInfo.leverage * (pnlPercent / 100);
+          balanceTracker.applyPnl(dollarPnl);
+        }
       }
 
       if (sizePercent >= 100) {
@@ -750,6 +780,12 @@ function buildTools(config, creds) {
         const pnlPercent = ((currentPrice - adv.entryPrice) * dir / adv.entryPrice) * 100;
         const symbol = contract.replace(/^[A-Z]-/, "").replace(/_USDT$/, "");
         tradeOutcomeLog.recordOutcome(symbol, Number(pnlPercent.toFixed(2)), "take_profit");
+
+        const closeInfo = advisoryStore.recordPartialClose(advisories, contract, action, closePercent);
+        if (closeInfo) {
+          const dollarPnl = closeInfo.closedSizeUsdt * closeInfo.leverage * (pnlPercent / 100);
+          balanceTracker.applyPnl(dollarPnl);
+        }
       }
 
       advisoryStore.recordStageAdvised(advisories, contract, action, stage);

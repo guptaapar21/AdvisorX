@@ -105,6 +105,20 @@ module.exports = {
     maxRiskPercentPerTrade: 7,
   },
 
+  // CoinDCX's futures wallet balance is ONLY exposed via a websocket
+  // event ("balance-update") - confirmed directly from their official
+  // Futures API doc, which has no REST endpoint for it at all (positions/
+  // orders/margin/trades are all documented, futures balance isn't among
+  // them). This bot runs as a short-lived GitHub Action every 5 min, not
+  // a persistent process, so maintaining a live websocket isn't practical
+  // here. Rather than guess at a nonexistent endpoint (the earlier bug),
+  // set your REAL futures wallet USDT balance here manually - check it in
+  // the CoinDCX app's Futures wallet screen and update this when it
+  // changes meaningfully (a deposit/withdrawal, or after it's drifted a
+  // fair bit from trading P&L). This value is what the 7% risk cap above
+  // actually uses.
+  manualFuturesBalanceUsdt: null, // e.g. 150 - set this to your real number
+
   // Real stop-loss config (from the selected strategy preset)
   stopLoss: {
     atrPeriod: 14,
