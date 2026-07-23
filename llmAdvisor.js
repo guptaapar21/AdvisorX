@@ -58,7 +58,7 @@ async function callGemini(prompt, apiKey, model) {
 }
 
 async function craftMessageWithGemini(kind, data, config) {
-  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
   const prompt = `Message type: ${kind}\n\nData:\n${JSON.stringify(data, null, 2)}`;
   return withKeyRotation((key) => callGemini(prompt, key, model), config && config.geminiKeyCooldownMinutes);
 }

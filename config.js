@@ -133,7 +133,11 @@ module.exports = {
   },
 
   // Model used for the full reasoning agent (needs function-calling support).
-  agentModel: "gemini-3.5-flash",
+  // Switched from gemini-3.5-flash (20 RPD free-tier cap) to the Flash Lite
+  // variant, which carries a 500 RPD free-tier cap per the quota dashboard -
+  // 25x the daily headroom across the same 12 rotating keys, still with
+  // function-calling support.
+  agentModel: "gemini-3.5-flash-lite",
 
   // Safety cap on how many tool-call turns the agent can take in one run.
   agentMaxTurns: 10,
