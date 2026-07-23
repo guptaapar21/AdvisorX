@@ -103,6 +103,7 @@ async function run() {
   console.log("Starting agent reasoning cycle...");
 
   let lastAllScores = preFilterResult.allScores;
+  let hadExecutionThisRun = false;
 
   const { finalText, turnLog } = await runAgentCycle({
     userPrompt,
@@ -112,6 +113,7 @@ async function run() {
     cooldownMinutes: config.geminiKeyCooldownMinutes,
     maxTurns: config.agentMaxTurns,
     onToolCall: async (name, args, result) => {
+      hadExecutionThisRun = true;
       if (result.telegramMessage) {
         await sendTelegramMessage(result.telegramMessage);
       }
@@ -145,11 +147,24 @@ async function run() {
     // failure looks identical to "nothing to do".
     console.log("Agent produced no final text this run (see turn log above).");
     const lastLines = turnLog.slice(-3).join(" | ");
-    await sendTelegramMessage(
-      `🚨 *Agent run failed* - no response from Gemini this cycle (likely all keys exhausted or erroring).\n` +
-      `Last log lines: ${lastLines || "none"}\n` +
-      `Check the Action logs for details. No decisions were made this run.`
-    );
+    if (hadExecutionThisRun) {
+      // An execution tool already fired and sent its own message earlier
+      // in this same run - the action ABOVE is real and already sent, this
+      // alert is only about the wrap-up summary failing, not about nothing
+      // having happened. Saying "no decisions were made" here would be
+      // straightforwardly wrong.
+      await sendTelegramMessage(
+        `🚨 *Note*: the action above was sent successfully, but Gemini ran out of keys/quota before it could finish this run's final summary.\n` +
+        `Last log lines: ${lastLines || "none"}\n` +
+        `Check the Action logs for details - the action above is real and stands on its own.`
+      );
+    } else {
+      await sendTelegramMessage(
+        `🚨 *Agent run failed* - no response from Gemini this cycle. Real diagnosis below (not just "exhausted or erroring" guesswork):\n` +
+        `${lastLines || "none"}\n` +
+        `Check the Action logs for full per-key details. No decisions were made this run.`
+      );
+    }
   }
 
   tools.persistAdvisories();

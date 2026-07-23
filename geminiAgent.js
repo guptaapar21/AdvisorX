@@ -40,13 +40,29 @@ async function runAgentCycle({ userPrompt, systemPrompt, tools, model, cooldownM
   const turnLog = [];
 
   for (let turn = 0; turn < (maxTurns || 8); turn++) {
-    const response = await withKeyRotation(
+    const { result: response, diagnosis, details, keyCount, skippedInCooldown } = await withKeyRotation(
       (key) => callGemini(contents, systemPrompt, tools.declarations, key, model),
       cooldownMinutes
     );
 
     if (!response) {
-      turnLog.push("(no Gemini key available this run - stopped)");
+      // Real diagnosis instead of a vague "no key available" - tells the
+      // difference between "genuinely all out of quota" (expected,
+      // recoverable) and "something is actually broken" (won't fix itself).
+      let diagnosisText;
+      if (diagnosis === "no_keys_configured") {
+        diagnosisText = "no Gemini keys configured at all - check GEMINI_API_KEYS/GEMINI_API_KEY_n secrets";
+      } else if (diagnosis === "all_keys_in_cooldown_from_earlier") {
+        diagnosisText = `all ${keyCount} key(s) still in cooldown from an earlier quota hit this run - none were even attempted`;
+      } else if (diagnosis === "all_keys_quota_exhausted") {
+        diagnosisText = `all ${keyCount} key(s) genuinely hit quota limits (429) this run - real exhaustion, will recover at reset`;
+      } else if (diagnosis === "genuine_errors_not_quota") {
+        const sample = details.find((d) => d.type === "error");
+        diagnosisText = `NOT a quota issue - at least one key failed with a real error: "${sample?.message}" - this needs a code/config fix, waiting won't help`;
+      } else {
+        diagnosisText = "unknown - see raw Action log for per-key details";
+      }
+      turnLog.push(`(no Gemini key available this run - ${diagnosisText})`);
       return { finalText: null, turnLog };
     }
 
