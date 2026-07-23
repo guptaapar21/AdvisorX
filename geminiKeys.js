@@ -48,6 +48,15 @@ async function withKeyRotation(attemptFn, cooldownMinutes) {
   if (keys.length === 0) return { result: null, diagnosis: "no_keys_configured", details: [] };
 
   const cooldownMs = (cooldownMinutes || 60) * 60 * 1000;
+  // A 503 ("model temporarily overloaded") is not quota exhaustion - Google's
+  // own guidance is it typically clears in seconds, not the ~hour a real 429
+  // cooldown assumes. Benching a key for the full cooldown on a 503 was the
+  // actual cause of "all keys exhausted" runs that were really just transient
+  // overload: a handful of 503s in one run (no delay between key attempts)
+  // could bench every key for an hour even though none were genuinely rate
+  // limited. Short cooldown here instead, so the same key is usable again
+  // well within this run's typical cadence.
+  const shortCooldownMs = 2 * 60 * 1000;
   const now = Date.now();
   const keyState = loadKeyState();
 
@@ -74,9 +83,12 @@ async function withKeyRotation(attemptFn, cooldownMinutes) {
       return { result, diagnosis: "success", details };
     } catch (err) {
       if (err.rateLimited) {
-        const reason = err.transientReason === "model_overloaded" ? "model overloaded (503)" : "quota hit (429)";
-        console.error(`Gemini key #${idx + 1}/${keys.length}: ${reason}, cooling down ${cooldownMinutes || 60}m`);
-        keyState.cooldowns[idx] = now + cooldownMs;
+        const isOverload = err.transientReason === "model_overloaded";
+        const reason = isOverload ? "model overloaded (503)" : "quota hit (429)";
+        const effectiveCooldownMs = isOverload ? shortCooldownMs : cooldownMs;
+        const effectiveCooldownLabel = isOverload ? "2m" : `${cooldownMinutes || 60}m`;
+        console.error(`Gemini key #${idx + 1}/${keys.length}: ${reason}, cooling down ${effectiveCooldownLabel}`);
+        keyState.cooldowns[idx] = now + effectiveCooldownMs;
         saveKeyState(keyState);
         details.push({ keyIndex: idx + 1, type: "rate_limited", transientReason: err.transientReason || "quota_exceeded" });
       } else {
