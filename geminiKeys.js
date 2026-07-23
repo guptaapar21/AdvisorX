@@ -18,19 +18,23 @@ function saveKeyState(state) {
   fs.writeFileSync(KEY_STATE_FILE, JSON.stringify(state, null, 2));
 }
 
-// Supports GEMINI_API_KEYS="key1,key2,...", GEMINI_API_KEY_1..10, and a
-// single GEMINI_API_KEY - any combination, de-duplicated.
+// Supports GEMINI_API_KEYS="key1,key2,...", GEMINI_API_KEY_1 through _30
+// (raised from the old hard cap of _10 - the exact cause of "added more
+// keys, still failing": individually-numbered keys past #10 were being
+// silently ignored), and a single GEMINI_API_KEY - any combination, de-duplicated.
 function getGeminiKeys() {
   const keys = [];
   if (process.env.GEMINI_API_KEYS) {
     keys.push(...process.env.GEMINI_API_KEYS.split(",").map((k) => k.trim()).filter(Boolean));
   }
-  for (let i = 1; i <= 10; i++) {
+  for (let i = 1; i <= 30; i++) {
     const k = process.env[`GEMINI_API_KEY_${i}`];
     if (k) keys.push(k.trim());
   }
   if (process.env.GEMINI_API_KEY) keys.push(process.env.GEMINI_API_KEY.trim());
-  return [...new Set(keys)];
+  const uniqueKeys = [...new Set(keys)];
+  console.log(`Gemini keys detected: ${uniqueKeys.length}`);
+  return uniqueKeys;
 }
 
 // Calls `attemptFn(key)` for each configured key in round-robin order
