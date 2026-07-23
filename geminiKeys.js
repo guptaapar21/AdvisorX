@@ -74,10 +74,11 @@ async function withKeyRotation(attemptFn, cooldownMinutes) {
       return { result, diagnosis: "success", details };
     } catch (err) {
       if (err.rateLimited) {
-        console.error(`Gemini key #${idx + 1}/${keys.length}: quota hit, cooling down ${cooldownMinutes || 60}m`);
+        const reason = err.transientReason === "model_overloaded" ? "model overloaded (503)" : "quota hit (429)";
+        console.error(`Gemini key #${idx + 1}/${keys.length}: ${reason}, cooling down ${cooldownMinutes || 60}m`);
         keyState.cooldowns[idx] = now + cooldownMs;
         saveKeyState(keyState);
-        details.push({ keyIndex: idx + 1, type: "rate_limited" });
+        details.push({ keyIndex: idx + 1, type: "rate_limited", transientReason: err.transientReason || "quota_exceeded" });
       } else {
         console.error(`Gemini key #${idx + 1}/${keys.length}: call failed - ${err.message}`);
         details.push({ keyIndex: idx + 1, type: "error", message: err.message });

@@ -15,6 +15,18 @@ async function callGemini(contents, systemPrompt, toolDeclarations, apiKey, mode
   if (res.status === 429) {
     const err = new Error("Gemini quota/rate limit exceeded");
     err.rateLimited = true;
+    err.transientReason = "quota_exceeded";
+    throw err;
+  }
+  if (res.status === 503) {
+    // "Model currently experiencing high demand" - this is genuinely
+    // temporary and recoverable, just like a 429, NOT a code/config bug.
+    // Was previously falling into the generic error bucket below and
+    // getting wrongly diagnosed as "needs a code fix, waiting won't help"
+    // - a real diagnosis mistake found from a live failure message.
+    const err = new Error("Gemini model temporarily overloaded (503)");
+    err.rateLimited = true;
+    err.transientReason = "model_overloaded";
     throw err;
   }
   if (res.status === 404) {
@@ -53,12 +65,21 @@ async function runAgentCycle({ userPrompt, systemPrompt, tools, model, cooldownM
       if (diagnosis === "no_keys_configured") {
         diagnosisText = "no Gemini keys configured at all - check GEMINI_API_KEYS/GEMINI_API_KEY_n secrets";
       } else if (diagnosis === "all_keys_in_cooldown_from_earlier") {
-        diagnosisText = `all ${keyCount} key(s) still in cooldown from an earlier quota hit this run - none were even attempted`;
+        diagnosisText = `all ${keyCount} key(s) still in cooldown from an earlier hit this run - none were even attempted`;
       } else if (diagnosis === "all_keys_quota_exhausted") {
-        diagnosisText = `all ${keyCount} key(s) genuinely hit quota limits (429) this run - real exhaustion, will recover at reset`;
+        const reasons = new Set(details.map((d) => d.transientReason));
+        let reasonText;
+        if (reasons.size === 1 && reasons.has("model_overloaded")) {
+          reasonText = "Google's model is temporarily overloaded (503, high demand) - NOT your quota, just try again shortly";
+        } else if (reasons.size === 1 && reasons.has("quota_exceeded")) {
+          reasonText = "genuinely hit quota limits (429) - real exhaustion, will recover at reset";
+        } else {
+          reasonText = "a mix of quota limits (429) and temporary model overload (503) - both recover on their own, no fix needed";
+        }
+        diagnosisText = `all ${keyCount} key(s) hit a transient limit this run - ${reasonText}`;
       } else if (diagnosis === "genuine_errors_not_quota") {
         const sample = details.find((d) => d.type === "error");
-        diagnosisText = `NOT a quota issue - at least one key failed with a real error: "${sample?.message}" - this needs a code/config fix, waiting won't help`;
+        diagnosisText = `NOT transient - at least one key failed with a real error: "${sample?.message}" - this needs a code/config fix, waiting won't help`;
       } else {
         diagnosisText = "unknown - see raw Action log for per-key details";
       }
