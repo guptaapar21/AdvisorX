@@ -1,4 +1,5 @@
 const { withKeyRotation } = require("./geminiKeys");
+const { parseQuotaInfo } = require("./geminiQuotaInfo");
 
 async function callGemini(contents, systemPrompt, toolDeclarations, apiKey, model) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
@@ -13,9 +14,20 @@ async function callGemini(contents, systemPrompt, toolDeclarations, apiKey, mode
   });
 
   if (res.status === 429) {
-    const err = new Error("Gemini quota/rate limit exceeded");
+    // Read Google's ACTUAL quota details instead of guessing a flat
+    // cooldown - this is what previously made a genuine per-day quota hit
+    // look like it "keeps happening all day": every key was cooling down
+    // for only 60 minutes, retrying, instantly hitting the same still-
+    // exhausted daily cap, and cooling down again, on a loop that only a
+    // real midnight-Pacific reset (not the 60-minute timer) could break.
+    const { period, retryDelayMs, quotaId } = await parseQuotaInfo(res);
+    const err = new Error(
+      `Gemini quota/rate limit exceeded${quotaId ? ` (${quotaId})` : ""}`
+    );
     err.rateLimited = true;
     err.transientReason = "quota_exceeded";
+    err.quotaPeriod = period; // "day" | "short" | "unknown"
+    err.retryDelayMs = retryDelayMs; // Google's own suggested wait, if given
     throw err;
   }
   if (res.status === 503) {
@@ -72,7 +84,14 @@ async function runAgentCycle({ userPrompt, systemPrompt, tools, model, cooldownM
         if (reasons.size === 1 && reasons.has("model_overloaded")) {
           reasonText = "Google's model is temporarily overloaded (503, high demand) - NOT your quota, just try again shortly";
         } else if (reasons.size === 1 && reasons.has("quota_exceeded")) {
-          reasonText = "genuinely hit quota limits (429) - real exhaustion, will recover at reset";
+          const periods = new Set(details.map((d) => d.quotaPeriod));
+          if (periods.size === 1 && periods.has("day")) {
+            reasonText = "genuinely hit the DAILY request quota (429, PerDay) on every key - this only resets at midnight Pacific time, not within the hour. Consider fewer Gemini calls per run, a longer run interval, or more/higher-tier keys";
+          } else if (periods.size === 1 && periods.has("short")) {
+            reasonText = "hit a short-lived per-minute/per-second limit (429) on every key - recovers within seconds to a couple minutes, no action needed";
+          } else {
+            reasonText = "hit quota limits (429) - real exhaustion, will recover at reset";
+          }
         } else {
           reasonText = "a mix of quota limits (429) and temporary model overload (503) - both recover on their own, no fix needed";
         }

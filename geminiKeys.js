@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { msUntilNextPacificMidnight } = require("./geminiQuotaInfo");
 
 const KEY_STATE_FILE = path.join(__dirname, "geminiKeyState.json");
 
@@ -84,13 +85,37 @@ async function withKeyRotation(attemptFn, cooldownMinutes) {
     } catch (err) {
       if (err.rateLimited) {
         const isOverload = err.transientReason === "model_overloaded";
-        const reason = isOverload ? "model overloaded (503)" : "quota hit (429)";
-        const effectiveCooldownMs = isOverload ? shortCooldownMs : cooldownMs;
-        const effectiveCooldownLabel = isOverload ? "2m" : `${cooldownMinutes || 60}m`;
+        let effectiveCooldownMs;
+        let effectiveCooldownLabel;
+        let reason;
+
+        if (isOverload) {
+          reason = "model overloaded (503)";
+          effectiveCooldownMs = shortCooldownMs;
+          effectiveCooldownLabel = "2m";
+        } else if (err.quotaPeriod === "day") {
+          reason = "daily quota exhausted (429, PerDay)";
+          effectiveCooldownMs = msUntilNextPacificMidnight(now);
+          effectiveCooldownLabel = `${Math.round(effectiveCooldownMs / 60000)}m (until midnight Pacific reset)`;
+        } else if (err.quotaPeriod === "short" && err.retryDelayMs) {
+          reason = "short-lived rate limit (429)";
+          effectiveCooldownMs = err.retryDelayMs + 5000;
+          effectiveCooldownLabel = `${Math.round(effectiveCooldownMs / 1000)}s`;
+        } else {
+          reason = "quota hit (429, period unknown)";
+          effectiveCooldownMs = cooldownMs;
+          effectiveCooldownLabel = `${cooldownMinutes || 60}m`;
+        }
+
         console.error(`Gemini key #${idx + 1}/${keys.length}: ${reason}, cooling down ${effectiveCooldownLabel}`);
         keyState.cooldowns[idx] = now + effectiveCooldownMs;
         saveKeyState(keyState);
-        details.push({ keyIndex: idx + 1, type: "rate_limited", transientReason: err.transientReason || "quota_exceeded" });
+        details.push({
+          keyIndex: idx + 1,
+          type: "rate_limited",
+          transientReason: err.transientReason || "quota_exceeded",
+          quotaPeriod: err.quotaPeriod || "unknown",
+        });
       } else {
         console.error(`Gemini key #${idx + 1}/${keys.length}: call failed - ${err.message}`);
         details.push({ keyIndex: idx + 1, type: "error", message: err.message });

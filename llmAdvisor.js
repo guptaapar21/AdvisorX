@@ -5,6 +5,7 @@
 // message if every key/provider fails.
 
 const { withKeyRotation } = require("./geminiKeys");
+const { parseQuotaInfo } = require("./geminiQuotaInfo");
 
 const SYSTEM_PROMPT = `You are a crypto trading assistant that writes short Telegram guidance messages for a retail trader in India who trades manually on CoinDCX.
 
@@ -30,8 +31,16 @@ async function callGemini(prompt, apiKey, model) {
     }),
   });
   if (res.status === 429) {
-    const err = new Error("Gemini quota/rate limit exceeded");
+    // See geminiQuotaInfo.js - read the real quota details instead of
+    // assuming a flat cooldown, so a per-day cap doesn't get retried every
+    // 60 minutes and re-cool-down all day long.
+    const { period, retryDelayMs, quotaId } = await parseQuotaInfo(res);
+    const err = new Error(
+      `Gemini quota/rate limit exceeded${quotaId ? ` (${quotaId})` : ""}`
+    );
     err.rateLimited = true;
+    err.quotaPeriod = period;
+    err.retryDelayMs = retryDelayMs;
     throw err;
   }
   if (res.status === 404) {
