@@ -113,8 +113,8 @@ async function run() {
     cooldownMinutes: config.geminiKeyCooldownMinutes,
     maxTurns: config.agentMaxTurns,
     onToolCall: async (name, args, result) => {
-      hadExecutionThisRun = true;
       if (result.telegramMessage) {
+        hadExecutionThisRun = true;
         await sendTelegramMessage(result.telegramMessage);
       }
     },

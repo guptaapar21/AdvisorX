@@ -651,6 +651,34 @@ function buildTools(config, creds) {
     // ---- Execution tools: intercepted, Telegram-only ----
 
     async open_position({ contract, action, entryPrice, stopPrice, leverage, positionSizeUsdt, reasoning }) {
+      // HARD duplicate guard - this used to only live inside
+      // check_open_position (a separate read tool), which only protects
+      // against a duplicate IF the model happens to call that check first
+      // this cycle. That's a convention, not an enforced rule - if the
+      // model's reasoning goes straight to open_position without it, the
+      // advisory for an ALREADY-being-tracked position gets silently
+      // overwritten with new entry/stop/size/leverage, even though the
+      // real position (from the earlier suggestion) is still what's
+      // actually open. This directly caused a real, confusing bug: a
+      // tracked stop that jumped to an arbitrary value within minutes of
+      // the original suggestion, matching neither the original stop nor
+      // any legitimate stage-trail level. Moving the SAME check here makes
+      // it impossible to bypass, regardless of tool-call order.
+      const existingAdvisory = advisoryStore.getAdvisory(advisories, contract, action);
+      const ADVISORY_DEDUPE_MS = 60 * 60 * 1000; // matches check_open_position's window exactly
+      if (existingAdvisory && (Date.now() - existingAdvisory.openedAt < ADVISORY_DEDUPE_MS)) {
+        const ageMin = Math.round((Date.now() - existingAdvisory.openedAt) / 60000);
+        return {
+          telegramMessage: null, // no Telegram spam for a blocked duplicate - this should be silent/internal
+          resultForModel: {
+            status: "blocked_duplicate",
+            note: `A ${contract} ${action} was already recommended ${ageMin} min ago (entry ${existingAdvisory.entryPrice}, ` +
+              `stop ${existingAdvisory.initialStop}) - refusing to open again/overwrite that tracking. If that one wasn't ` +
+              `executed, treat this as the same trade, not a new one. Do not call open_position again for this symbol+direction.`,
+          },
+        };
+      }
+
       // Real dollar-risk cap: this was a flagged gap that sat too long
       // without being built - regardless of what leverage/size/stop the AI
       // picked, this caps the ACTUAL dollar loss at the stop to a fixed %
