@@ -310,7 +310,17 @@ function buildTools(config, creds) {
 
   const handlers = {
     async get_account_balance() {
-      return exchange.getBalances(creds);
+      // Was calling exchange.getBalances(creds) directly - the raw SPOT
+      // wallet API, which has nothing to do with the futures wallet this
+      // bot actually trades from (no REST endpoint exists for that, see
+      // getEffectiveBalance above). That drift is exactly what caused
+      // Gemini to see "0 USDT" and refuse to open positions even with a
+      // real tracked/manual balance set - it never saw it, because this
+      // tool bypassed getEffectiveBalance entirely while open_position and
+      // check_total_exposure used it correctly. Now consistent across all
+      // three.
+      const { totalBalance, balanceSource } = await getEffectiveBalance(config, creds);
+      return { usdt_balance: totalBalance, source: balanceSource };
     },
 
     async get_positions() {
