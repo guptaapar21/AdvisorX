@@ -28,6 +28,24 @@ function saveTrendHistory(store) {
   fs.writeFileSync(TREND_HISTORY_FILE, JSON.stringify(store, null, 2));
 }
 
+// Gemini is inconsistent about the exact contract string it passes to
+// execution tools - sometimes "B-XRP_USDT" (matches the real exchange
+// format), sometimes just "XRP_USDT" (no "B-" prefix). advisoryStore and
+// fastWatch.js both key advisories on this string EXACTLY, and fastWatch
+// compares against the real position's pos.pair (which always has the
+// "B-" prefix). A missing prefix means the advisory silently never
+// matches the real position - fastWatch logs "not opened by this bot" and
+// skips it, so it drops out of the Live Scorecard and reconciliation even
+// though the position is real and was genuinely opened off this bot's
+// suggestion. Normalizing to the canonical form here, at the point every
+// execution tool receives it, makes the stored key always match the real
+// exchange format regardless of what Gemini sends.
+function normalizeContract(contract) {
+  if (!contract) return contract;
+  const symbol = contract.replace(/^[A-Z]-/, "").replace(/_USDT$/i, "");
+  return `B-${symbol}_USDT`;
+}
+
 // ---- Gemini function declarations (JSON Schema) ----
 
 const declarations = [
@@ -610,7 +628,8 @@ function buildTools(config, creds) {
       };
     },
 
-    async check_partial_take_profit_opportunity({ contract, action, currentPrice }) {
+    async check_partial_take_profit_opportunity({ contract: rawContract, action, currentPrice }) {
+      const contract = normalizeContract(rawContract);
       const adv = advisoryStore.getAdvisory(advisories, contract, action);
       if (!adv) return { canExecute: false, reason: "no recorded entry advisory for this position - was it opened by this bot?" };
 
@@ -660,7 +679,8 @@ function buildTools(config, creds) {
 
     // ---- Execution tools: intercepted, Telegram-only ----
 
-    async open_position({ contract, action, entryPrice, stopPrice, leverage, positionSizeUsdt, reasoning }) {
+    async open_position({ contract: rawContract, action, entryPrice, stopPrice, leverage, positionSizeUsdt, reasoning }) {
+      const contract = normalizeContract(rawContract);
       // HARD duplicate guard - this used to only live inside
       // check_open_position (a separate read tool), which only protects
       // against a duplicate IF the model happens to call that check first
@@ -757,7 +777,8 @@ function buildTools(config, creds) {
       };
     },
 
-    async close_position({ contract, action, sizePercent, currentPrice, closeReason, reasoning }) {
+    async close_position({ contract: rawContract, action, sizePercent, currentPrice, closeReason, reasoning }) {
+      const contract = normalizeContract(rawContract);
       await exchange.closePosition(contract, sizePercent);
 
       // Auto-record the outcome based on THIS bot's own advised entry price
@@ -798,7 +819,8 @@ function buildTools(config, creds) {
       };
     },
 
-    async update_position_stop_loss({ contract, action, newStop, reasoning }) {
+    async update_position_stop_loss({ contract: rawContract, action, newStop, reasoning }) {
+      const contract = normalizeContract(rawContract);
       await exchange.setPositionStopLoss(contract, newStop);
       advisoryStore.recordStopUpdate(advisories, contract, action, newStop);
       advisoriesDirty = true;
@@ -814,7 +836,8 @@ function buildTools(config, creds) {
       };
     },
 
-    async execute_partial_take_profit({ contract, action, stage, closePercent, newStop, currentPrice, reasoning }) {
+    async execute_partial_take_profit({ contract: rawContract, action, stage, closePercent, newStop, currentPrice, reasoning }) {
+      const contract = normalizeContract(rawContract);
       await exchange.closePosition(contract, closePercent);
 
       // Auto-record the partial outcome too, same logic as close_position.
@@ -848,7 +871,8 @@ function buildTools(config, creds) {
       };
     },
 
-    async cancel_order({ orderId, contract, reasoning }) {
+    async cancel_order({ orderId, contract: rawContract, reasoning }) {
+      const contract = normalizeContract(rawContract);
       await exchange.cancelOrder(orderId, contract);
       return {
         telegramMessage: [
