@@ -18,6 +18,25 @@ function crispSummary(text) {
   return [statusLine, reasonLine].filter(Boolean).join("\n");
 }
 
+// Builds "Reversal detail (XRP): primary timeframe entering range (score=-8)"
+// deterministically from check_reversal's own returned `details` array,
+// same reasoning as formatScoresLine below - Gemini was ASKED (in
+// agentInstructions.js) to cite the underlying raw trend number alongside
+// the bucketed reversalScore, so the "12" doesn't look frozen run to run,
+// but it doesn't reliably do so (same class of drift as the contract-
+// string issue). Building it in code guarantees it's always there.
+function formatReversalDetailLines(reversalDetailsBySymbol) {
+  const symbols = Object.keys(reversalDetailsBySymbol);
+  if (symbols.length === 0) return null;
+  return symbols
+    .map((sym) => {
+      const d = reversalDetailsBySymbol[sym];
+      const detailText = d.details && d.details.length > 0 ? d.details.join("; ") : "no active drivers this cycle";
+      return `Reversal detail (${sym}): score ${d.reversalScore} - ${detailText}`;
+    })
+    .join("\n");
+}
+
 // Builds "Scores: BTC 45, ETH 58, SOL 73, ..." deterministically from the
 // real allScores data, rather than trusting the model to always include
 // every symbol in its free-text reasoning.
@@ -104,6 +123,7 @@ async function run() {
 
   let lastAllScores = preFilterResult.allScores;
   let hadExecutionThisRun = false;
+  const reversalDetailsBySymbol = {};
 
   const { finalText, turnLog } = await runAgentCycle({
     userPrompt,
@@ -122,6 +142,9 @@ async function run() {
       if (name === "analyze_opening_opportunities" && result && result.allScores) {
         lastAllScores = result.allScores;
       }
+      if (name === "check_reversal" && args && args.symbol && result && typeof result.reversalScore === "number") {
+        reversalDetailsBySymbol[args.symbol] = result;
+      }
     },
   });
 
@@ -135,6 +158,10 @@ async function run() {
     const scoresLine = formatScoresLine(lastAllScores);
     if (scoresLine && !message.includes("Scores:")) {
       message = `${message}\n${scoresLine}`;
+    }
+    const reversalLines = formatReversalDetailLines(reversalDetailsBySymbol);
+    if (reversalLines) {
+      message = `${message}\n${reversalLines}`;
     }
     if (warnings.length > 0) {
       message = `${message}\n⚠️ ${warnings.length} issue(s) this run: ${warnings.join(" | ")}`;
