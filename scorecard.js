@@ -11,6 +11,14 @@ const { editTelegramMessage, sendTelegramMessage, pinTelegramMessage } = require
 
 const SCORECARD_STATE_FILE = path.join(__dirname, "scorecardState.json");
 const LATEST_SCORES_FILE = path.join(__dirname, "latestScores.json");
+const LATEST_REASONING_FILE = path.join(__dirname, "latestReasoning.json");
+
+// Written by agentIndex.js each 5-min cycle (idle message or full agent
+// summary) - the same text already sent to Telegram, just also saved to
+// disk so it can be folded into liveSnapshot.json for the KWGT widget.
+function loadLatestReasoning() {
+  try { return JSON.parse(fs.readFileSync(LATEST_REASONING_FILE, "utf8")); } catch { return null; }
+}
 
 function loadScorecardState() {
   try { return JSON.parse(fs.readFileSync(SCORECARD_STATE_FILE, "utf8")); } catch { return { messageId: null }; }
@@ -43,12 +51,15 @@ function saveLiveSnapshot(positions, latestScores, strategyName) {
   // same reasoning as the try/catch already used elsewhere in this file
   // for loadLatestScores/loadScorecardState.
   try {
+    const latestReasoning = loadLatestReasoning();
     fs.writeFileSync(LIVE_SNAPSHOT_FILE, JSON.stringify({
       updatedAt: Date.now(),
       strategyName,
       positions,
       latestScores: latestScores ? latestScores.scores : null,
       latestScoresTimestamp: latestScores ? latestScores.timestamp : null,
+      reasoning: latestReasoning ? latestReasoning.text : null,
+      reasoningTimestamp: latestReasoning ? latestReasoning.timestamp : null,
     }, null, 2));
   } catch (err) {
     console.log(`Scorecard: couldn't write liveSnapshot.json (dashboard-only, non-fatal) - ${err.message}`);
@@ -116,14 +127,4 @@ async function updateScorecard(positions, strategyName) {
   }
 }
 
-// Writes JUST the JSON snapshot, without touching Telegram at all - for
-// the "flat, nothing changed" case where sending a fresh scorecard
-// message every cycle would be spam, but the external JSON snapshot
-// (used by a dashboard/widget) still needs to reflect "no positions"
-// rather than staying stuck on stale data indefinitely.
-function saveLiveSnapshotOnly(positions, strategyName) {
-  const latestScores = loadLatestScores();
-  saveLiveSnapshot(positions, latestScores, strategyName);
-}
-
-module.exports = { updateScorecard, saveLatestScores, saveLiveSnapshotOnly };
+module.exports = { updateScorecard, saveLatestScores };
