@@ -47,7 +47,7 @@ jobs:
         run: |
           git config user.name "coindcx-agent-bot"
           git config user.email "actions@github.com"
-          for f in advisories.json geminiKeyState.json trendScoreHistory.json tradeOutcomeLog.json runtimeConfig.json idleThrottleState.json; do
+          for f in advisories.json geminiKeyState.json trendScoreHistory.json tradeOutcomeLog.json runtimeConfig.json idleThrottleState.json latestScores.json; do
             [ -f "$f" ] && git add "$f"
           done
           git diff --staged --quiet && exit 0
