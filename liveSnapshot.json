@@ -1,53 +1,52 @@
 {
-  "updatedAt": 1784913028578,
+  "updatedAt": 1784913137057,
   "strategyName": "balanced",
   "positions": [
     {
       "contract": "B-BTC_USDT",
       "action": "short",
       "entryPrice": 63930.7,
-      "currentPrice": 63949.41,
+      "currentPrice": 63951.99,
       "currentStop": 64653.56,
-      "pnlPercent": -0.321926711267154
+      "pnlPercent": -0.36631852928250375
     }
   ],
   "latestScores": [
     {
       "symbol": "BTC",
-      "score": 81,
-      "action": "short",
-      "setupType": "trend_following",
-      "isBreakoutExtension": false
+      "score": 35,
+      "action": "wait",
+      "setupType": "mean_reversion"
     },
     {
       "symbol": "ETH",
-      "score": 81,
-      "action": "short",
-      "setupType": "trend_following",
+      "score": 67,
+      "action": "long",
+      "setupType": "mean_reversion",
       "isBreakoutExtension": false
     },
     {
       "symbol": "SOL",
-      "score": 79,
-      "action": "short",
-      "setupType": "trend_following",
-      "isBreakoutExtension": false
+      "score": 60,
+      "action": "wait",
+      "setupType": "trend_following"
     },
     {
       "symbol": "DOGE",
-      "score": 76,
+      "score": 77,
       "action": "short",
       "setupType": "trend_following",
       "isBreakoutExtension": false
     },
     {
       "symbol": "XRP",
-      "score": 60,
-      "action": "wait",
-      "setupType": "trend_following"
+      "score": 67,
+      "action": "long",
+      "setupType": "mean_reversion",
+      "isBreakoutExtension": false
     }
   ],
-  "latestScoresTimestamp": 1784912742351,
-  "reasoning": "OPEN SUGGESTED — BTC short, trend-following downtrend continuation, alert sent.\nReason: BTC scored 81 with 1h downtrend confirmation and clean hybrid stop-loss setup.\nScores: XRP 84, BTC 81, ETH 81, SOL 79, DOGE 76",
-  "reasoningTimestamp": 1784912759271
+  "latestScoresTimestamp": 1784913054229,
+  "reasoning": "MANAGED — BTC short active, reversal score low (12).\nReason: Position holding normally with negative reversal score and R below stage 1 threshold.\nScores: DOGE 77, ETH 67, XRP 67, SOL 60, BTC 35\nReversal detail (BTC): score 12 - primary timeframe entering range (score=-14)",
+  "reasoningTimestamp": 1784913067371
 }
