@@ -347,7 +347,15 @@ function buildTools(config, creds) {
       if (advisoryStore.reconcileWithRealPositions(advisories, activePositions)) {
         advisoriesDirty = true;
       }
-      return positionsRaw;
+      // Return the FILTERED list, not the raw CoinDCX response - CoinDCX
+      // returns a flat/zero-size entry for every configured symbol
+      // regardless of whether it's actually open, and the model was
+      // seeing all of these as if they were real positions (e.g.
+      // reporting "4 active position records" when 0 were actually
+      // open) - this was the exact bug pattern already fixed everywhere
+      // else via getActivePositions, just missed on this one tool that's
+      // directly exposed to the model.
+      return activePositions;
     },
 
     async analyze_opening_opportunities() {
