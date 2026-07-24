@@ -7,7 +7,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { editTelegramMessage, sendTelegramMessage } = require("./telegram");
+const { editTelegramMessage, sendTelegramMessage, pinTelegramMessage } = require("./telegram");
 
 const SCORECARD_STATE_FILE = path.join(__dirname, "scorecardState.json");
 const LATEST_SCORES_FILE = path.join(__dirname, "latestScores.json");
@@ -85,7 +85,8 @@ async function updateScorecard(positions, strategyName) {
   const newId = await sendTelegramMessage(text);
   if (newId) {
     saveScorecardState({ messageId: newId });
-    console.log("Scorecard: sent new message, tracking its ID for future edits.");
+    await pinTelegramMessage(newId);
+    console.log("Scorecard: sent new message, pinned it, and tracking its ID for future edits.");
   }
 }
 

@@ -109,4 +109,29 @@ async function getTelegramUpdates(sinceUpdateId) {
   }
 }
 
-module.exports = { sendTelegramMessage, editTelegramMessage, getTelegramUpdates };
+// Pins a message so it stays reachable via the pinned-message banner at
+// the top of the chat, no matter how many new messages get sent after it
+// - this is what actually keeps the scorecard "always visible", since
+// Telegram has no way to make an edited message re-jump to the bottom of
+// the chat as new messages arrive. disable_notification avoids a "pinned
+// a message" ping every time (only needs to happen once per new message
+// ID, not every edit).
+async function pinTelegramMessage(messageId) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) return false;
+
+  const url = `https://api.telegram.org/bot${token}/pinChatMessage`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, disable_notification: true }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+module.exports = { sendTelegramMessage, editTelegramMessage, getTelegramUpdates, pinTelegramMessage };
