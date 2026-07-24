@@ -91,7 +91,12 @@ async function run(config, creds) {
 
     scorecardPositions.push({
       contract, action, entryPrice: adv.entryPrice, currentPrice, currentStop,
-      pnlPercent: ((currentPrice - adv.entryPrice) * dir / adv.entryPrice) * 100,
+      // CoinDCX shows ROE (return on margin, i.e. leveraged) - this was
+      // showing raw unleveraged price movement instead, so it never
+      // matched what's actually on screen in the app (e.g. 0.12% here vs
+      // 1.90% ROE on CoinDCX for the same move, at 10x leverage). Multiply
+      // by leverage to match CoinDCX's own convention.
+      pnlPercent: ((currentPrice - adv.entryPrice) * dir / adv.entryPrice) * 100 * (adv.leverage || 1),
     });
 
     // Next target the AI hasn't already advised on

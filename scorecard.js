@@ -39,7 +39,7 @@ function formatPositionLine(p) {
   const directionArrow = p.action === "long" ? "▲" : "▼";
   const pnlEmoji = p.pnlPercent !== null ? (p.pnlPercent >= 0 ? "🟢" : "🔴") : "⚪";
   const pnlStr = p.pnlPercent !== null ? `${p.pnlPercent >= 0 ? "+" : ""}${p.pnlPercent.toFixed(2)}%` : "n/a";
-  return `${pnlEmoji} *${p.contract}* ${directionArrow} ${p.action} | Entry: ${p.entryPrice} | Now: ${p.currentPrice} | P&L: ${pnlStr} | Stop: ${p.currentStop}`;
+  return `${pnlEmoji} *${p.contract}* ${directionArrow} ${p.action} | Entry: ${p.entryPrice} | Now: ${p.currentPrice} | ROE: ${pnlStr} | Stop: ${p.currentStop}`;
 }
 
 // `positions` is an array of { contract, action, entryPrice, currentPrice,
