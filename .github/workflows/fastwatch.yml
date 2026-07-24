@@ -38,6 +38,7 @@ jobs:
           git config user.email "actions@github.com"
           [ -f fastWatchState.json ] && git add fastWatchState.json
           [ -f scorecardState.json ] && git add scorecardState.json
+          [ -f liveSnapshot.json ] && git add liveSnapshot.json
           git diff --staged --quiet && exit 0
           git commit -m "Update fast-watch state [skip ci]"
           for i in 1 2 3; do
