@@ -30,6 +30,31 @@ function saveLatestScores(allScores) {
   fs.writeFileSync(LATEST_SCORES_FILE, JSON.stringify({ scores: allScores, timestamp: Date.now() }, null, 2));
 }
 
+const LIVE_SNAPSHOT_FILE = path.join(__dirname, "liveSnapshot.json");
+
+// Written every fast-watch cycle (~1 min) with everything a simple
+// external dashboard needs in one file - open positions with live P&L,
+// the most recent scan scores, and a timestamp. This is what the
+// home-screen dashboard page reads from raw.githubusercontent.com.
+function saveLiveSnapshot(positions, latestScores, strategyName) {
+  // Defensive on purpose: this file write is a nice-to-have for the
+  // external dashboard, not part of the Telegram flow. It must never be
+  // able to throw and block the actual scorecard message from sending -
+  // same reasoning as the try/catch already used elsewhere in this file
+  // for loadLatestScores/loadScorecardState.
+  try {
+    fs.writeFileSync(LIVE_SNAPSHOT_FILE, JSON.stringify({
+      updatedAt: Date.now(),
+      strategyName,
+      positions,
+      latestScores: latestScores ? latestScores.scores : null,
+      latestScoresTimestamp: latestScores ? latestScores.timestamp : null,
+    }, null, 2));
+  } catch (err) {
+    console.log(`Scorecard: couldn't write liveSnapshot.json (dashboard-only, non-fatal) - ${err.message}`);
+  }
+}
+
 function formatPositionLine(p) {
   // Direction (long/short) and P&L (winning/losing) are two DIFFERENT
   // things - a long position can easily be sitting at a loss. The old
@@ -72,6 +97,7 @@ async function updateScorecard(positions, strategyName) {
   }
 
   const text = lines.join("\n");
+  saveLiveSnapshot(positions, latestScores, strategyName);
 
   if (state.messageId) {
     const edited = await editTelegramMessage(state.messageId, text);
