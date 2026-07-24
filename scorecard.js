@@ -116,4 +116,14 @@ async function updateScorecard(positions, strategyName) {
   }
 }
 
-module.exports = { updateScorecard, saveLatestScores };
+// Writes JUST the JSON snapshot, without touching Telegram at all - for
+// the "flat, nothing changed" case where sending a fresh scorecard
+// message every cycle would be spam, but the external JSON snapshot
+// (used by a dashboard/widget) still needs to reflect "no positions"
+// rather than staying stuck on stale data indefinitely.
+function saveLiveSnapshotOnly(positions, strategyName) {
+  const latestScores = loadLatestScores();
+  saveLiveSnapshot(positions, latestScores, strategyName);
+}
+
+module.exports = { updateScorecard, saveLatestScores, saveLiveSnapshotOnly };

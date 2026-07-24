@@ -39,10 +39,21 @@ async function run(config, creds) {
 
   if (activePositions.length === 0) {
     console.log("Fast watch: no open positions, nothing to check.");
-    // Only push a scorecard update if we just transitioned from having a
-    // position to being flat (one final "closed out" refresh). Otherwise
-    // every 1-minute fastwatch cycle would spam a fresh "No open positions"
-    // message forever while flat.
+    // The JSON snapshot (for external dashboards/widgets) needs to update
+    // EVERY cycle regardless of position state, so it correctly shows
+    // "no positions" rather than staying stuck on stale data from the
+    // last time a position was open. This was the real bug: this used to
+    // only get written when a Telegram scorecard message was ALSO sent,
+    // which itself is intentionally throttled to just the open->flat
+    // transition (to avoid spamming Telegram every single cycle while
+    // flat) - but that throttling should never have gated the JSON file
+    // too, since a stale "no positions" reading is fine for a message,
+    // but wrong for a snapshot meant to always reflect current state.
+    scorecard.saveLiveSnapshotOnly([], config.strategy);
+    // Only push a scorecard TELEGRAM MESSAGE if we just transitioned from
+    // having a position to being flat (one final "closed out" refresh).
+    // Otherwise every 1-minute fastwatch cycle would spam a fresh "No
+    // open positions" message forever while flat.
     const watchState = loadWatchState();
     if (watchState.__hadOpenPositions) {
       await scorecard.updateScorecard([], config.strategy);
