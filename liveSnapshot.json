@@ -1,36 +1,35 @@
 {
-  "updatedAt": 1784926231188,
+  "updatedAt": 1784926337304,
   "strategyName": "balanced",
   "positions": [
     {
       "contract": "B-BTC_USDT",
       "action": "short",
       "entryPrice": 63930.7,
-      "currentPrice": 64151.26,
+      "currentPrice": 64151.27,
       "currentStop": 64653.56,
-      "pnlPercent": -3.7949842563902076
+      "pnlPercent": -3.795156317700255
     }
   ],
   "latestScores": [
     {
       "symbol": "BTC",
-      "score": 57,
-      "action": "long",
-      "setupType": "breakout",
-      "isBreakoutExtension": true
-    },
-    {
-      "symbol": "ETH",
       "score": 50,
       "action": "wait",
       "setupType": "trend_following"
     },
     {
+      "symbol": "ETH",
+      "score": 40,
+      "action": "wait",
+      "setupType": "none"
+    },
+    {
       "symbol": "SOL",
-      "score": 84,
-      "action": "short",
-      "setupType": "breakout",
-      "isBreakoutExtension": true
+      "score": 65,
+      "action": "long",
+      "setupType": "mean_reversion",
+      "isBreakoutExtension": false
     },
     {
       "symbol": "DOGE",
@@ -47,7 +46,7 @@
       "isBreakoutExtension": true
     }
   ],
-  "latestScoresTimestamp": 1784925954216,
-  "reasoning": "MANAGED — BTC short active, reversal score low (12).\nReason: Position is active; take-profit target not yet reached and reversal score is safe at 12.\nScores: SOL 84, BTC 67, XRP 62, DOGE 56, ETH 50\nReversal detail (BTC): score 12 - primary timeframe entering range (score=-1)",
-  "reasoningTimestamp": 1784925966974
+  "latestScoresTimestamp": 1784926255036,
+  "reasoning": "NO ACTION — BTC short held, no reversal or take-profit stage hit.\nReason: Position open at 63930.7, reversal score is low at 12, waiting for 0.80R target.\nScores: SOL 65, XRP 62, DOGE 56, BTC 50, ETH 40\nReversal detail (BTC): score 12 - primary timeframe entering range (score=-3)",
+  "reasoningTimestamp": 1784926260337
 }
