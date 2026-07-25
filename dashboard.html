@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AdvisorX</title>
+<style>
+  :root {
+    --bg: #0b0e11;
+    --card: #14181d;
+    --line: #232830;
+    --text: #e8eaed;
+    --muted: #7d8590;
+    --up: #16c784;
+    --down: #ea3943;
+    --amber: #f0b90b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    font-size: 14px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body { padding: 10px; min-height: 100vh; }
+  .num {
+    font-family: 'IBM Plex Mono', 'Roboto Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 2px 10px;
+  }
+  .brand {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    font-size: 15px;
+  }
+  .brand span { color: var(--amber); }
+  .live {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--up);
+    box-shadow: 0 0 0 0 rgba(22,199,132,0.6);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(22,199,132,0.5); }
+    70% { box-shadow: 0 0 0 6px rgba(22,199,132,0); }
+    100% { box-shadow: 0 0 0 0 rgba(22,199,132,0); }
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+  }
+  .pos-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .pos-symbol {
+    font-size: 17px;
+    font-weight: 700;
+  }
+  .pos-dir {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 2px 7px;
+    border-radius: 4px;
+    margin-left: 8px;
+  }
+  .dir-long { background: rgba(22,199,132,0.15); color: var(--up); }
+  .dir-short { background: rgba(234,57,67,0.15); color: var(--down); }
+  .pnl-block { text-align: right; }
+  .pnl-rupee {
+    font-size: 19px;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+  .pnl-pct { font-size: 12px; margin-top: 1px; }
+  .up-text { color: var(--up); }
+  .down-text { color: var(--down); }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+  }
+  .grid-item .label {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 3px;
+  }
+  .grid-item .value { font-size: 14px; font-weight: 600; }
+  .empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 18px 4px;
+    font-size: 13px;
+  }
+  .empty .big { font-size: 22px; margin-bottom: 4px; }
+  .advice-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--amber);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .advice-label::before {
+    content: "";
+    width: 3px; height: 12px;
+    background: var(--amber);
+    border-radius: 2px;
+    display: inline-block;
+  }
+  .advice-text {
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: #d3d6db;
+    white-space: pre-wrap;
+    max-height: 230px;
+    overflow-y: auto;
+  }
+  .scores-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .score-chip {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 4px 9px;
+    font-size: 12px;
+    display: flex;
+    gap: 5px;
+    align-items: baseline;
+  }
+  .score-chip .sym { font-weight: 700; }
+  .score-chip .val { color: var(--muted); }
+  .footer {
+    text-align: center;
+    font-size: 10px;
+    color: var(--muted);
+    padding: 6px 0 2px;
+  }
+  .err {
+    text-align: center;
+    color: var(--down);
+    font-size: 12px;
+    padding: 10px;
+  }
+</style>
+</head>
+<body>
+
+  <div class="top">
+    <div class="brand">Advisor<span>X</span></div>
+    <div class="live"><div class="dot"></div><span id="updatedAgo">--</span></div>
+  </div>
+
+  <div class="card" id="positionCard">
+    <div class="empty">Loading…</div>
+  </div>
+
+  <div class="card">
+    <div class="advice-label">AI reasoning</div>
+    <div class="advice-text" id="reasoningText">Loading…</div>
+  </div>
+
+  <div class="card">
+    <div class="advice-label" style="color:#9aa4af">
+      <span style="width:3px;height:12px;background:#9aa4af;border-radius:2px;display:inline-block"></span>
+      Latest scores
+    </div>
+    <div class="scores-row" id="scoresRow"></div>
+  </div>
+
+  <div class="footer" id="footerNote">fetching…</div>
+
+<script>
+  const SNAPSHOT_URL = "https://raw.githubusercontent.com/guptaapar21/AdvisorX/main/liveSnapshot.json";
+  const FX_URL = "https://open.er-api.com/v6/latest/USD";
+
+  let usdInr = 87; // fallback if the rate fetch fails/hasn't landed yet
+  let lastSnapshot = null;
+  let lastFetchedAt = null;
+
+  function fmtMoney(n, decimals) {
+    if (n === null || n === undefined || isNaN(n)) return "--";
+    return n.toLocaleString("en-IN", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  }
+
+  function fmtPrice(n) {
+    if (n === null || n === undefined || isNaN(n)) return "--";
+    // Show more decimals for sub-$1 prices (e.g. DOGE), fewer for BTC-scale
+    const decimals = n < 10 ? 4 : n < 1000 ? 3 : 2;
+    return n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  }
+
+  function symbolFromContract(contract) {
+    if (!contract) return "--";
+    return contract.replace(/^[A-Z]-/, "").replace(/_USDT$/, "");
+  }
+
+  function timeAgo(ts) {
+    if (!ts) return "--";
+    const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    if (s < 60) return s + "s ago";
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + "m ago";
+    const h = Math.floor(m / 60);
+    return h + "h ago";
+  }
+
+  function renderPosition(data) {
+    const el = document.getElementById("positionCard");
+    const pos = data.positions && data.positions[0];
+
+    if (!pos) {
+      el.innerHTML = `<div class="empty"><div class="big">💤</div>Flat — no open position</div>`;
+      return;
+    }
+
+    const isLong = pos.action === "long";
+    const dirClass = isLong ? "dir-long" : "dir-short";
+    const dirLabel = isLong ? "LONG" : "SHORT";
+    const symbol = symbolFromContract(pos.contract);
+
+    const pnlUsdt = pos.pnlUsdt;
+    const pnlPct = pos.pnlPercent;
+    const pnlInr = pnlUsdt != null ? pnlUsdt * usdInr : null;
+    const isUp = (pnlPct ?? 0) >= 0;
+    const pnlClass = isUp ? "up-text" : "down-text";
+    const sign = isUp ? "+" : "";
+
+    el.innerHTML = `
+      <div class="pos-head">
+        <div>
+          <span class="pos-symbol num">${symbol}</span>
+          <span class="pos-dir ${dirClass}">${dirLabel}</span>
+        </div>
+        <div class="pnl-block">
+          <div class="pnl-rupee num ${pnlClass}">${sign}₹${fmtMoney(Math.abs(pnlInr ?? 0), 0)}</div>
+          <div class="pnl-pct num ${pnlClass}">${sign}${fmtMoney(pnlPct, 2)}%</div>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="grid-item">
+          <div class="label">Entry</div>
+          <div class="value num">${fmtPrice(pos.entryPrice)}</div>
+        </div>
+        <div class="grid-item">
+          <div class="label">Stop</div>
+          <div class="value num down-text">${fmtPrice(pos.currentStop)}</div>
+        </div>
+        <div class="grid-item">
+          <div class="label">Target 1R</div>
+          <div class="value num up-text">${fmtPrice(pos.target1)}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderReasoning(data) {
+    const el = document.getElementById("reasoningText");
+    el.textContent = data.reasoning ? data.reasoning : "No reasoning recorded yet.";
+  }
+
+  function renderScores(data) {
+    const el = document.getElementById("scoresRow");
+    const scores = data.latestScores;
+    if (!scores || !scores.length) {
+      el.innerHTML = `<span style="color:var(--muted);font-size:12px">--</span>`;
+      return;
+    }
+    el.innerHTML = scores
+      .slice(0, 5)
+      .map(s => `<div class="score-chip"><span class="sym">${s.symbol}</span><span class="val num">${s.score}</span></div>`)
+      .join("");
+  }
+
+  function renderFooter(data) {
+    const el = document.getElementById("footerNote");
+    const parts = [];
+    if (data.strategyName) parts.push(`strategy: ${data.strategyName}`);
+    parts.push(`fx ₹${usdInr.toFixed(2)}/$`);
+    el.textContent = parts.join("  ·  ");
+  }
+
+  function tickUpdatedAgo() {
+    const el = document.getElementById("updatedAgo");
+    if (lastSnapshot && lastSnapshot.updatedAt) {
+      el.textContent = timeAgo(lastSnapshot.updatedAt);
+    }
+  }
+
+  async function fetchFxRate() {
+    try {
+      const res = await fetch(FX_URL, { cache: "no-store" });
+      const json = await res.json();
+      if (json && json.rates && json.rates.INR) {
+        usdInr = json.rates.INR;
+      }
+    } catch (e) {
+      // Keep the fallback rate silently - this isn't critical enough to
+      // show an error for; the ₹ figure just won't be perfectly current.
+      console.log("FX fetch failed, using fallback rate", e);
+    }
+  }
+
+  async function fetchSnapshot() {
+    try {
+      const res = await fetch(SNAPSHOT_URL + "?_=" + Date.now(), { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      lastSnapshot = data;
+      renderPosition(data);
+      renderReasoning(data);
+      renderScores(data);
+      renderFooter(data);
+    } catch (e) {
+      document.getElementById("positionCard").innerHTML =
+        `<div class="err">Couldn't reach liveSnapshot.json<br>${e.message}</div>`;
+    }
+  }
+
+  fetchFxRate();
+  fetchSnapshot();
+  setInterval(fetchSnapshot, 20000);       // refresh data every 20s
+  setInterval(fetchFxRate, 5 * 60 * 1000); // refresh FX rate every 5 min
+  setInterval(tickUpdatedAgo, 1000);       // tick the "Xs ago" label every second
+</script>
+
+</body>
+</html>
