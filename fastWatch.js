@@ -39,13 +39,17 @@ async function run(config, creds) {
 
   if (activePositions.length === 0) {
     console.log("Fast watch: no open positions, nothing to check.");
-    // Only push a scorecard update if we just transitioned from having a
-    // position to being flat (one final "closed out" refresh). Otherwise
-    // every 1-minute fastwatch cycle would spam a fresh "No open positions"
-    // message forever while flat.
+    // Still refresh the scorecard every cycle while flat, not just on the
+    // had-position -> flat transition. This used to be conditional on
+    // watchState.__hadOpenPositions to "avoid spam" - but updateScorecard
+    // edits the same pinned Telegram message in place rather than sending
+    // a new one each time (see scorecard.js), so there was never any real
+    // spam risk. The conditional version meant liveSnapshot.json (and
+    // therefore the dashboard/widget) only updated once and then went
+    // stale for the entire time the bot stayed flat - sometimes hours.
+    await scorecard.updateScorecard([], config.strategy);
     const watchState = loadWatchState();
     if (watchState.__hadOpenPositions) {
-      await scorecard.updateScorecard([], config.strategy);
       watchState.__hadOpenPositions = false;
       saveWatchState(watchState);
     }
