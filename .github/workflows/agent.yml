@@ -74,7 +74,26 @@ jobs:
               exit 0
             fi
             echo "Push rejected (attempt $i), pulling and retrying..."
-            git pull --rebase
+            if git pull --rebase; then
+              continue
+            fi
+            # A real content conflict (not just "someone pushed first") -
+            # e.g. two runs both touched the same line of
+            # idleThrottleState.json/trendScoreHistory.json. These files
+            # are pure ephemeral bookkeeping for THIS run (timestamps,
+            # score history) - there's nothing meaningful to merge between
+            # two different runs' versions, so the freshest run's values
+            # should just win rather than the whole job dying. Abort the
+            # broken rebase, reset onto whatever's on the remote now, and
+            # recommit this run's own files on top.
+            echo "Rebase hit a real conflict - keeping this run's own state values on top of the latest remote."
+            git rebase --abort
+            git fetch origin main
+            git reset --soft origin/main
+            for f in advisories.json geminiKeyState.json trendScoreHistory.json tradeOutcomeLog.json runtimeConfig.json idleThrottleState.json; do
+              [ -f "$f" ] && git add "$f"
+            done
+            git commit -m "Update agent state [skip ci]" --allow-empty
           done
           echo "Failed to push state after 3 attempts."
           exit 1

@@ -56,7 +56,15 @@ jobs:
               exit 0
             fi
             echo "Push rejected (attempt $i), pulling and retrying..."
-            git pull --rebase
+            if git pull --rebase; then
+              continue
+            fi
+            echo "Rebase hit a real conflict - keeping this run's own state values on top of the latest remote."
+            git rebase --abort
+            git fetch origin main
+            git reset --soft origin/main
+            [ -f fastWatchState.json ] && git add fastWatchState.json
+            git commit -m "Update fast-watch state [skip ci]" --allow-empty
           done
           echo "Failed to push state after 3 attempts."
           exit 1
