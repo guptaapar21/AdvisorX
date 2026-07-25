@@ -17,6 +17,13 @@ concurrency:
 jobs:
   fastwatch:
     runs-on: ubuntu-latest
+    # A run that hangs used to sit forever and jam this entire concurrency
+    # group - every later trigger queued behind it indefinitely and got
+    # pruned by GitHub itself ("Cancelling since a higher priority waiting
+    # request exists"), which is what happened with run #8059. This forces
+    # GitHub to kill a hung run itself. Normal runs finish in well under a
+    # minute; 4 min is generous headroom, not a normal duration.
+    timeout-minutes: 4
     steps:
       - uses: actions/checkout@v4
 

@@ -27,6 +27,15 @@ concurrency:
 jobs:
   agent:
     runs-on: ubuntu-latest
+    # A run that hangs (network stall, GitHub infra flakiness, etc.) used
+    # to sit forever and jam this entire concurrency group - every later
+    # trigger queued behind it indefinitely and eventually got pruned by
+    # GitHub itself ("Cancelling since a higher priority waiting request
+    # exists"), which is exactly what happened with run #1905. This forces
+    # GitHub to kill a hung run itself well before it can do that again.
+    # Normal runs finish in well under a minute; 6 min is generous
+    # headroom for a real Gemini reasoning cycle, not a normal duration.
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
 
@@ -47,7 +56,7 @@ jobs:
         run: |
           git config user.name "coindcx-agent-bot"
           git config user.email "actions@github.com"
-          for f in advisories.json geminiKeyState.json trendScoreHistory.json tradeOutcomeLog.json runtimeConfig.json idleThrottleState.json latestScores.json latestReasoning.json; do
+          for f in advisories.json geminiKeyState.json trendScoreHistory.json tradeOutcomeLog.json runtimeConfig.json idleThrottleState.json; do
             [ -f "$f" ] && git add "$f"
           done
           git diff --staged --quiet && exit 0
