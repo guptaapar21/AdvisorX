@@ -20,10 +20,10 @@
     background: var(--bg);
     color: var(--text);
     font-family: 'Inter', -apple-system, system-ui, sans-serif;
-    font-size: 14px;
+    font-size: 13px;
     -webkit-tap-highlight-color: transparent;
   }
-  body { padding: 10px; min-height: 100vh; }
+  body { padding: 6px; min-height: 100vh; }
   .num {
     font-family: 'IBM Plex Mono', 'Roboto Mono', monospace;
     font-variant-numeric: tabular-nums;
@@ -32,145 +32,71 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 2px 2px 10px;
+    padding: 1px 2px 6px;
   }
-  .brand {
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    font-size: 15px;
-  }
+  .brand { font-weight: 700; letter-spacing: 0.02em; font-size: 13px; }
   .brand span { color: var(--amber); }
-  .live {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 11px;
-    color: var(--muted);
-  }
+  .live { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); }
   .dot {
-    width: 6px; height: 6px; border-radius: 50%;
+    width: 5px; height: 5px; border-radius: 50%;
     background: var(--up);
     box-shadow: 0 0 0 0 rgba(22,199,132,0.6);
     animation: pulse 2s infinite;
   }
   @keyframes pulse {
     0% { box-shadow: 0 0 0 0 rgba(22,199,132,0.5); }
-    70% { box-shadow: 0 0 0 6px rgba(22,199,132,0); }
+    70% { box-shadow: 0 0 0 5px rgba(22,199,132,0); }
     100% { box-shadow: 0 0 0 0 rgba(22,199,132,0); }
   }
   .card {
     background: var(--card);
     border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 12px 14px;
-    margin-bottom: 8px;
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 5px;
   }
-  .pos-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    margin-bottom: 10px;
-  }
-  .pos-symbol {
-    font-size: 17px;
-    font-weight: 700;
-  }
+  .pos-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+  .pos-symbol { font-size: 15px; font-weight: 700; }
   .pos-dir {
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    padding: 2px 7px;
-    border-radius: 4px;
-    margin-left: 8px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.03em;
+    padding: 1px 6px; border-radius: 4px; margin-left: 6px;
   }
   .dir-long { background: rgba(22,199,132,0.15); color: var(--up); }
   .dir-short { background: rgba(234,57,67,0.15); color: var(--down); }
   .pnl-block { text-align: right; }
-  .pnl-rupee {
-    font-size: 19px;
-    font-weight: 700;
-    line-height: 1.1;
-  }
-  .pnl-pct { font-size: 12px; margin-top: 1px; }
+  .pnl-rupee { font-size: 16px; font-weight: 700; line-height: 1.05; }
+  .pnl-pct { font-size: 11px; }
   .up-text { color: var(--up); }
   .down-text { color: var(--down); }
   .grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-    border-top: 1px solid var(--line);
-    padding-top: 10px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+    border-top: 1px solid var(--line); padding-top: 6px;
   }
-  .grid-item .label {
-    font-size: 10px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin-bottom: 3px;
+  .grid-item .label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .grid-item .value { font-size: 12.5px; font-weight: 600; }
+  .flat-row { display: flex; align-items: center; justify-content: space-between; }
+  .flat-badge {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.04em; color: var(--muted);
+    background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 2px 7px;
   }
-  .grid-item .value { font-size: 14px; font-weight: 600; }
-  .empty {
-    text-align: center;
-    color: var(--muted);
-    padding: 18px 4px;
-    font-size: 13px;
+  .tag {
+    display: flex; align-items: center; gap: 5px; font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.05em; color: var(--amber); text-transform: uppercase; margin-bottom: 5px;
   }
-  .empty .big { font-size: 22px; margin-bottom: 4px; }
-  .advice-label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    color: var(--amber);
-    text-transform: uppercase;
-    margin-bottom: 8px;
-  }
-  .advice-label::before {
-    content: "";
-    width: 3px; height: 12px;
-    background: var(--amber);
-    border-radius: 2px;
-    display: inline-block;
-  }
-  .advice-text {
-    font-size: 12.5px;
-    line-height: 1.5;
-    color: #d3d6db;
-    white-space: pre-wrap;
-    max-height: 230px;
-    overflow-y: auto;
-  }
-  .scores-row {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
+  .tag::before { content: ""; width: 3px; height: 10px; background: var(--amber); border-radius: 2px; display: inline-block; }
+  .tag.muted { color: #9aa4af; }
+  .tag.muted::before { background: #9aa4af; }
+  .verdict-line { font-size: 12px; font-weight: 700; line-height: 1.3; }
+  .verdict-sub { font-size: 11px; color: var(--muted); line-height: 1.3; margin-top: 2px; }
+  .scores-row { display: flex; gap: 5px; flex-wrap: wrap; }
   .score-chip {
-    background: var(--bg);
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 4px 9px;
-    font-size: 12px;
-    display: flex;
-    gap: 5px;
-    align-items: baseline;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 5px;
+    padding: 3px 7px; font-size: 11px; display: flex; gap: 4px; align-items: baseline;
   }
   .score-chip .sym { font-weight: 700; }
   .score-chip .val { color: var(--muted); }
-  .footer {
-    text-align: center;
-    font-size: 10px;
-    color: var(--muted);
-    padding: 6px 0 2px;
-  }
-  .err {
-    text-align: center;
-    color: var(--down);
-    font-size: 12px;
-    padding: 10px;
-  }
+  .footer { text-align: center; font-size: 9px; color: var(--muted); padding: 3px 0 1px; }
+  .err { text-align: center; color: var(--down); font-size: 11px; padding: 8px; }
 </style>
 </head>
 <body>
@@ -181,19 +107,16 @@
   </div>
 
   <div class="card" id="positionCard">
-    <div class="empty">Loading…</div>
+    <div class="flat-row"><span style="color:var(--muted)">Loading…</span></div>
   </div>
 
   <div class="card">
-    <div class="advice-label">AI reasoning</div>
-    <div class="advice-text" id="reasoningText">Loading…</div>
+    <div class="tag">AI verdict</div>
+    <div id="reasoningText">Loading…</div>
   </div>
 
   <div class="card">
-    <div class="advice-label" style="color:#9aa4af">
-      <span style="width:3px;height:12px;background:#9aa4af;border-radius:2px;display:inline-block"></span>
-      Latest scores
-    </div>
+    <div class="tag muted">Scores</div>
     <div class="scores-row" id="scoresRow"></div>
   </div>
 
@@ -203,9 +126,8 @@
   const SNAPSHOT_URL = "https://raw.githubusercontent.com/guptaapar21/AdvisorX/main/liveSnapshot.json";
   const FX_URL = "https://open.er-api.com/v6/latest/USD";
 
-  let usdInr = 87; // fallback if the rate fetch fails/hasn't landed yet
+  let usdInr = 87;
   let lastSnapshot = null;
-  let lastFetchedAt = null;
 
   function fmtMoney(n, decimals) {
     if (n === null || n === undefined || isNaN(n)) return "--";
@@ -214,7 +136,6 @@
 
   function fmtPrice(n) {
     if (n === null || n === undefined || isNaN(n)) return "--";
-    // Show more decimals for sub-$1 prices (e.g. DOGE), fewer for BTC-scale
     const decimals = n < 10 ? 4 : n < 1000 ? 3 : 2;
     return n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   }
@@ -227,11 +148,30 @@
   function timeAgo(ts) {
     if (!ts) return "--";
     const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-    if (s < 60) return s + "s ago";
+    if (s < 60) return s + "s";
     const m = Math.floor(s / 60);
-    if (m < 60) return m + "m ago";
+    if (m < 60) return m + "m";
     const h = Math.floor(m / 60);
-    return h + "h ago";
+    return h + "h";
+  }
+
+  // Telegram-style reasoning looks like:
+  //   "NO ACTION — no positions, no setups cleared threshold.
+  //   Reason: Best candidate XRP scored 74 (trend_following), below the
+  //   required 75.
+  //   Scores: XRP 74, BTC 73, ETH 67, SOL 51, DOGE 50"
+  // The verdict line (before the first \n) already IS the crisp summary.
+  // The "Reason:" paragraph restates it in longer prose, and "Scores:"
+  // duplicates the separate scores card below - both dropped so this
+  // reads as one short verdict, not three redundant sentences.
+  function condenseReasoning(raw) {
+    if (!raw) return { verdict: "No verdict recorded yet.", sub: "" };
+    const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
+    const first = lines[0] || raw;
+    const dashIdx = first.indexOf("—");
+    const verdict = dashIdx >= 0 ? first.slice(0, dashIdx).trim() : first;
+    const sub = dashIdx >= 0 ? first.slice(dashIdx + 1).trim() : "";
+    return { verdict, sub };
   }
 
   function renderPosition(data) {
@@ -239,7 +179,7 @@
     const pos = data.positions && data.positions[0];
 
     if (!pos) {
-      el.innerHTML = `<div class="empty"><div class="big">💤</div>Flat — no open position</div>`;
+      el.innerHTML = `<div class="flat-row"><span style="font-weight:600">No position</span><span class="flat-badge">FLAT</span></div>`;
       return;
     }
 
@@ -267,32 +207,24 @@
         </div>
       </div>
       <div class="grid">
-        <div class="grid-item">
-          <div class="label">Entry</div>
-          <div class="value num">${fmtPrice(pos.entryPrice)}</div>
-        </div>
-        <div class="grid-item">
-          <div class="label">Stop</div>
-          <div class="value num down-text">${fmtPrice(pos.currentStop)}</div>
-        </div>
-        <div class="grid-item">
-          <div class="label">Target 1R</div>
-          <div class="value num up-text">${fmtPrice(pos.target1)}</div>
-        </div>
+        <div class="grid-item"><div class="label">Entry</div><div class="value num">${fmtPrice(pos.entryPrice)}</div></div>
+        <div class="grid-item"><div class="label">Stop</div><div class="value num down-text">${fmtPrice(pos.currentStop)}</div></div>
+        <div class="grid-item"><div class="label">Tgt 1R</div><div class="value num up-text">${fmtPrice(pos.target1)}</div></div>
       </div>
     `;
   }
 
   function renderReasoning(data) {
     const el = document.getElementById("reasoningText");
-    el.textContent = data.reasoning ? data.reasoning : "No reasoning recorded yet.";
+    const { verdict, sub } = condenseReasoning(data.reasoning);
+    el.innerHTML = `<div class="verdict-line">${verdict}</div>${sub ? `<div class="verdict-sub">${sub}</div>` : ""}`;
   }
 
   function renderScores(data) {
     const el = document.getElementById("scoresRow");
     const scores = data.latestScores;
     if (!scores || !scores.length) {
-      el.innerHTML = `<span style="color:var(--muted);font-size:12px">--</span>`;
+      el.innerHTML = `<span style="color:var(--muted);font-size:11px">--</span>`;
       return;
     }
     el.innerHTML = scores
@@ -303,29 +235,20 @@
 
   function renderFooter(data) {
     const el = document.getElementById("footerNote");
-    const parts = [];
-    if (data.strategyName) parts.push(`strategy: ${data.strategyName}`);
-    parts.push(`fx ₹${usdInr.toFixed(2)}/$`);
-    el.textContent = parts.join("  ·  ");
+    el.textContent = `${data.strategyName || ""}  ·  ₹${usdInr.toFixed(2)}/$`;
   }
 
   function tickUpdatedAgo() {
     const el = document.getElementById("updatedAgo");
-    if (lastSnapshot && lastSnapshot.updatedAt) {
-      el.textContent = timeAgo(lastSnapshot.updatedAt);
-    }
+    if (lastSnapshot && lastSnapshot.updatedAt) el.textContent = timeAgo(lastSnapshot.updatedAt);
   }
 
   async function fetchFxRate() {
     try {
       const res = await fetch(FX_URL, { cache: "no-store" });
       const json = await res.json();
-      if (json && json.rates && json.rates.INR) {
-        usdInr = json.rates.INR;
-      }
+      if (json && json.rates && json.rates.INR) usdInr = json.rates.INR;
     } catch (e) {
-      // Keep the fallback rate silently - this isn't critical enough to
-      // show an error for; the ₹ figure just won't be perfectly current.
       console.log("FX fetch failed, using fallback rate", e);
     }
   }
@@ -341,16 +264,15 @@
       renderScores(data);
       renderFooter(data);
     } catch (e) {
-      document.getElementById("positionCard").innerHTML =
-        `<div class="err">Couldn't reach liveSnapshot.json<br>${e.message}</div>`;
+      document.getElementById("positionCard").innerHTML = `<div class="err">Fetch failed: ${e.message}</div>`;
     }
   }
 
   fetchFxRate();
   fetchSnapshot();
-  setInterval(fetchSnapshot, 20000);       // refresh data every 20s
-  setInterval(fetchFxRate, 5 * 60 * 1000); // refresh FX rate every 5 min
-  setInterval(tickUpdatedAgo, 1000);       // tick the "Xs ago" label every second
+  setInterval(fetchSnapshot, 20000);
+  setInterval(fetchFxRate, 5 * 60 * 1000);
+  setInterval(tickUpdatedAgo, 1000);
 </script>
 
 </body>
