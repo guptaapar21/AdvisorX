@@ -1,5 +1,5 @@
 {
-  "updatedAt": 1784964643462,
+  "updatedAt": 1784964735664,
   "strategyName": "balanced",
   "positions": [],
   "latestScores": [
@@ -12,17 +12,17 @@
     },
     {
       "symbol": "ETH",
-      "score": 57,
+      "score": 67,
       "action": "short",
       "setupType": "trend_following",
       "isBreakoutExtension": false
     },
     {
       "symbol": "SOL",
-      "score": 71,
+      "score": 76,
       "action": "short",
-      "setupType": "trend_following",
-      "isBreakoutExtension": false
+      "setupType": "breakout",
+      "isBreakoutExtension": true
     },
     {
       "symbol": "DOGE",
@@ -33,12 +33,13 @@
     },
     {
       "symbol": "XRP",
-      "score": 55,
-      "action": "wait",
-      "setupType": "trend_following"
+      "score": 61,
+      "action": "long",
+      "setupType": "mean_reversion",
+      "isBreakoutExtension": false
     }
   ],
-  "latestScoresTimestamp": 1784964341138,
-  "reasoning": "NO ACTION — no positions, no setups cleared threshold.\nReason: Best candidate SOL scored 71 (trend_following), below the required 75.\nScores: SOL 71, BTC 67, DOGE 58, ETH 57, XRP 55",
-  "reasoningTimestamp": 1784964341138
+  "latestScoresTimestamp": 1784964669991,
+  "reasoning": "NO ACTION — SOL breakout short score 76 failed quality checks.\nReason: Breakout score 76 driven by breakout extension strategy, but volume is weak (0.07x).\nScores: SOL 76, BTC 67, ETH 67, DOGE 62, XRP 61",
+  "reasoningTimestamp": 1784964685376
 }
