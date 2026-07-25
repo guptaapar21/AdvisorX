@@ -6,24 +6,6 @@ const { sendTelegramMessage } = require("./telegram");
 const runtimeConfig = require("./runtimeConfig");
 const idleThrottle = require("./idleThrottle");
 const { runPreFilter } = require("./preFilter");
-const fs = require("fs");
-const path = require("path");
-
-const LATEST_REASONING_FILE = path.join(__dirname, "latestReasoning.json");
-
-// Persists the most recent 5-min reasoning message (idle or full agent
-// summary) so scorecard.js can fold it into liveSnapshot.json for the
-// KWGT widget. This is the SAME text already sent to Telegram - not a
-// duplicate reasoning path, just a copy saved to disk alongside it.
-// Defensive on purpose, same reasoning as saveLiveSnapshot in scorecard.js:
-// this must never throw and block the actual Telegram send.
-function saveLatestReasoning(text) {
-  try {
-    fs.writeFileSync(LATEST_REASONING_FILE, JSON.stringify({ text, timestamp: Date.now() }, null, 2));
-  } catch (err) {
-    console.log(`Agent: couldn't write latestReasoning.json (widget-only, non-fatal) - ${err.message}`);
-  }
-}
 
 function crispSummary(text) {
   // Safety net: keep the run-log message short even if the model doesn't
@@ -111,10 +93,11 @@ async function run() {
   if (!preFilterResult.isActive) {
     // Nothing worth spending a Gemini call on this run - skip the agent
     // entirely and just report the pre-filter's own real findings,
-    // throttled to once every 15 min like before.
+    // throttled to once every 15 min. The moment a position opens or a
+    // candidate clears score, isActive flips true and this throttle stops
+    // applying - every run messages immediately from then on (~5 min).
     console.log("Skipping Gemini this run - pre-filter found nothing active.");
     const message = formatIdleMessage(preFilterResult, config);
-    saveLatestReasoning(message);
     if (idleThrottle.shouldSendIdleMessage()) {
       await sendTelegramMessage(`🧠 ${message}`);
     } else {
@@ -185,7 +168,6 @@ async function run() {
     if (warnings.length > 0) {
       message = `${message}\n⚠️ ${warnings.length} issue(s) this run: ${warnings.join(" | ")}`;
     }
-    saveLatestReasoning(message);
     await sendTelegramMessage(`🧠 ${message}`);
   } else {
     // The model never produced a final answer - almost always means every

@@ -1,16 +1,23 @@
-// Runs on its OWN separate fast schedule (~1 minute), completely
+// Runs on its OWN separate fast schedule (~2 minutes), completely
 // independent of the main 5-minute agent. Zero Gemini calls - just real
 // price vs. already-known stop/target levels (pure arithmetic). This is a
 // SPEED layer on top of the 5-minute agent, not a replacement for it: the
 // 5-minute cycle still does the real reasoning (staged take-profit
 // decisions, reversal scoring, new entries). This only answers "has price
 // already crossed a level we know about, right now" and pings immediately
-// if so - so you're not waiting up to 5 minutes to find out.
+// if so - so you're not waiting up to 5 minutes to find out - PLUS a
+// plain recurring position status (entry/current/stop/PnL) every cycle
+// while a position is open.
 //
 // IMPORTANT: this never places or modifies any real order. It's purely
 // informational, same as everything else in this bot. Your REAL protection
 // against a bad move is still the stop-loss order you place on CoinDCX
 // yourself - this just tells you faster when a level has been crossed.
+//
+// Rebuilt: no more liveSnapshot.json / KWGT widget feed, no more edited
+// scorecard message, no more coin scores here. Flat = totally silent.
+// Open = a fresh Telegram message every cycle with just this position's
+// numbers.
 
 const exchange = require("./coindcxExchangeClient");
 const advisoryStore = require("./advisoryStore");
@@ -38,37 +45,8 @@ async function run(config, creds) {
   const activePositions = getActivePositions(positionsRaw);
 
   if (activePositions.length === 0) {
-    console.log("Fast watch: no open positions, nothing to check.");
-    // liveSnapshot.json (and therefore the dashboard/widget) needs to stay
-    // current every single cycle - this is cheap and local, no network
-    // call, so there's no cost to doing it unconditionally.
-    scorecard.refreshLiveSnapshotOnly([], config.strategy);
-
-    // The actual Telegram message edit is a real network round-trip, and
-    // doing it every ~2 min cycle (not just cheap local writes) pushed run
-    // durations from ~20-40s up toward 2 min - which ate all the
-    // scheduling margin the cron-job.org interval fix relied on, and
-    // brought back the "Cancelling since a higher priority waiting
-    // request exists" backlog. So the Telegram edit itself stays
-    // throttled to roughly every 10 min while flat, while the JSON above
-    // still refreshes every cycle regardless.
-    const watchState = loadWatchState();
-    const tenMinutesMs = 10 * 60 * 1000;
-    const dueForTelegramRefresh =
-      watchState.__hadOpenPositions ||
-      !watchState.__lastFlatScorecardUpdate ||
-      Date.now() - watchState.__lastFlatScorecardUpdate > tenMinutesMs;
-
-    if (dueForTelegramRefresh) {
-      await scorecard.updateScorecard([], config.strategy);
-      watchState.__lastFlatScorecardUpdate = Date.now();
-    }
-    if (watchState.__hadOpenPositions) {
-      watchState.__hadOpenPositions = false;
-      saveWatchState(watchState);
-    } else if (dueForTelegramRefresh) {
-      saveWatchState(watchState);
-    }
+    // Flat: no interaction at all, no Telegram message of any kind.
+    console.log("Fast watch: no open positions, nothing to check, staying silent.");
     return;
   }
 
@@ -81,7 +59,7 @@ async function run(config, creds) {
 
   const watchState = loadWatchState();
   let watchStateDirty = false;
-  const scorecardPositions = [];
+  const statusPositions = [];
 
   for (const pos of activePositions) {
     const contract = pos.pair ?? pos.contract;
@@ -109,30 +87,12 @@ async function run(config, creds) {
     const currentStop = adv.lastAdvisedStop;
     const stopCrossed = action === "long" ? currentPrice <= currentStop : currentPrice >= currentStop;
 
-    // CoinDCX shows ROE (return on margin, i.e. leveraged) - this was
-    // showing raw unleveraged price movement instead, so it never
-    // matched what's actually on screen in the app (e.g. 0.12% here vs
-    // 1.90% ROE on CoinDCX for the same move, at 10x leverage). Multiply
-    // by leverage to match CoinDCX's own convention.
+    // CoinDCX shows ROE (return on margin, i.e. leveraged) - multiply by
+    // leverage to match CoinDCX's own convention on-screen.
     const pnlPercent = ((currentPrice - adv.entryPrice) * dir / adv.entryPrice) * 100 * (adv.leverage || 1);
 
-    scorecardPositions.push({
-      contract, action, entryPrice: adv.entryPrice, currentPrice, currentStop,
-      pnlPercent,
-      // Absolute P&L in USDT, for anything (e.g. the widget) that wants a
-      // real money figure rather than just the ROE%. marginUsdt is the
-      // same positionSizeUsdt recorded by advisoryStore.recordOpen at
-      // trade-open time - not re-fetched or re-derived, so this can never
-      // drift from what was actually ordered. Derived from the same
-      // pnlPercent above rather than a separate formula, so the two
-      // numbers can never disagree with each other.
-      marginUsdt: adv.positionSizeUsdt,
-      pnlUsdt: adv.positionSizeUsdt != null ? (adv.positionSizeUsdt * pnlPercent) / 100 : null,
-      // 1R target price - same formula already used below for nextStage,
-      // computed here unconditionally (not just "the next one not yet
-      // advised on") so the widget always has a stable number to show,
-      // even after stage 1 has already been alerted on.
-      target1: adv.entryPrice + dir * r * 1,
+    statusPositions.push({
+      contract, action, entryPrice: adv.entryPrice, currentPrice, currentStop, pnlPercent,
     });
 
     // Next target the AI hasn't already advised on
@@ -167,12 +127,8 @@ async function run(config, creds) {
     }
   }
 
-  if (!watchState.__hadOpenPositions) {
-    watchState.__hadOpenPositions = true;
-    watchStateDirty = true;
-  }
   if (watchStateDirty) saveWatchState(watchState);
-  await scorecard.updateScorecard(scorecardPositions, config.strategy);
+  await scorecard.sendPositionStatus(statusPositions, config.strategy);
   console.log("Fast watch run complete.");
 }
 

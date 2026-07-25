@@ -80,12 +80,6 @@ async function runPreFilter(config, creds) {
   saveTrendHistory(trendHistoryStore);
   candidates.sort((a, b) => b.opportunity.totalScore - a.opportunity.totalScore);
 
-  try {
-    require("./scorecard").saveLatestScores(allScores);
-  } catch (err) {
-    console.log(`Pre-filter: couldn't persist scores for the scorecard - ${err.message}`);
-  }
-
   return {
     hasOpenPositions,
     activePositions,

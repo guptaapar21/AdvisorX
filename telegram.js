@@ -1,3 +1,13 @@
+// Trimmed down from the earlier version: editTelegramMessage() and
+// pinTelegramMessage() are gone. Those existed only for the old
+// edit-in-place live scorecard (the KWGT-era design), which has been
+// removed - fastwatch now sends a fresh, plain message every cycle
+// instead of editing one message in place. Every call here now goes
+// through fetchWithTimeout so a stalled request fails fast instead of
+// hanging for minutes.
+
+const { fetchWithTimeout } = require("./httpTimeout");
+
 async function sendTelegramMessage(text) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -10,7 +20,7 @@ async function sendTelegramMessage(text) {
   async function attempt(parseMode) {
     const body = { chat_id: chatId, text };
     if (parseMode) body.parse_mode = parseMode;
-    return fetch(url, {
+    return fetchWithTimeout(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -43,47 +53,6 @@ async function sendTelegramMessage(text) {
   return json.result?.message_id;
 }
 
-// Edits an existing message in place (used for the live scorecard, so it
-// refreshes instead of spamming a new message every cycle). Returns true
-// on success, false if the edit failed for any reason (e.g. the message
-// was deleted, or is too old to edit) - the caller should fall back to
-// sending a fresh message and tracking its new ID in that case.
-async function editTelegramMessage(messageId, text) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) {
-    throw new Error("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID env vars");
-  }
-
-  const url = `https://api.telegram.org/bot${token}/editMessageText`;
-
-  async function attempt(parseMode) {
-    const body = { chat_id: chatId, message_id: messageId, text };
-    if (parseMode) body.parse_mode = parseMode;
-    return fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-  }
-
-  let res = await attempt("Markdown");
-
-  if (!res.ok) {
-    const body = await res.text();
-    const isEntityParseError = res.status === 400 && /can't (parse entities|find end of the entity)/i.test(body);
-    if (isEntityParseError) {
-      res = await attempt(null);
-      if (res.ok) return true;
-    }
-    // "message is not modified" happens when the content is identical to
-    // last time - that's fine, not a real failure, just nothing changed.
-    if (/message is not modified/i.test(body)) return true;
-    return false;
-  }
-  return true;
-}
-
 // Fetches new incoming messages since `sinceUpdateId` (exclusive). Returns
 // { messages: [{updateId, text}], latestUpdateId }. Never throws - a
 // failure here should never block the run, just means no commands were
@@ -95,7 +64,7 @@ async function getTelegramUpdates(sinceUpdateId) {
   try {
     const offset = sinceUpdateId ? sinceUpdateId + 1 : undefined;
     const url = `https://api.telegram.org/bot${token}/getUpdates${offset ? `?offset=${offset}` : ""}`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url);
     if (!res.ok) return { messages: [], latestUpdateId: sinceUpdateId };
     const json = await res.json();
     const results = json.result || [];
@@ -109,29 +78,4 @@ async function getTelegramUpdates(sinceUpdateId) {
   }
 }
 
-// Pins a message so it stays reachable via the pinned-message banner at
-// the top of the chat, no matter how many new messages get sent after it
-// - this is what actually keeps the scorecard "always visible", since
-// Telegram has no way to make an edited message re-jump to the bottom of
-// the chat as new messages arrive. disable_notification avoids a "pinned
-// a message" ping every time (only needs to happen once per new message
-// ID, not every edit).
-async function pinTelegramMessage(messageId) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) return false;
-
-  const url = `https://api.telegram.org/bot${token}/pinChatMessage`;
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, message_id: messageId, disable_notification: true }),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-module.exports = { sendTelegramMessage, editTelegramMessage, getTelegramUpdates, pinTelegramMessage };
+module.exports = { sendTelegramMessage, getTelegramUpdates };
