@@ -1,9 +1,14 @@
 const { withKeyRotation } = require("./geminiKeys");
 const { parseQuotaInfo } = require("./geminiQuotaInfo");
+const { fetchWithTimeout } = require("./httpTimeout");
 
 async function callGemini(contents, systemPrompt, toolDeclarations, apiKey, model) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-  const res = await fetch(url, {
+  // 30s, not the default 15s - a real LLM generation call (with tool
+  // declarations and, for thinking-enabled models, an internal reasoning
+  // pass) legitimately takes longer than a plain REST call. A 15s ceiling
+  // here risked killing perfectly healthy calls, not just genuine hangs.
+  const res = await fetchWithTimeout(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify({
@@ -11,7 +16,7 @@ async function callGemini(contents, systemPrompt, toolDeclarations, apiKey, mode
       tools: [{ functionDeclarations: toolDeclarations }],
       contents,
     }),
-  });
+  }, 30000);
 
   if (res.status === 429) {
     // Read Google's ACTUAL quota details instead of guessing a flat
@@ -151,8 +156,17 @@ async function runAgentCycle({ userPrompt, systemPrompt, tools, model, cooldownM
       const isPlainObject = resultForModel != null && typeof resultForModel === "object" && !Array.isArray(resultForModel);
       const wrappedResponse = isPlainObject ? resultForModel : { result: resultForModel ?? null };
 
+      // Gemini 3 models always include an `id` on every functionCall. Live
+      // testing (July 2026) confirmed the API currently resolves
+      // functionResponses correctly by name/position even without echoing
+      // this id back - including the specific case that would actually be
+      // ambiguous (the same tool name called twice in parallel with
+      // different args). So this isn't fixing a live bug. It's included
+      // anyway because it's free, harmless, and matches Google's own
+      // stated (if not currently strictly enforced) requirement - cheap
+      // insurance against a future model version enforcing it for real.
       functionResponseParts.push({
-        functionResponse: { name: call.name, response: wrappedResponse },
+        functionResponse: { id: call.id, name: call.name, response: wrappedResponse },
       });
     }
 

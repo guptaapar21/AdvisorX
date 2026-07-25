@@ -1,3 +1,5 @@
+const { fetchWithTimeout } = require("./httpTimeout");
+
 const BASE = "https://public.coindcx.com";
 const API_BASE = "https://api.coindcx.com";
 
@@ -6,7 +8,7 @@ let marketsCache = null;
 // Resolve the CoinDCX "pair" string (e.g. "B-BTC_USDT") for a given base symbol.
 async function resolvePair(symbol, marketType) {
   if (!marketsCache) {
-    const res = await fetch(`${API_BASE}/exchange/v1/markets_details`);
+    const res = await fetchWithTimeout(`${API_BASE}/exchange/v1/markets_details`);
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       throw new Error(`markets_details failed: ${res.status} ${body}`);
@@ -36,7 +38,7 @@ async function resolvePair(symbol, marketType) {
 
 async function getCandles(pair, interval, limit) {
   const url = `${BASE}/market_data/candles?pair=${encodeURIComponent(pair)}&interval=${interval}&limit=${limit}`;
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`candles failed for ${pair} @ ${interval}: ${res.status} ${body}`);

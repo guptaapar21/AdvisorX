@@ -23,6 +23,7 @@
 
 const crypto = require("crypto");
 const { resolvePair, getCandles } = require("./coindcx");
+const { fetchWithTimeout } = require("./httpTimeout");
 
 const API_BASE = "https://api.coindcx.com";
 
@@ -39,7 +40,7 @@ async function privatePost(path, bodyExtra, creds) {
   const body = { timestamp: Date.now(), ...bodyExtra };
   const { jsonBody, signature } = sign(body, creds.apiSecret);
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -146,7 +147,7 @@ async function getMultiTimeframeCandles(symbol, marketType, timeframes, candleLi
 // the run, matching how the original itself wraps this in a try/catch.
 async function getOrderBook(pair) {
   const url = `https://public.coindcx.com/market_data/orderbook?pair=${encodeURIComponent(pair)}`;
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   if (!res.ok) throw new Error(`orderbook failed for ${pair}: ${res.status}`);
   const raw = await res.json();
 
