@@ -123,7 +123,13 @@
   <div class="footer" id="footerNote">fetching…</div>
 
 <script>
-  const SNAPSHOT_URL = "https://raw.githubusercontent.com/guptaapar21/AdvisorX/main/liveSnapshot.json";
+  // raw.githubusercontent.com sits behind GitHub's Fastly CDN, which can
+  // serve edge-cached content several minutes old regardless of query-string
+  // cache-busting - confirmed as expected GitHub behavior, not something a
+  // client can force around. The Contents API isn't cached the same way, so
+  // it's used instead - at the cost of a slower poll interval to stay under
+  // its 60 req/hour unauthenticated rate limit (75s gives real margin).
+  const SNAPSHOT_URL = "https://api.github.com/repos/guptaapar21/AdvisorX/contents/liveSnapshot.json?ref=main";
   const FX_URL = "https://open.er-api.com/v6/latest/USD";
 
   let usdInr = 87;
@@ -255,7 +261,10 @@
 
   async function fetchSnapshot() {
     try {
-      const res = await fetch(SNAPSHOT_URL + "?_=" + Date.now(), { cache: "no-store" });
+      const res = await fetch(SNAPSHOT_URL, {
+        cache: "no-store",
+        headers: { "Accept": "application/vnd.github.raw+json" },
+      });
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
       lastSnapshot = data;
@@ -270,7 +279,7 @@
 
   fetchFxRate();
   fetchSnapshot();
-  setInterval(fetchSnapshot, 20000);
+  setInterval(fetchSnapshot, 75000);       // stays under the API's 60/hr unauthenticated limit
   setInterval(fetchFxRate, 5 * 60 * 1000);
   setInterval(tickUpdatedAgo, 1000);
 </script>
