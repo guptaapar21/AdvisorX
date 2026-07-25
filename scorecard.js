@@ -82,6 +82,17 @@ function formatPositionLine(p) {
 // currentStop, pnlPercent } - built by fastWatch.js during its own loop,
 // since it already fetches all of this. `strategyName` is just for
 // context in the header.
+// Cheap, local-only refresh: no Telegram network call at all. This is what
+// fastWatch.js should call every single cycle (flat or not) to keep
+// liveSnapshot.json (and therefore the dashboard/widget) current, without
+// paying for a Telegram API round-trip every ~2 min forever - that network
+// call is what pushed run durations from ~20-40s up toward 2 min, eating
+// the exact scheduling margin the cron-job.org interval fix relied on.
+function refreshLiveSnapshotOnly(positions, strategyName) {
+  const latestScores = loadLatestScores();
+  saveLiveSnapshot(positions, latestScores, strategyName);
+}
+
 async function updateScorecard(positions, strategyName) {
   const state = loadScorecardState();
   const latestScores = loadLatestScores();
@@ -127,4 +138,4 @@ async function updateScorecard(positions, strategyName) {
   }
 }
 
-module.exports = { updateScorecard, saveLatestScores };
+module.exports = { updateScorecard, refreshLiveSnapshotOnly, saveLatestScores };

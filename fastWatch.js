@@ -39,18 +39,34 @@ async function run(config, creds) {
 
   if (activePositions.length === 0) {
     console.log("Fast watch: no open positions, nothing to check.");
-    // Still refresh the scorecard every cycle while flat, not just on the
-    // had-position -> flat transition. This used to be conditional on
-    // watchState.__hadOpenPositions to "avoid spam" - but updateScorecard
-    // edits the same pinned Telegram message in place rather than sending
-    // a new one each time (see scorecard.js), so there was never any real
-    // spam risk. The conditional version meant liveSnapshot.json (and
-    // therefore the dashboard/widget) only updated once and then went
-    // stale for the entire time the bot stayed flat - sometimes hours.
-    await scorecard.updateScorecard([], config.strategy);
+    // liveSnapshot.json (and therefore the dashboard/widget) needs to stay
+    // current every single cycle - this is cheap and local, no network
+    // call, so there's no cost to doing it unconditionally.
+    scorecard.refreshLiveSnapshotOnly([], config.strategy);
+
+    // The actual Telegram message edit is a real network round-trip, and
+    // doing it every ~2 min cycle (not just cheap local writes) pushed run
+    // durations from ~20-40s up toward 2 min - which ate all the
+    // scheduling margin the cron-job.org interval fix relied on, and
+    // brought back the "Cancelling since a higher priority waiting
+    // request exists" backlog. So the Telegram edit itself stays
+    // throttled to roughly every 10 min while flat, while the JSON above
+    // still refreshes every cycle regardless.
     const watchState = loadWatchState();
+    const tenMinutesMs = 10 * 60 * 1000;
+    const dueForTelegramRefresh =
+      watchState.__hadOpenPositions ||
+      !watchState.__lastFlatScorecardUpdate ||
+      Date.now() - watchState.__lastFlatScorecardUpdate > tenMinutesMs;
+
+    if (dueForTelegramRefresh) {
+      await scorecard.updateScorecard([], config.strategy);
+      watchState.__lastFlatScorecardUpdate = Date.now();
+    }
     if (watchState.__hadOpenPositions) {
       watchState.__hadOpenPositions = false;
+      saveWatchState(watchState);
+    } else if (dueForTelegramRefresh) {
       saveWatchState(watchState);
     }
     return;
