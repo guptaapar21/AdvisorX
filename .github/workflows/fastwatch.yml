@@ -4,7 +4,7 @@ on:
   workflow_dispatch: {}
   # No schedule here either - triggered by a SECOND external cron-job.org
   # job pointed at this workflow specifically, on a faster interval (e.g.
-  # every 1 minute) than the main agent workflow. Costs 0 Gemini calls -
+  # every ~2 minutes) than the main agent workflow. Costs 0 Gemini calls -
   # pure arithmetic against real prices, so a tight interval is safe.
 
 permissions:
@@ -37,8 +37,6 @@ jobs:
           git config user.name "coindcx-fastwatch-bot"
           git config user.email "actions@github.com"
           [ -f fastWatchState.json ] && git add fastWatchState.json
-          [ -f scorecardState.json ] && git add scorecardState.json
-          [ -f liveSnapshot.json ] && git add liveSnapshot.json
           git diff --staged --quiet && exit 0
           git commit -m "Update fast-watch state [skip ci]"
           for i in 1 2 3; do
