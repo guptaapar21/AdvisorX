@@ -1,11 +1,11 @@
 {
-  "updatedAt": 1784966055793,
+  "updatedAt": 1784966176886,
   "strategyName": "balanced",
   "positions": [],
   "latestScores": [
     {
       "symbol": "BTC",
-      "score": 67,
+      "score": 57,
       "action": "short",
       "setupType": "trend_following",
       "isBreakoutExtension": false
@@ -19,10 +19,10 @@
     },
     {
       "symbol": "SOL",
-      "score": 71,
+      "score": 76,
       "action": "short",
-      "setupType": "trend_following",
-      "isBreakoutExtension": false
+      "setupType": "breakout",
+      "isBreakoutExtension": true
     },
     {
       "symbol": "DOGE",
@@ -33,12 +33,13 @@
     },
     {
       "symbol": "XRP",
-      "score": 55,
-      "action": "wait",
-      "setupType": "trend_following"
+      "score": 75,
+      "action": "short",
+      "setupType": "trend_following",
+      "isBreakoutExtension": false
     }
   ],
-  "latestScoresTimestamp": 1784965910421,
-  "reasoning": "NO ACTION — no positions, no setups cleared threshold.\nReason: Best candidate SOL scored 71 (trend_following), below the required 75.\nScores: SOL 71, BTC 67, ETH 67, XRP 55, DOGE 48",
-  "reasoningTimestamp": 1784965910421
+  "latestScoresTimestamp": 1784966145949,
+  "reasoning": "NO ACTION — no positions, top setups failed stop check or liquidity.\nReason: XRP and SOL top scores failed stop-loss distance or quality checks.\nScores: SOL 76, XRP 75, BTC 67, ETH 67, DOGE 58",
+  "reasoningTimestamp": 1784966156557
 }
