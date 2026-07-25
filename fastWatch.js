@@ -89,14 +89,30 @@ async function run(config, creds) {
     const currentStop = adv.lastAdvisedStop;
     const stopCrossed = action === "long" ? currentPrice <= currentStop : currentPrice >= currentStop;
 
+    // CoinDCX shows ROE (return on margin, i.e. leveraged) - this was
+    // showing raw unleveraged price movement instead, so it never
+    // matched what's actually on screen in the app (e.g. 0.12% here vs
+    // 1.90% ROE on CoinDCX for the same move, at 10x leverage). Multiply
+    // by leverage to match CoinDCX's own convention.
+    const pnlPercent = ((currentPrice - adv.entryPrice) * dir / adv.entryPrice) * 100 * (adv.leverage || 1);
+
     scorecardPositions.push({
       contract, action, entryPrice: adv.entryPrice, currentPrice, currentStop,
-      // CoinDCX shows ROE (return on margin, i.e. leveraged) - this was
-      // showing raw unleveraged price movement instead, so it never
-      // matched what's actually on screen in the app (e.g. 0.12% here vs
-      // 1.90% ROE on CoinDCX for the same move, at 10x leverage). Multiply
-      // by leverage to match CoinDCX's own convention.
-      pnlPercent: ((currentPrice - adv.entryPrice) * dir / adv.entryPrice) * 100 * (adv.leverage || 1),
+      pnlPercent,
+      // Absolute P&L in USDT, for anything (e.g. the widget) that wants a
+      // real money figure rather than just the ROE%. marginUsdt is the
+      // same positionSizeUsdt recorded by advisoryStore.recordOpen at
+      // trade-open time - not re-fetched or re-derived, so this can never
+      // drift from what was actually ordered. Derived from the same
+      // pnlPercent above rather than a separate formula, so the two
+      // numbers can never disagree with each other.
+      marginUsdt: adv.positionSizeUsdt,
+      pnlUsdt: adv.positionSizeUsdt != null ? (adv.positionSizeUsdt * pnlPercent) / 100 : null,
+      // 1R target price - same formula already used below for nextStage,
+      // computed here unconditionally (not just "the next one not yet
+      // advised on") so the widget always has a stable number to show,
+      // even after stage 1 has already been alerted on.
+      target1: adv.entryPrice + dir * r * 1,
     });
 
     // Next target the AI hasn't already advised on
