@@ -21,7 +21,12 @@ permissions:
 # in progress when the next trigger fires, the new one waits its turn
 # rather than racing.
 concurrency:
-  group: coindcx-agent
+  # Renamed from coindcx-agent - run #1905 got permanently wedged
+  # (GitHub couldn't even Cancel it) and was blocking every later run
+  # indefinitely. Renaming the group orphans that stuck run in the old
+  # group forever and starts a fresh queue here - immediate fix, doesn't
+  # depend on the stuck run ever actually terminating.
+  group: coindcx-agent-v2
   cancel-in-progress: false
 
 jobs:

@@ -11,7 +11,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: coindcx-fastwatch
+  # Renamed from coindcx-fastwatch - runs #8059/#8102 got permanently
+  # wedged (GitHub couldn't even Cancel them) and were blocking every
+  # later run indefinitely. Renaming the group orphans those stuck runs
+  # in the old group forever and starts a fresh queue here - immediate
+  # fix, doesn't depend on the stuck runs ever actually terminating.
+  group: coindcx-fastwatch-v2
   cancel-in-progress: false
 
 jobs:
