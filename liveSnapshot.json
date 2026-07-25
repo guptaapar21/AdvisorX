@@ -1,54 +1,52 @@
 {
-  "updatedAt": 1784941829319,
+  "updatedAt": 1784941938211,
   "strategyName": "balanced",
   "positions": [
     {
       "contract": "B-BTC_USDT",
       "action": "short",
       "entryPrice": 63930.7,
-      "currentPrice": 64051.96,
+      "currentPrice": 64034.01,
       "currentStop": 64653.56,
-      "pnlPercent": -2.086415446725943
+      "pnlPercent": -1.7775653950293901
     }
   ],
   "latestScores": [
     {
       "symbol": "BTC",
-      "score": 81,
+      "score": 79,
       "action": "short",
-      "setupType": "trend_following",
-      "isBreakoutExtension": false
+      "setupType": "breakout",
+      "isBreakoutExtension": true
     },
     {
       "symbol": "ETH",
-      "score": 54,
-      "action": "long",
+      "score": 65,
+      "action": "short",
       "setupType": "breakout",
       "isBreakoutExtension": true
     },
     {
       "symbol": "SOL",
-      "score": 66,
-      "action": "short",
-      "setupType": "mean_reversion",
-      "isBreakoutExtension": false
+      "score": 50,
+      "action": "wait",
+      "setupType": "trend_following"
     },
     {
       "symbol": "DOGE",
-      "score": 65,
-      "action": "long",
-      "setupType": "breakout",
-      "isBreakoutExtension": true
+      "score": 55,
+      "action": "wait",
+      "setupType": "trend_following"
     },
     {
       "symbol": "XRP",
-      "score": 64,
+      "score": 63,
       "action": "short",
       "setupType": "mean_reversion",
       "isBreakoutExtension": false
     }
   ],
-  "latestScoresTimestamp": 1784941540529,
-  "reasoning": "NO ACTION — BTC short held, no reversal or take-profit triggered.\nReason: Position is at -0.27R, reversal score is low (12), waiting for stage 1 take-profit.\nScores: BTC 81, SOL 66, DOGE 65, XRP 64, ETH 54\nReversal detail (BTC): score 12 - primary timeframe entering range (score=-3)",
-  "reasoningTimestamp": 1784941544905
+  "latestScoresTimestamp": 1784941855439,
+  "reasoning": "MANAGED — BTC short position held, early reversal warning noted.\nReason: Reversal score is 22 (below 30-70 action threshold), MACD divergence suggests potential bounce.\nScores: BTC 80, ETH 75, XRP 63, DOGE 55, SOL 50\nReversal detail (BTC): score 22 - primary timeframe entering range (score=-8); bullish MACD divergence: price new low (64045.92) but MACD didn't confirm (-19.4628) (strength 60)",
+  "reasoningTimestamp": 1784941867949
 }
