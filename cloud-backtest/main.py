@@ -113,7 +113,7 @@ def main():
 
             if len(trades) == 0:
                 print(f"    0 trades ({time.time()-t1:.0f}s)")
-                all_rows.append({"coin": coin, "strategy": strategy, "trades": 0})
+                all_rows.append({"coin": coin, "strategy": strategy, "total_trades": 0})
                 continue
 
             trades = apply_fees_and_interest(trades)
@@ -140,11 +140,11 @@ def main():
     lines = [f"📊 *Cloud backtest complete* ({start_date} to {end_date}, {days}d)"]
     if not results_df.empty:
         for _, r in results_df.iterrows():
-            if r.get("trades", 0) == 0:
+            if r.get("total_trades", 0) == 0:
                 lines.append(f"{r['coin']}/{r['strategy']}: 0 trades")
             else:
                 lines.append(
-                    f"{r['coin']}/{r['strategy']}: {int(r['trades'])} trades | "
+                    f"{r['coin']}/{r['strategy']}: {int(r['total_trades'])} trades | "
                     f"net avgR {r['avg_r_net']:+.3f} (gross {r['avg_r_gross']:+.3f}) | "
                     f"win {r['win_rate_pct_net']:.0f}%"
                 )
