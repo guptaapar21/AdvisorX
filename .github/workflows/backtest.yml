@@ -12,9 +12,9 @@ on:
         required: false
         default: '["conservative"]'
       min_scores:
-        description: 'JSON array of min_score thresholds - bracketing the proven 80 tightly. Not going above 85: stricter can only ever reduce trade count, which works against the actual goal (more trades), so this stays focused on confirming 80 rather than chasing a stricter ceiling.'
+        description: 'JSON array of min_score thresholds - testing lower to increase trade volume. 65/70 were tested earlier under mixed ATR/exit-mode settings; this retests them plus lower values (50, 55, 60) under the same clean methodology (fixed ATR 2.5x, staged only) as the 75-85 range, for a directly comparable full curve.'
         required: false
-        default: '[75, 78, 80, 82, 85]'
+        default: '[50, 55, 60, 65, 70]'
       atr_values:
         description: "Fixed to conservative's real default (2.5x) - already confirmed the right setting, not re-sweeping it."
         required: false
