@@ -99,3 +99,36 @@ def apply_fees_and_interest(trades_df):
     )
     trades_df["net_r"] = trades_df["r_achieved"] - trades_df["fee_interest_r_cost"]
     return trades_df
+
+
+# Standing convention for real-dollar reporting, established directly from
+# a request to see actual dollar terms rather than only R-multiples:
+# $500 starting capital, 5% risked per trade, FIXED (not compounding) -
+# i.e. every trade risks exactly $25 regardless of prior wins/losses.
+# This is now a standard part of every backtest's output, not a one-off
+# calculation - keeps every future result immediately readable in money,
+# not just abstract R.
+DEFAULT_CAPITAL = 500.0
+DEFAULT_RISK_PCT = 0.05
+
+
+def apply_dollar_pnl(trades_df, capital=DEFAULT_CAPITAL, risk_pct=DEFAULT_RISK_PCT):
+    """Adds 'dollar_pnl' (per trade) and 'dollar_running_total' (cumulative,
+    in entry-time order) columns. Uses net_r (post-fee) since gross R
+    alone would overstate what actually lands in the account. Fixed risk
+    per trade, not compounded - matches the explicit "assume fixed
+    capital" convention requested, so this is a conservative, easy-to-
+    reason-about number rather than an equity-curve compounding effect
+    that could make small differences look larger than they are."""
+    if len(trades_df) == 0:
+        trades_df["dollar_pnl"] = []
+        trades_df["dollar_running_total"] = []
+        return trades_df
+
+    trades_df = trades_df.copy()
+    risk_dollars = capital * risk_pct
+    r_col = "net_r" if "net_r" in trades_df.columns else "r_achieved"
+    trades_df = trades_df.sort_values("entry_time").reset_index(drop=True)
+    trades_df["dollar_pnl"] = trades_df[r_col] * risk_dollars
+    trades_df["dollar_running_total"] = trades_df["dollar_pnl"].cumsum()
+    return trades_df

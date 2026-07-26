@@ -216,13 +216,16 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
 
 
 def summarize_results(trades_df):
-    """Reports BOTH gross (r_achieved, pre-fee) and net (net_r, post-fee)
-    numbers side by side, once fee_model.apply_fees_and_interest() has
-    been run on trades_df - makes the fee impact directly visible rather
-    than silently replacing one number with another."""
+    """Reports gross (r_achieved, pre-fee), net (net_r, post-fee), AND
+    real-dollar numbers side by side, once fee_model.apply_fees_and_interest()
+    and apply_dollar_pnl() have been run on trades_df. Dollar figures use
+    the standing $500 capital / 5% fixed risk per trade convention
+    (fee_model.DEFAULT_CAPITAL / DEFAULT_RISK_PCT) - added because R-
+    multiples alone were hard to reason about in practical terms."""
     if len(trades_df) == 0:
         return {"total_trades": 0}
     has_net = "net_r" in trades_df.columns
+    has_dollar = "dollar_pnl" in trades_df.columns
     wins_gross = trades_df[trades_df["r_achieved"] > 0]
     losses_gross = trades_df[trades_df["r_achieved"] <= 0]
 
@@ -242,5 +245,16 @@ def summarize_results(trades_df):
             "avg_r_net": round(trades_df["net_r"].mean(), 3),
             "total_r_net": round(trades_df["net_r"].sum(), 2),
             "avg_fee_interest_r_cost": round(trades_df["fee_interest_r_cost"].mean(), 3),
+        })
+    if has_dollar:
+        wins_d = trades_df[trades_df["dollar_pnl"] > 0]
+        losses_d = trades_df[trades_df["dollar_pnl"] <= 0]
+        summary.update({
+            "total_dollar_pnl": round(trades_df["dollar_pnl"].sum(), 2),
+            "avg_dollar_win": round(wins_d["dollar_pnl"].mean(), 2) if len(wins_d) else 0,
+            "avg_dollar_loss": round(losses_d["dollar_pnl"].mean(), 2) if len(losses_d) else 0,
+            "biggest_dollar_win": round(trades_df["dollar_pnl"].max(), 2),
+            "biggest_dollar_loss": round(trades_df["dollar_pnl"].min(), 2),
+            "final_dollar_running_total": round(trades_df["dollar_running_total"].iloc[-1], 2),
         })
     return summary

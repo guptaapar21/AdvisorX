@@ -18,9 +18,21 @@ Configurable via environment variables (all optional, sensible defaults):
                  compute credits, now it's just GitHub Actions minutes,
                  but the same instinct to keep it bounded still applies)
   BT_MAX_HOLD_HOURS  default 36 (matches the live bot's own deployed cap)
+  BT_ATR_OVERRIDE    optional float - overrides a preset's default ATR stop multiplier
+  BT_MIN_SCORE_OVERRIDE  optional float - overrides a preset's default min_score threshold
+                 (added for the "find the sweet spot" sweep - loosening
+                 conservative's bar specifically on SOL/DOGE, the two
+                 coins already proven to work well with it)
+  BT_FULL_CLOSE_AT_1R  "true"/"false" - close 100% at the first R target
+                 instead of the normal 3-stage 1R/2R/3R exit
   TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID  optional - if both set, sends a
                  compact summary on completion (same env var names as
                  the live bot, for consistency)
+
+Every result is now reported in BOTH R-multiples and real dollars, using
+a standing $500 capital / 5% fixed risk-per-trade convention (see
+fee_model.py's DEFAULT_CAPITAL/DEFAULT_RISK_PCT) - added after a request
+to see actual dollar terms rather than only abstract R-multiples.
 """
 import os
 import sys
@@ -33,7 +45,7 @@ import requests
 
 from coindcx_fetcher import fetch_coindcx_klines, resample_candles
 from backtest_engine import run_backtest, summarize_results
-from fee_model import apply_fees_and_interest
+from fee_model import apply_fees_and_interest, apply_dollar_pnl
 
 DEFAULT_COINS = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
 DEFAULT_STRATEGIES = ["ultra-short", "aggressive", "balanced", "conservative", "swing-trend"]
@@ -76,6 +88,8 @@ def main():
 
     atr_override_raw = os.environ.get("BT_ATR_OVERRIDE", "").strip()
     atr_override = float(atr_override_raw) if atr_override_raw else None
+    min_score_raw = os.environ.get("BT_MIN_SCORE_OVERRIDE", "").strip()
+    min_score_override = float(min_score_raw) if min_score_raw else None
     full_close_at_1r = os.environ.get("BT_FULL_CLOSE_AT_1R", "").strip().lower() in ("1", "true", "yes")
 
     print(f"Backtest window: {start_date} to {end_date} ({days} days)")
@@ -83,6 +97,7 @@ def main():
     print(f"Strategies: {strategies}")
     print(f"Max hold: {max_hold_hours}h ({max_hold_bars} x 5m bars)")
     print(f"ATR multiplier override: {atr_override if atr_override is not None else '(preset default)'}")
+    print(f"Min score override: {min_score_override if min_score_override is not None else '(preset default)'}")
     print(f"Full close at stage-1 R: {full_close_at_1r}")
 
     os.makedirs("results", exist_ok=True)
@@ -91,6 +106,8 @@ def main():
     variant_tag = ""
     if atr_override is not None:
         variant_tag += f"_atr{atr_override}"
+    if min_score_override is not None:
+        variant_tag += f"_score{min_score_override}"
     if full_close_at_1r:
         variant_tag += "_fullclose1R"
     results_path = f"results/backtest_{coins_tag}{variant_tag}_{timestamp}.csv"
@@ -119,6 +136,7 @@ def main():
                 trades, equity = run_backtest(
                     coin, candles_5m, strategy=strategy, max_hold_bars=max_hold_bars,
                     atr_multiplier_override=atr_override, full_close_at_stage1=full_close_at_1r,
+                    min_score=min_score_override,
                 )
             except Exception as e:
                 print(f"    FAILED: {e}")
@@ -132,18 +150,21 @@ def main():
                 continue
 
             trades = apply_fees_and_interest(trades)
+            trades = apply_dollar_pnl(trades)  # standing $500/5%-fixed convention, see fee_model.py
             trades["coin"] = coin  # already has 'strategy' from the engine itself
             all_trades.append(trades)
 
             summary = summarize_results(trades)
             row = {"coin": coin, "strategy": strategy, "days": days,
                    "atr_override": atr_override if atr_override is not None else "",
+                   "min_score_override": min_score_override if min_score_override is not None else "",
                    "full_close_at_1r": full_close_at_1r, **summary}
             row.pop("exit_reason_breakdown", None)  # dict - not CSV-friendly, kept in trades log instead
             all_rows.append(row)
             print(f"    {len(trades)} trades in {time.time()-t1:.0f}s | "
                   f"gross avgR {summary.get('avg_r_gross')} -> net avgR {summary.get('avg_r_net')} "
-                  f"(fee/interest cost avg {summary.get('avg_fee_interest_r_cost')})")
+                  f"(fee/interest cost avg {summary.get('avg_fee_interest_r_cost')}) | "
+                  f"${summary.get('total_dollar_pnl')} total on $500 cap/5% risk")
 
     results_df = pd.DataFrame(all_rows)
     results_df.to_csv(results_path, index=False)
@@ -157,6 +178,8 @@ def main():
     variant_desc = []
     if atr_override is not None:
         variant_desc.append(f"ATR {atr_override}x")
+    if min_score_override is not None:
+        variant_desc.append(f"min_score {min_score_override:.0f}")
     if full_close_at_1r:
         variant_desc.append("full-close@1R")
     variant_str = f" [{', '.join(variant_desc)}]" if variant_desc else ""
@@ -169,7 +192,8 @@ def main():
                 lines.append(
                     f"{r['coin']}/{r['strategy']}: {int(r['total_trades'])} trades | "
                     f"net avgR {r['avg_r_net']:+.3f} (gross {r['avg_r_gross']:+.3f}) | "
-                    f"win {r['win_rate_pct_net']:.0f}%"
+                    f"win {r['win_rate_pct_net']:.0f}% | "
+                    f"${r['total_dollar_pnl']:+.0f} on $500 cap/5% risk"
                 )
     if errors:
         lines.append(f"⚠️ {len(errors)} error(s): " + " | ".join(errors[:3]))
