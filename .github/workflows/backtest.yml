@@ -4,19 +4,23 @@ on:
   workflow_dispatch:
     inputs:
       coins:
-        description: 'JSON array of coins, e.g. ["BTC"] for a quick test'
+        description: 'JSON array of coins. Default = the two proven winners (SOL, DOGE) - this sweep is specifically about fine-tuning on coins already confirmed to work, not a general 5-coin scan'
         required: false
-        default: '["BTC","ETH","SOL","XRP","DOGE"]'
+        default: '["SOL","DOGE"]'
       strategies:
-        description: 'JSON array of presets to sweep (includes balanced - what''s actually live - alongside the two wider-stop presets, so this sweep can compare against production, not just alternatives against each other)'
+        description: 'JSON array of presets to sweep'
         required: false
-        default: '["balanced","conservative","swing-trend"]'
+        default: '["balanced","conservative"]'
+      min_scores:
+        description: 'JSON array of min_score thresholds to test - the "sweet spot" dimension: lower = more trades but each less selective, higher = fewer but stricter. conservative''s real default is 80; balanced''s is 75.'
+        required: false
+        default: '[65, 70, 75, 80]'
       atr_values:
-        description: "JSON array of ATR stop-loss multipliers to test per preset (2.5 = each preset's own current default)"
+        description: "JSON array of ATR stop-loss multipliers to test per preset"
         required: false
         default: '[2.0, 2.25, 2.5]'
       full_close_modes:
-        description: 'JSON array of true/false - whether to test "close 100% at stage-1 R" (true), the existing staged 1/2/3R exit (false), or both'
+        description: 'JSON array of true/false - "close 100% at stage-1 R" vs the existing staged 1/2/3R exit'
         required: false
         default: '[true, false]'
       days:
@@ -29,9 +33,10 @@ on:
         default: "36"
 
 jobs:
-  # Builds the full cross-product (coin x strategy x atr x full_close) as a
-  # single JSON list, so every combination gets its own independent,
-  # parallel job below - not one job looping through all of them serially.
+  # Builds the full cross-product (coin x strategy x min_score x atr x
+  # full_close) as a single JSON list - default inputs give
+  # 2 coins x 2 strategies x 4 min_scores x 3 atr x 2 full_close = 96
+  # combinations, each its own independent parallel job.
   generate-matrix:
     runs-on: ubuntu-latest
     outputs:
@@ -40,15 +45,14 @@ jobs:
     steps:
       - id: build
         env:
-          # Passed as env vars, NOT inline ${{ }} substitution inside the
-          # script body - the JSON inputs contain double quotes (e.g.
-          # ["BTC","ETH"]), which previously collided with the
-          # `python3 -c "..."` shell string's own double-quoting and cut
-          # the command off early, feeding Python a broken/empty string
-          # (the "Expecting value" JSONDecodeError). Env vars sidestep
-          # shell-quoting entirely - this is the standard safe pattern.
+          # Env vars, not inline ${{ }} substitution inside the script
+          # body - the JSON inputs contain double quotes, which collide
+          # with a `python3 -c "..."` shell string's own quoting and
+          # break the command (this bit us once already - see the fix
+          # history). Env vars sidestep shell-quoting entirely.
           IN_COINS: ${{ inputs.coins }}
           IN_STRATEGIES: ${{ inputs.strategies }}
+          IN_MIN_SCORES: ${{ inputs.min_scores }}
           IN_ATR_VALUES: ${{ inputs.atr_values }}
           IN_FULL_CLOSE_MODES: ${{ inputs.full_close_modes }}
         run: |
@@ -57,18 +61,21 @@ jobs:
 
           coins = json.loads(os.environ["IN_COINS"])
           strategies = json.loads(os.environ["IN_STRATEGIES"])
+          min_scores = json.loads(os.environ["IN_MIN_SCORES"])
           atr_values = json.loads(os.environ["IN_ATR_VALUES"])
           full_close_modes = json.loads(os.environ["IN_FULL_CLOSE_MODES"])
 
           combos = []
           for coin in coins:
               for strategy in strategies:
-                  for atr in atr_values:
-                      for full_close in full_close_modes:
-                          combos.append({
-                              "coin": coin, "strategy": strategy,
-                              "atr": str(atr), "full_close": str(full_close).lower(),
-                          })
+                  for min_score in min_scores:
+                      for atr in atr_values:
+                          for full_close in full_close_modes:
+                              combos.append({
+                                  "coin": coin, "strategy": strategy,
+                                  "min_score": str(min_score),
+                                  "atr": str(atr), "full_close": str(full_close).lower(),
+                              })
 
           matrix = {"include": combos}
           print(f"Generated {len(combos)} combinations")
@@ -84,10 +91,10 @@ jobs:
     strategy:
       matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
       fail-fast: false  # one combo failing/timing out must never cancel the others
-    # One (coin, strategy) pair with ONE atr value and ONE exit mode is a
+    # One (coin, strategy) pair with ONE min_score/atr/exit-mode combo is a
     # single-variant run - roughly the same cost as one preset in the
-    # original per-coin job (~8-10 min for a full year), not the full
-    # 5-preset sweep. 60 min is generous headroom.
+    # original per-coin job (~8-10 min for a full year). 60 min is
+    # generous headroom, nowhere near GitHub's 360-min hard ceiling.
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -99,7 +106,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
 
-      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / ATR ${{ matrix.atr }} / full_close=${{ matrix.full_close }})
+      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / score ${{ matrix.min_score }} / ATR ${{ matrix.atr }} / full_close=${{ matrix.full_close }})
         working-directory: cloud-backtest
         env:
           BT_COINS: ${{ matrix.coin }}
@@ -107,6 +114,7 @@ jobs:
           BT_DAYS: ${{ inputs.days }}
           BT_MAX_HOLD_HOURS: ${{ inputs.max_hold_hours }}
           BT_ATR_OVERRIDE: ${{ matrix.atr }}
+          BT_MIN_SCORE_OVERRIDE: ${{ matrix.min_score }}
           BT_FULL_CLOSE_AT_1R: ${{ matrix.full_close }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -119,7 +127,7 @@ jobs:
           git config user.email "actions@github.com"
           git add results/
           git diff --staged --quiet && exit 0
-          git commit -m "Add backtest results: ${{ matrix.coin }}/${{ matrix.strategy }} ATR${{ matrix.atr }} fullclose=${{ matrix.full_close }} [skip ci]"
+          git commit -m "Add backtest results: ${{ matrix.coin }}/${{ matrix.strategy }} score${{ matrix.min_score }} ATR${{ matrix.atr }} fullclose=${{ matrix.full_close }} [skip ci]"
           for i in 1 2 3 4 5; do
             if git push; then
               exit 0
@@ -128,17 +136,11 @@ jobs:
             if git pull --rebase; then
               continue
             fi
-            # With up to ~60 jobs committing to the same branch, real
-            # push races are expected here, not just theoretical - more
-            # retries than the single-job workflows, and each job's own
-            # filename already includes coin+atr+full_close+timestamp, so
-            # a conflict should never be a genuine content clash, just
-            # git-level contention.
             git rebase --abort
             git fetch origin main
             git reset --soft origin/main
             git add results/
-            git commit -m "Add backtest results: ${{ matrix.coin }}/${{ matrix.strategy }} ATR${{ matrix.atr }} fullclose=${{ matrix.full_close }} [skip ci]" --allow-empty
+            git commit -m "Add backtest results: ${{ matrix.coin }}/${{ matrix.strategy }} score${{ matrix.min_score }} ATR${{ matrix.atr }} fullclose=${{ matrix.full_close }} [skip ci]" --allow-empty
           done
           echo "Failed to push results after 5 attempts."
           exit 1
@@ -146,6 +148,6 @@ jobs:
       - name: Upload results as workflow artifact too
         uses: actions/upload-artifact@v4
         with:
-          name: backtest-results-${{ matrix.coin }}-${{ matrix.strategy }}-atr${{ matrix.atr }}-fc${{ matrix.full_close }}
+          name: backtest-results-${{ matrix.coin }}-${{ matrix.strategy }}-score${{ matrix.min_score }}-atr${{ matrix.atr }}-fc${{ matrix.full_close }}
           path: cloud-backtest/results/
           retention-days: 90
