@@ -85,7 +85,13 @@ function formatBacktestedIdleMessage(scored, config) {
   for (const s of scored) {
     const req = config.perCoinMinScore?.[s.symbol];
     const tier = getTierLabel(s.symbol, s.score);
-    lines.push(`${s.symbol}: ${s.score}/${req ?? "-"}${tier ? ` (${tier})` : ""}`);
+    // Distinguishes a genuine "wait" (no real setup, normal/expected) from
+    // a silent failure - both used to render as an unexplained bare 0.
+    let reason = "";
+    if (s.note && s.note.startsWith("error:")) reason = " (error - check logs)";
+    else if (s.note) reason = " (cooldown)";
+    else if (s.action === "wait") reason = " (wait)";
+    lines.push(`${s.symbol}: ${s.score}/${req ?? "-"}${tier ? ` (${tier})` : reason}`);
   }
   lines.push("BTC/XRP excluded");
   return lines.join("\n");

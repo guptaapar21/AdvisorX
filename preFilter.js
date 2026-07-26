@@ -57,24 +57,33 @@ async function runPreFilter(config, creds) {
   for (const symbol of config.symbols) {
     const cooldown = tradeOutcomeLog.isSymbolInCooldown(symbol);
     if (cooldown.inCooldown) {
-      allScores.push({ symbol, score: 0, note: `in cooldown: ${cooldown.reason} (${cooldown.remainingHours}h remaining)` });
+      const note = `in cooldown: ${cooldown.reason} (${cooldown.remainingHours}h remaining)`;
+      allScores.push({ symbol, score: 0, note });
+      console.log(`${symbol}: score 0 (${note})`);
       continue;
     }
     try {
       const analysis = await analyzeSymbol(symbol, config, trendHistoryStore);
       if (analysis.error) {
         allScores.push({ symbol, score: 0, note: analysis.error });
+        console.log(`${symbol}: score 0 (error: ${analysis.error})`);
         continue;
       }
       allScores.push({
         symbol, score: analysis.opportunity.totalScore, action: analysis.strategyResult.action,
         setupType: analysis.strategyResult.strategyType, isBreakoutExtension: analysis.opportunity.isBreakoutExtension,
       });
+      // Makes a genuine "wait" (no real setup this cycle - a normal,
+      // expected outcome) visible and distinct from a silent failure in
+      // the log, which previously both looked identical (a bare score of
+      // 0 with no explanation either way).
+      console.log(`${symbol}: score ${analysis.opportunity.totalScore} (action: ${analysis.strategyResult.action})`);
       if (analysis.strategyResult.action !== "wait" && analysis.opportunity.totalScore >= getEffectiveMinScore(config, symbol)) {
         candidates.push(analysis);
       }
     } catch (err) {
       allScores.push({ symbol, score: 0, note: `error: ${err.message}` });
+      console.log(`${symbol}: score 0 (error: ${err.message})`);
     }
   }
 
