@@ -4,15 +4,23 @@ on:
   workflow_dispatch:
     inputs:
       coins:
-        description: 'JSON array of coins, e.g. ["BTC","ETH"] for a quick test. Default = all 5.'
+        description: 'JSON array of coins, e.g. ["BTC"] for a quick test'
         required: false
         default: '["BTC","ETH","SOL","XRP","DOGE"]'
       strategies:
-        description: "Comma-separated presets (default: all 5)"
+        description: 'JSON array of presets to sweep (default: the two wider-stop presets, per the decision to stop fine-tuning ultra-short/aggressive)'
         required: false
-        default: "ultra-short,aggressive,balanced,conservative,swing-trend"
+        default: '["conservative","swing-trend"]'
+      atr_values:
+        description: "JSON array of ATR stop-loss multipliers to test per preset (2.5 = each preset's own current default)"
+        required: false
+        default: '[2.0, 2.25, 2.5]'
+      full_close_modes:
+        description: 'JSON array of true/false - whether to test "close 100% at stage-1 R" (true), the existing staged 1/2/3R exit (false), or both'
+        required: false
+        default: '[true, false]'
       days:
-        description: "Lookback window in days (365 = 1 year, the agreed compute-budget cap - raise only if you deliberately want a longer/costlier run)"
+        description: "Lookback window in days (365 = 1 year, the agreed compute-budget cap)"
         required: false
         default: "365"
       max_hold_hours:
@@ -21,24 +29,53 @@ on:
         default: "36"
 
 jobs:
+  # Builds the full cross-product (coin x strategy x atr x full_close) as a
+  # single JSON list, so every combination gets its own independent,
+  # parallel job below - not one job looping through all of them serially.
+  generate-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.build.outputs.matrix }}
+      count: ${{ steps.build.outputs.count }}
+    steps:
+      - id: build
+        run: |
+          python3 -c "
+          import json, os
+
+          coins = json.loads('''${{ inputs.coins }}''')
+          strategies = json.loads('''${{ inputs.strategies }}''')
+          atr_values = json.loads('''${{ inputs.atr_values }}''')
+          full_close_modes = json.loads('''${{ inputs.full_close_modes }}''')
+
+          combos = []
+          for coin in coins:
+              for strategy in strategies:
+                  for atr in atr_values:
+                      for full_close in full_close_modes:
+                          combos.append({
+                              'coin': coin, 'strategy': strategy,
+                              'atr': str(atr), 'full_close': str(full_close).lower(),
+                          })
+
+          matrix = {'include': combos}
+          print(f'Generated {len(combos)} combinations')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'matrix={json.dumps(matrix)}\n')
+              f.write(f'count={len(combos)}\n')
+          "
+
   backtest:
+    needs: generate-matrix
     runs-on: ubuntu-latest
     strategy:
-      # One job PER COIN, running in parallel - not one giant job doing all
-      # 5 coins serially. This means: (1) total wall-clock time is roughly
-      # 1/5th of running everything in one job, and (2) if any single
-      # coin's job hits its timeout or fails, the other coins' jobs are
-      # completely unaffected and have already committed their own
-      # results independently - there's no longer a single point of
-      # failure for the whole grid.
-      matrix:
-        coin: ${{ fromJson(inputs.coins) }}
-      fail-fast: false  # one coin failing/timing out must never cancel the others
-    # One coin x up to 5 strategies x 365 days: measured timing puts this
-    # around 40-50 min including the data fetch. 90 min is generous
-    # headroom, not an expected normal duration - and critically, this is
-    # PER COIN now, nowhere near GitHub's hard 360-minute ceiling per job.
-    timeout-minutes: 90
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+      fail-fast: false  # one combo failing/timing out must never cancel the others
+    # One (coin, strategy) pair with ONE atr value and ONE exit mode is a
+    # single-variant run - roughly the same cost as one preset in the
+    # original per-coin job (~8-10 min for a full year), not the full
+    # 5-preset sweep. 60 min is generous headroom.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -49,26 +86,28 @@ jobs:
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
 
-      - name: Run backtest for ${{ matrix.coin }}
+      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / ATR ${{ matrix.atr }} / full_close=${{ matrix.full_close }})
         working-directory: cloud-backtest
         env:
           BT_COINS: ${{ matrix.coin }}
-          BT_STRATEGIES: ${{ inputs.strategies }}
+          BT_STRATEGIES: ${{ matrix.strategy }}
           BT_DAYS: ${{ inputs.days }}
           BT_MAX_HOLD_HOURS: ${{ inputs.max_hold_hours }}
+          BT_ATR_OVERRIDE: ${{ matrix.atr }}
+          BT_FULL_CLOSE_AT_1R: ${{ matrix.full_close }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python main.py
 
-      - name: Commit results for ${{ matrix.coin }}
+      - name: Commit results
         working-directory: cloud-backtest
         run: |
           git config user.name "coindcx-backtest-bot"
           git config user.email "actions@github.com"
           git add results/
           git diff --staged --quiet && exit 0
-          git commit -m "Add ${{ matrix.coin }} backtest results [skip ci]"
-          for i in 1 2 3; do
+          git commit -m "Add backtest results: ${{ matrix.coin }}/${{ matrix.strategy }} ATR${{ matrix.atr }} fullclose=${{ matrix.full_close }} [skip ci]"
+          for i in 1 2 3 4 5; do
             if git push; then
               exit 0
             fi
@@ -76,18 +115,24 @@ jobs:
             if git pull --rebase; then
               continue
             fi
+            # With up to ~60 jobs committing to the same branch, real
+            # push races are expected here, not just theoretical - more
+            # retries than the single-job workflows, and each job's own
+            # filename already includes coin+atr+full_close+timestamp, so
+            # a conflict should never be a genuine content clash, just
+            # git-level contention.
             git rebase --abort
             git fetch origin main
             git reset --soft origin/main
             git add results/
-            git commit -m "Add ${{ matrix.coin }} backtest results [skip ci]" --allow-empty
+            git commit -m "Add backtest results: ${{ matrix.coin }}/${{ matrix.strategy }} ATR${{ matrix.atr }} fullclose=${{ matrix.full_close }} [skip ci]" --allow-empty
           done
-          echo "Failed to push results after 3 attempts."
+          echo "Failed to push results after 5 attempts."
           exit 1
 
-      - name: Upload ${{ matrix.coin }} results as workflow artifact too
+      - name: Upload results as workflow artifact too
         uses: actions/upload-artifact@v4
         with:
-          name: backtest-results-${{ matrix.coin }}
+          name: backtest-results-${{ matrix.coin }}-${{ matrix.strategy }}-atr${{ matrix.atr }}-fc${{ matrix.full_close }}
           path: cloud-backtest/results/
           retention-days: 90
