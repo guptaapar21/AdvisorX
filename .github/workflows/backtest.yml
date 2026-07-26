@@ -12,9 +12,9 @@ on:
         required: false
         default: '["conservative"]'
       min_scores:
-        description: 'JSON array of min_score thresholds - sweeping upward from 75 to check if something even better than the proven 80 exists.'
+        description: 'JSON array of min_score thresholds - bracketing the proven 80 tightly. Not going above 85: stricter can only ever reduce trade count, which works against the actual goal (more trades), so this stays focused on confirming 80 rather than chasing a stricter ceiling.'
         required: false
-        default: '[75, 78, 80, 82, 85, 88, 90]'
+        default: '[75, 78, 80, 82, 85]'
       atr_values:
         description: "Fixed to conservative's real default (2.5x) - already confirmed the right setting, not re-sweeping it."
         required: false
