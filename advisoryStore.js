@@ -109,7 +109,7 @@ function reconcileWithRealPositions(advisories, activePositions) {
     if (!adv) continue;
 
     const diffPercent = Math.abs(realEntry - adv.entryPrice) / adv.entryPrice * 100;
-    if (diffPercent > 0.05) {
+    if (diffPercent > 0) {
       if (!adv.reconciledFrom) adv.reconciledFrom = adv.entryPrice;
       adv.entryPrice = realEntry;
       changed = true;
