@@ -1,0 +1,93 @@
+name: AdvisorX Cloud Backtest
+
+on:
+  workflow_dispatch:
+    inputs:
+      coins:
+        description: 'JSON array of coins, e.g. ["BTC","ETH"] for a quick test. Default = all 5.'
+        required: false
+        default: '["BTC","ETH","SOL","XRP","DOGE"]'
+      strategies:
+        description: "Comma-separated presets (default: all 5)"
+        required: false
+        default: "ultra-short,aggressive,balanced,conservative,swing-trend"
+      days:
+        description: "Lookback window in days (365 = 1 year, the agreed compute-budget cap - raise only if you deliberately want a longer/costlier run)"
+        required: false
+        default: "365"
+      max_hold_hours:
+        description: "Max hold time in hours (36 matches the live bot's deployed default)"
+        required: false
+        default: "36"
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    strategy:
+      # One job PER COIN, running in parallel - not one giant job doing all
+      # 5 coins serially. This means: (1) total wall-clock time is roughly
+      # 1/5th of running everything in one job, and (2) if any single
+      # coin's job hits its timeout or fails, the other coins' jobs are
+      # completely unaffected and have already committed their own
+      # results independently - there's no longer a single point of
+      # failure for the whole grid.
+      matrix:
+        coin: ${{ fromJson(inputs.coins) }}
+      fail-fast: false  # one coin failing/timing out must never cancel the others
+    # One coin x up to 5 strategies x 365 days: measured timing puts this
+    # around 40-50 min including the data fetch. 90 min is generous
+    # headroom, not an expected normal duration - and critically, this is
+    # PER COIN now, nowhere near GitHub's hard 360-minute ceiling per job.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+
+      - name: Run backtest for ${{ matrix.coin }}
+        working-directory: cloud-backtest
+        env:
+          BT_COINS: ${{ matrix.coin }}
+          BT_STRATEGIES: ${{ inputs.strategies }}
+          BT_DAYS: ${{ inputs.days }}
+          BT_MAX_HOLD_HOURS: ${{ inputs.max_hold_hours }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py
+
+      - name: Commit results for ${{ matrix.coin }}
+        working-directory: cloud-backtest
+        run: |
+          git config user.name "coindcx-backtest-bot"
+          git config user.email "actions@github.com"
+          git add results/
+          git diff --staged --quiet && exit 0
+          git commit -m "Add ${{ matrix.coin }} backtest results [skip ci]"
+          for i in 1 2 3; do
+            if git push; then
+              exit 0
+            fi
+            echo "Push rejected (attempt $i), pulling and retrying..."
+            if git pull --rebase; then
+              continue
+            fi
+            git rebase --abort
+            git fetch origin main
+            git reset --soft origin/main
+            git add results/
+            git commit -m "Add ${{ matrix.coin }} backtest results [skip ci]" --allow-empty
+          done
+          echo "Failed to push results after 3 attempts."
+          exit 1
+
+      - name: Upload ${{ matrix.coin }} results as workflow artifact too
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest-results-${{ matrix.coin }}
+          path: cloud-backtest/results/
+          retention-days: 90
