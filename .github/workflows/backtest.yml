@@ -4,17 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       coins:
-        description: 'JSON array of coins. Testing BTC/ETH/XRP with a full min_score sweep, same methodology as the completed SOL/DOGE sweep - they were only ever tested at the default 80 threshold before, never swept for their own possible sweet spot.'
+        description: 'JSON array of coins. Fine-tuning DOGE specifically between its aggressive (70) and balanced (78) tiers, checking the gap at finer granularity.'
         required: false
-        default: '["BTC","ETH","XRP"]'
+        default: '["DOGE"]'
       strategies:
         description: 'JSON array of presets to sweep. Locked to conservative only - the proven winner, not re-exploring.'
         required: false
         default: '["conservative"]'
       min_scores:
-        description: 'JSON array of min_score thresholds - full range (65 through 85), same span already mapped for SOL/DOGE, to see if BTC/ETH/XRP have their own working band at a different threshold.'
+        description: 'JSON array of min_score thresholds - 1-point granularity between DOGE''s known aggressive (70, $92) and the next known point (75, $209), to see if a better step exists in between.'
         required: false
-        default: '[65, 70, 75, 78, 80, 82, 85]'
+        default: '[70, 71, 72, 73, 74, 75]'
       atr_values:
         description: "Fixed to conservative's real default (2.5x) - already confirmed the right setting, not re-sweeping it."
         required: false
