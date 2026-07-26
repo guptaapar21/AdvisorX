@@ -73,16 +73,28 @@ def main():
 
     end_date = datetime.now(timezone.utc).date()
     start_date = end_date - timedelta(days=days)
+
+    atr_override_raw = os.environ.get("BT_ATR_OVERRIDE", "").strip()
+    atr_override = float(atr_override_raw) if atr_override_raw else None
+    full_close_at_1r = os.environ.get("BT_FULL_CLOSE_AT_1R", "").strip().lower() in ("1", "true", "yes")
+
     print(f"Backtest window: {start_date} to {end_date} ({days} days)")
     print(f"Coins: {coins}")
     print(f"Strategies: {strategies}")
     print(f"Max hold: {max_hold_hours}h ({max_hold_bars} x 5m bars)")
+    print(f"ATR multiplier override: {atr_override if atr_override is not None else '(preset default)'}")
+    print(f"Full close at stage-1 R: {full_close_at_1r}")
 
     os.makedirs("results", exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     coins_tag = "-".join(coins)
-    results_path = f"results/backtest_{coins_tag}_{timestamp}.csv"
-    trades_path = f"results/trades_{coins_tag}_{timestamp}.csv"
+    variant_tag = ""
+    if atr_override is not None:
+        variant_tag += f"_atr{atr_override}"
+    if full_close_at_1r:
+        variant_tag += "_fullclose1R"
+    results_path = f"results/backtest_{coins_tag}{variant_tag}_{timestamp}.csv"
+    trades_path = f"results/trades_{coins_tag}{variant_tag}_{timestamp}.csv"
 
     all_rows = []
     all_trades = []
@@ -104,7 +116,10 @@ def main():
             print(f"  --- {coin} / {strategy} ---")
             t1 = time.time()
             try:
-                trades, equity = run_backtest(coin, candles_5m, strategy=strategy, max_hold_bars=max_hold_bars)
+                trades, equity = run_backtest(
+                    coin, candles_5m, strategy=strategy, max_hold_bars=max_hold_bars,
+                    atr_multiplier_override=atr_override, full_close_at_stage1=full_close_at_1r,
+                )
             except Exception as e:
                 print(f"    FAILED: {e}")
                 traceback.print_exc()
@@ -121,7 +136,9 @@ def main():
             all_trades.append(trades)
 
             summary = summarize_results(trades)
-            row = {"coin": coin, "strategy": strategy, "days": days, **summary}
+            row = {"coin": coin, "strategy": strategy, "days": days,
+                   "atr_override": atr_override if atr_override is not None else "",
+                   "full_close_at_1r": full_close_at_1r, **summary}
             row.pop("exit_reason_breakdown", None)  # dict - not CSV-friendly, kept in trades log instead
             all_rows.append(row)
             print(f"    {len(trades)} trades in {time.time()-t1:.0f}s | "
@@ -137,7 +154,13 @@ def main():
         print(f"Wrote {trades_path}")
 
     # ---- Telegram summary ----
-    lines = [f"📊 *Cloud backtest complete* ({start_date} to {end_date}, {days}d)"]
+    variant_desc = []
+    if atr_override is not None:
+        variant_desc.append(f"ATR {atr_override}x")
+    if full_close_at_1r:
+        variant_desc.append("full-close@1R")
+    variant_str = f" [{', '.join(variant_desc)}]" if variant_desc else ""
+    lines = [f"📊 *Cloud backtest complete{variant_str}* ({start_date} to {end_date}, {days}d)"]
     if not results_df.empty:
         for _, r in results_df.iterrows():
             if r.get("total_trades", 0) == 0:

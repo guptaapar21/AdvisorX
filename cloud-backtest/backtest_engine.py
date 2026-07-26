@@ -51,28 +51,32 @@ def _closed_bucket_candles(resampled, as_of_time, rule_minutes, window=200):
 
 def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_positions=1,
                   max_hold_bars=None, stage_multipliers=(1, 2, 3),
-                  direction_filter=None, setup_filter=None, verbose=False):
+                  direction_filter=None, setup_filter=None, verbose=False,
+                  full_close_at_stage1=False, atr_multiplier_override=None):
     """
     strategy: one of "ultra-short"/"aggressive"/"balanced"/"conservative"/
     "swing-trend". Resolves that preset's real min_score, ATR stop
     multiplier/distance bounds, and leverage from the verified tables in
-    scoring_stoploss.py - each preset genuinely behaves differently now,
-    not just a min_score override on top of balanced's stop-loss/scoring.
+    scoring_stoploss.py.
 
-    min_score: override the preset's own default min_score if given;
-    otherwise the preset's real min_score is used automatically.
+    full_close_at_stage1: if True, closes 100% of the position the moment
+    the (volatility-adjusted) 1R target is hit, instead of the normal
+    33.33%/33.33%/0% staged exit across 1R/2R/3R. A genuinely different
+    exit policy, not a variant of "fewer fee legs" - it changes which R
+    the position books, not just how many fills it takes to book it.
 
-    leverage used for scoring/fees: the MIDPOINT of the preset's real
-    leverage bounds (a documented simplification - the live bot scales
-    leverage within those bounds based on signal strength and volatility,
-    which isn't ported here; the midpoint is a reasonable single
-    representative value for scoring and fee/interest purposes).
+    atr_multiplier_override: if set, overrides the preset's own default
+    ATR stop-loss multiplier (e.g. testing conservative/swing-trend at a
+    tighter 2.0x/2.25x instead of their default 2.5x, while keeping every
+    other preset parameter - min_score, leverage, position size -
+    unchanged). None = use the preset's real deployed value.
 
-    Returns (trades_df, equity_curve_series). trades_df now includes
+    Returns (trades_df, equity_curve_series). trades_df includes
     stages_done/leverage/stop_distance_pct for fee_model.py to consume.
     """
     weights = STRATEGY_SCORE_WEIGHTS[strategy]
     stop_cfg = STRATEGY_STOP_LOSS[strategy]
+    atr_multiplier = atr_multiplier_override if atr_multiplier_override is not None else stop_cfg["atr_multiplier"]
     lev_bounds = STRATEGY_LEVERAGE_BOUNDS[strategy]
     resolved_leverage = (lev_bounds["min"] + lev_bounds["max"]) / 2
     effective_min_score = min_score if min_score is not None else weights["min_score"]
@@ -124,7 +128,13 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                 current_r = calculate_r_multiple(pos["entry"], current_price, pos["stop"], direction)
                 s1, s2, s3 = stage_multipliers
                 adj_r = {"1": s1 * vol["adjustment_factor"], "2": s2 * vol["adjustment_factor"], "3": s3 * vol["adjustment_factor"]}
-                if current_r >= adj_r["3"] and pos["stages_done"] == 2:
+                if full_close_at_stage1 and current_r >= adj_r["1"] and pos["stages_done"] == 0:
+                    # Close the ENTIRE position here - no partial, no
+                    # trailing continuation. stages_done stays 0 so the
+                    # remaining_fraction math below correctly treats this
+                    # as a 100%-of-position exit at this R level.
+                    exit_reason = "target_1r_full_close"
+                elif current_r >= adj_r["3"] and pos["stages_done"] == 2:
                     pos["stages_done"] = 3
                     pos["stop"] = calculate_target_price(pos["entry"], pos["stop"], s2, direction)
                 elif current_r >= adj_r["2"] and pos["stages_done"] == 1:
@@ -178,7 +188,7 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                 else:
                     can_open, sl_result = should_open_position(
                         tf_filter["candles"], direction, current_price,
-                        atr_multiplier=stop_cfg["atr_multiplier"],
+                        atr_multiplier=atr_multiplier,
                         min_stop_pct=stop_cfg["min_distance"], max_stop_pct=stop_cfg["max_distance"],
                     )
                     if can_open:

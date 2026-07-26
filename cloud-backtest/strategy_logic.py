@@ -7,6 +7,7 @@ macdHist bug is fixed, breakout is wired in as a fallback-only extension
 tagged is_breakout_extension.
 """
 import numpy as np
+from indicators import detect_volume_spike
 
 
 def calculate_signal_strength(rsi7, macd_val, macd_signal, ema_alignment, price_position, trend_consistency):
@@ -210,6 +211,21 @@ def breakout_signal(symbol, direction, tf15m, tf1h, market_state):
     signal_strength = calculate_signal_strength(
         tf15m["rsi7"], tf1h["macd"], tf1h["macd_signal"], ema_align, price_pos, alignment["score"])
 
+    # Volume confirmation - previously missing entirely from this port.
+    # Matches breakoutStrategy.js's real, SURVIVING effect: a x1.25 boost
+    # when volume confirms (>=1.5x average), capped at 1.0. (The JS also
+    # has an earlier +0.1-for-extreme-volume line, but that's dead code
+    # there - it gets overwritten by the signal_strength reassignment two
+    # lines later before ever being read, so it's correctly NOT
+    # replicated here; this matches real behavior, not the letter of
+    # every line.)
+    volume_confirmed = False
+    if tf15m.get("volume") and tf15m.get("avg_volume"):
+        v = detect_volume_spike(tf15m["volume"], tf15m["avg_volume"], 1.5)
+        volume_confirmed = v["is_spike"]
+    if volume_confirmed:
+        signal_strength = min(signal_strength * 1.25, 1.0)
+
     vol_adj = calculate_volatility_adjustment(market_state["atr_ratio"], 1.0)
     if vol_adj["status"] == "extreme":
         signal_strength *= 0.7
@@ -217,7 +233,7 @@ def breakout_signal(symbol, direction, tf15m, tf1h, market_state):
         signal_strength *= 0.85
 
     return {"action": direction, "signal_strength": signal_strength, "strategy_type": "breakout",
-            "is_breakout_extension": True}
+            "is_breakout_extension": True, "volume_confirmed": volume_confirmed}
 
 
 # ---- Router (matches strategyRouter.js's real state->strategy mapping) ----

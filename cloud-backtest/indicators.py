@@ -145,3 +145,29 @@ def bollinger_bands(closes, period=20, std_dev=2):
     middle = recent.mean()
     std = recent.std()
     return {"upper": middle + std_dev * std, "middle": middle, "lower": middle - std_dev * std}
+
+
+def avg_volume(candles, period=20):
+    """Exact match to avgVolume in indicators.js."""
+    recent = candles["volume"].tail(period)
+    return recent.mean() if len(recent) > 0 else 0
+
+
+def detect_volume_spike(current_volume, average_volume, threshold=1.5):
+    """Exact match to detectVolumeSpike in strategyUtils.js. Previously
+    missing entirely from this Python port - breakout signals here had
+    zero volume awareness, unlike the live bot's real breakoutStrategy.js
+    which downgrades/warns on weak volume."""
+    if average_volume == 0:
+        return {"is_spike": False, "ratio": 0.0, "level": "normal"}
+    ratio = current_volume / average_volume
+    is_spike = ratio >= threshold
+    if ratio >= 3.0:
+        level = "extreme"
+    elif ratio >= 2.0:
+        level = "significant"
+    elif ratio >= 1.5:
+        level = "moderate"
+    else:
+        level = "normal"
+    return {"is_spike": is_spike, "ratio": round(ratio, 2), "level": level}

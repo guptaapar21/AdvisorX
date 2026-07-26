@@ -12,7 +12,7 @@ than the live bot - if this matters for your conclusions, ask and it can be
 added.
 """
 import numpy as np
-from indicators import ema, rsi, macd, macd_histogram_turn, atr_ratio
+from indicators import ema, rsi, macd, macd_histogram_turn, atr_ratio, avg_volume, detect_volume_spike
 
 OVERSOLD_EXTREME = 20
 OVERSOLD_MILD = 30
@@ -41,6 +41,8 @@ def build_timeframe_indicators(candles):
         "rsi14": rsi(closes, 14) if rsi(closes, 14) is not None else 50,
         "atr_ratio": atr_ratio(candles, 14),
         "deviation_from_ema20": deviation,
+        "volume": candles["volume"].iloc[-1],
+        "avg_volume": avg_volume(candles, 20),
         "candles": candles,
     }
 
