@@ -4,25 +4,25 @@ on:
   workflow_dispatch:
     inputs:
       coins:
-        description: 'JSON array of coins. Default = the two proven winners (SOL, DOGE) - this sweep is specifically about fine-tuning on coins already confirmed to work, not a general 5-coin scan'
+        description: 'JSON array of coins. Restricted to the three confirmed liquid, established coins only (BNB, ADA, LTC) - no newer/thinner-liquidity coins.'
         required: false
-        default: '["SOL","DOGE"]'
+        default: '["BNB","ADA","LTC"]'
       strategies:
-        description: 'JSON array of presets to sweep'
+        description: 'JSON array of presets to sweep. Locked to conservative only - the proven winner, not re-exploring.'
         required: false
-        default: '["balanced","conservative"]'
+        default: '["conservative"]'
       min_scores:
-        description: 'JSON array of min_score thresholds to test - the "sweet spot" dimension: lower = more trades but each less selective, higher = fewer but stricter. conservative''s real default is 80; balanced''s is 75.'
+        description: 'JSON array of min_score thresholds. Locked to 80 only - the proven setting, not re-testing looser values already confirmed to lose money.'
         required: false
-        default: '[65, 70, 75, 80]'
+        default: '[80]'
       atr_values:
         description: "JSON array of ATR stop-loss multipliers to test per preset"
         required: false
         default: '[2.0, 2.25, 2.5]'
       full_close_modes:
-        description: 'JSON array of true/false - "close 100% at stage-1 R" vs the existing staged 1/2/3R exit'
+        description: 'JSON array of true/false. Locked to staged (false) only - full-close@1R never beat staged in any direct comparison found.'
         required: false
-        default: '[true, false]'
+        default: '[false]'
       days:
         description: "Lookback window in days (365 = 1 year, the agreed compute-budget cap)"
         required: false
