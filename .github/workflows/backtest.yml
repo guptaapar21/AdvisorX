@@ -4,17 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       coins:
-        description: 'JSON array of coins. Set to the two proven coins (SOL, DOGE) - this sweep is refining min_score on them specifically.'
+        description: 'JSON array of coins. Testing BTC/ETH/XRP with a full min_score sweep, same methodology as the completed SOL/DOGE sweep - they were only ever tested at the default 80 threshold before, never swept for their own possible sweet spot.'
         required: false
-        default: '["SOL","DOGE"]'
+        default: '["BTC","ETH","XRP"]'
       strategies:
         description: 'JSON array of presets to sweep. Locked to conservative only - the proven winner, not re-exploring.'
         required: false
         default: '["conservative"]'
       min_scores:
-        description: 'JSON array of min_score thresholds - testing lower to increase trade volume. 65/70 were tested earlier under mixed ATR/exit-mode settings; this retests them plus lower values (50, 55, 60) under the same clean methodology (fixed ATR 2.5x, staged only) as the 75-85 range, for a directly comparable full curve.'
+        description: 'JSON array of min_score thresholds - full range (65 through 85), same span already mapped for SOL/DOGE, to see if BTC/ETH/XRP have their own working band at a different threshold.'
         required: false
-        default: '[50, 55, 60, 65, 70]'
+        default: '[65, 70, 75, 78, 80, 82, 85]'
       atr_values:
         description: "Fixed to conservative's real default (2.5x) - already confirmed the right setting, not re-sweeping it."
         required: false
