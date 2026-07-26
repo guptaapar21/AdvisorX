@@ -7,9 +7,10 @@ const path = require("path");
 const { getTelegramUpdates, sendTelegramMessage } = require("./telegram");
 const { getStrategyParams } = require("./strategyParams");
 const { STRATEGY_SCORE_WEIGHTS } = require("./opportunityScorer");
+const { BACKTESTED_COINS, buildScanThresholdMap, getTierLabel } = require("./backtestedStrategy");
 
 const RUNTIME_FILE = path.join(__dirname, "runtimeConfig.json");
-const VALID_STRATEGIES = ["ultra-short", "swing-trend", "conservative", "balanced", "aggressive"];
+const VALID_STRATEGIES = ["ultra-short", "swing-trend", "conservative", "balanced", "aggressive", "backtested"];
 
 function loadRuntimeConfig() {
   try {
@@ -40,6 +41,22 @@ async function processIncomingCommands(runtimeState) {
       } else {
         await sendTelegramMessage(`❌ Unknown strategy "${requested}". Valid options: ${VALID_STRATEGIES.join(", ")}`);
       }
+    }
+
+    // /backtested - one single strategy, no sub-mode to pick. Each coin is
+    // scanned at its own loosest tier (found via the real cloud backtest
+    // sweep); whichever tier a real score actually clears (aggressive or
+    // balanced) is just reported in the message afterward, not selected
+    // up front.
+    if (msg.text.trim().match(/^\/backtested\s*$/i)) {
+      runtimeState.strategy = "backtested";
+      const thresholds = buildScanThresholdMap();
+      const lines = BACKTESTED_COINS.map((c) => `${c}: scans from ${thresholds[c]}`);
+      await sendTelegramMessage(
+        `✅ Strategy switched to *backtested*. Takes effect from the next run.\n` +
+        `${lines.join(", ")}\n` +
+        `BTC and XRP are excluded from scanning entirely under this strategy.`
+      );
     } else if (msg.text.trim() === "/status") {
       const current = runtimeState.strategy || "balanced (default)";
       // Show the REAL currently-used balance (auto-tracked, may have
@@ -87,7 +104,35 @@ async function processIncomingCommands(runtimeState) {
 function applyRuntimeOverrides(baseConfig, runtimeState) {
   let effectiveConfig = baseConfig;
 
-  if (runtimeState.strategy && runtimeState.strategy !== baseConfig.strategy) {
+  if (runtimeState.strategy === "backtested") {
+    // Every /backtested threshold was found using CONSERVATIVE's actual
+    // scoring formula and risk parameters (5-9x leverage, 2.5x ATR stop,
+    // 1.0-4.0% stop bounds) - only the score bar itself varies by coin.
+    const params = getStrategyParams("conservative", baseConfig.maxLeverage);
+    const perCoinMinScore = buildScanThresholdMap(); // loosest tier per coin - always scan here, tier label is reported after the fact
+    effectiveConfig = {
+      ...effectiveConfig,
+      strategy: "backtested",
+      // Only scan coins with a real, evidence-based edge - BTC/XRP are
+      // excluded outright, not defaulted to some other threshold.
+      symbols: BACKTESTED_COINS.filter((c) => perCoinMinScore[c] !== undefined),
+      perCoinMinScore,
+      minScore: null, // no single global bar under this strategy - see perCoinMinScore
+      riskRules: {
+        ...effectiveConfig.riskRules,
+        leverageMin: params.leverageMin,
+        leverageMax: params.leverageMax,
+        positionSizeMinPercent: params.positionSizeMin,
+        positionSizeMaxPercent: params.positionSizeMax,
+      },
+      stopLoss: {
+        ...effectiveConfig.stopLoss,
+        atrMultiplier: params.scientificStopLoss.atrMultiplier,
+        minStopLossPercent: params.scientificStopLoss.minDistance,
+        maxStopLossPercent: params.scientificStopLoss.maxDistance,
+      },
+    };
+  } else if (runtimeState.strategy && runtimeState.strategy !== baseConfig.strategy) {
     const params = getStrategyParams(runtimeState.strategy, baseConfig.maxLeverage);
     effectiveConfig = {
       ...effectiveConfig,
@@ -126,4 +171,17 @@ function applyRuntimeOverrides(baseConfig, runtimeState) {
   return effectiveConfig;
 }
 
-module.exports = { loadRuntimeConfig, saveRuntimeConfig, processIncomingCommands, applyRuntimeOverrides, VALID_STRATEGIES };
+// Resolves the actual score bar for a given symbol. Every normal preset
+// just uses config.minScore, the same for every coin - only /backtested
+// sets a real per-coin map (config.perCoinMinScore), which this checks
+// first. Centralized here so preFilter.js, agentTools.js, and
+// agentIndex.js all read this the same way rather than duplicating the
+// fallback logic three times.
+function getEffectiveMinScore(config, symbol) {
+  return config.perCoinMinScore?.[symbol] ?? config.minScore;
+}
+
+module.exports = {
+  loadRuntimeConfig, saveRuntimeConfig, processIncomingCommands, applyRuntimeOverrides,
+  VALID_STRATEGIES, getEffectiveMinScore,
+};

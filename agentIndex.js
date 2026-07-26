@@ -39,13 +39,19 @@ function formatReversalDetailLines(reversalDetailsBySymbol) {
 
 // Builds "Scores: BTC 45, ETH 58, SOL 73, ..." deterministically from the
 // real allScores data, rather than trusting the model to always include
-// every symbol in its free-text reasoning.
-function formatScoresLine(allScores) {
+// every symbol in its free-text reasoning. When strategy is "backtested",
+// each score also gets an (aggressive/balanced) tier label - reporting
+// which level a real cleared score actually hit, not a pre-selected mode.
+function formatScoresLine(allScores, strategy) {
   if (!allScores || allScores.length === 0) return null;
+  const getTierLabel = strategy === "backtested" ? require("./backtestedStrategy").getTierLabel : null;
   const parts = allScores
     .slice()
     .sort((a, b) => b.score - a.score)
-    .map((s) => `${s.symbol} ${s.score}`);
+    .map((s) => {
+      const tier = getTierLabel ? getTierLabel(s.symbol, s.score) : null;
+      return `${s.symbol} ${s.score}${tier ? ` (${tier})` : ""}`;
+    });
   return `Scores: ${parts.join(", ")}`;
 }
 
@@ -56,6 +62,10 @@ function formatIdleMessage(preFilterResult, config) {
   scored.sort((a, b) => b.score - a.score);
   const best = scored[0];
 
+  if (config.strategy === "backtested") {
+    return formatBacktestedIdleMessage(scored, config);
+  }
+
   const statusLine = "NO ACTION — no positions, no setups cleared threshold.";
   const reasonLine = best
     ? `Reason: Best candidate ${best.symbol} scored ${best.score}${best.setupType ? ` (${best.setupType})` : ""}, below the required ${config.minScore}.`
@@ -63,6 +73,22 @@ function formatIdleMessage(preFilterResult, config) {
   const scoresLine = formatScoresLine(preFilterResult.allScores);
 
   return [statusLine, reasonLine, scoresLine].filter(Boolean).join("\n");
+}
+
+// /backtested has a DIFFERENT threshold per coin - each coin is scanned
+// at its own loosest tier. Option B format (confirmed): verdict line,
+// then one coin per line as score/requirement (tier label in full only
+// when it actually clears one), then a bare exclusion note.
+function formatBacktestedIdleMessage(scored, config) {
+  const { getTierLabel } = require("./backtestedStrategy");
+  const lines = ["BACKTESTED: no setup cleared."];
+  for (const s of scored) {
+    const req = config.perCoinMinScore?.[s.symbol];
+    const tier = getTierLabel(s.symbol, s.score);
+    lines.push(`${s.symbol}: ${s.score}/${req ?? "-"}${tier ? ` (${tier})` : ""}`);
+  }
+  lines.push("BTC/XRP excluded");
+  return lines.join("\n");
 }
 
 async function run() {
@@ -157,7 +183,7 @@ async function run() {
   if (finalText) {
     console.log("Agent summary:", finalText);
     let message = crispSummary(finalText);
-    const scoresLine = formatScoresLine(lastAllScores);
+    const scoresLine = formatScoresLine(lastAllScores, config.strategy);
     if (scoresLine && !message.includes("Scores:")) {
       message = `${message}\n${scoresLine}`;
     }

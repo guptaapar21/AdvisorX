@@ -13,6 +13,7 @@ const stopLossCalculator = require("./stopLossCalculator");
 const takeProfitManagement = require("./takeProfitManagement");
 const { bollingerBands, priceVsBB, atrWilder } = require("./indicators");
 const advisoryStore = require("./advisoryStore");
+const { getEffectiveMinScore } = require("./runtimeConfig");
 const balanceTracker = require("./balanceTracker");
 const tradeOutcomeLog = require("./tradeOutcomeLog");
 const { getStrategyParams } = require("./strategyParams");
@@ -379,7 +380,7 @@ function buildTools(config, creds) {
             symbol, score: analysis.opportunity.totalScore, action: analysis.strategyResult.action,
             setupType: analysis.strategyResult.strategyType, isBreakoutExtension: analysis.opportunity.isBreakoutExtension,
           });
-          if (analysis.strategyResult.action !== "wait" && analysis.opportunity.totalScore >= config.minScore) {
+          if (analysis.strategyResult.action !== "wait" && analysis.opportunity.totalScore >= getEffectiveMinScore(config, symbol)) {
             candidates.push(analysis);
           }
         } catch (err) {

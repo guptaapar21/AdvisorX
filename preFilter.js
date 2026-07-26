@@ -13,6 +13,7 @@
 
 const exchange = require("./coindcxExchangeClient");
 const { analyzeSymbol, getActivePositions } = require("./agentTools");
+const { getEffectiveMinScore } = require("./runtimeConfig");
 const tradeOutcomeLog = require("./tradeOutcomeLog");
 const advisoryStore = require("./advisoryStore");
 
@@ -69,7 +70,7 @@ async function runPreFilter(config, creds) {
         symbol, score: analysis.opportunity.totalScore, action: analysis.strategyResult.action,
         setupType: analysis.strategyResult.strategyType, isBreakoutExtension: analysis.opportunity.isBreakoutExtension,
       });
-      if (analysis.strategyResult.action !== "wait" && analysis.opportunity.totalScore >= config.minScore) {
+      if (analysis.strategyResult.action !== "wait" && analysis.opportunity.totalScore >= getEffectiveMinScore(config, symbol)) {
         candidates.push(analysis);
       }
     } catch (err) {
