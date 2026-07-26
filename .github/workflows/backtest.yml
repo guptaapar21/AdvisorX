@@ -8,9 +8,9 @@ on:
         required: false
         default: '["BTC","ETH","SOL","XRP","DOGE"]'
       strategies:
-        description: 'JSON array of presets to sweep (default: the two wider-stop presets, per the decision to stop fine-tuning ultra-short/aggressive)'
+        description: 'JSON array of presets to sweep (includes balanced - what''s actually live - alongside the two wider-stop presets, so this sweep can compare against production, not just alternatives against each other)'
         required: false
-        default: '["conservative","swing-trend"]'
+        default: '["balanced","conservative","swing-trend"]'
       atr_values:
         description: "JSON array of ATR stop-loss multipliers to test per preset (2.5 = each preset's own current default)"
         required: false
@@ -39,14 +39,26 @@ jobs:
       count: ${{ steps.build.outputs.count }}
     steps:
       - id: build
+        env:
+          # Passed as env vars, NOT inline ${{ }} substitution inside the
+          # script body - the JSON inputs contain double quotes (e.g.
+          # ["BTC","ETH"]), which previously collided with the
+          # `python3 -c "..."` shell string's own double-quoting and cut
+          # the command off early, feeding Python a broken/empty string
+          # (the "Expecting value" JSONDecodeError). Env vars sidestep
+          # shell-quoting entirely - this is the standard safe pattern.
+          IN_COINS: ${{ inputs.coins }}
+          IN_STRATEGIES: ${{ inputs.strategies }}
+          IN_ATR_VALUES: ${{ inputs.atr_values }}
+          IN_FULL_CLOSE_MODES: ${{ inputs.full_close_modes }}
         run: |
-          python3 -c "
+          cat > /tmp/generate_matrix.py << 'PYEOF'
           import json, os
 
-          coins = json.loads('''${{ inputs.coins }}''')
-          strategies = json.loads('''${{ inputs.strategies }}''')
-          atr_values = json.loads('''${{ inputs.atr_values }}''')
-          full_close_modes = json.loads('''${{ inputs.full_close_modes }}''')
+          coins = json.loads(os.environ["IN_COINS"])
+          strategies = json.loads(os.environ["IN_STRATEGIES"])
+          atr_values = json.loads(os.environ["IN_ATR_VALUES"])
+          full_close_modes = json.loads(os.environ["IN_FULL_CLOSE_MODES"])
 
           combos = []
           for coin in coins:
@@ -54,16 +66,17 @@ jobs:
                   for atr in atr_values:
                       for full_close in full_close_modes:
                           combos.append({
-                              'coin': coin, 'strategy': strategy,
-                              'atr': str(atr), 'full_close': str(full_close).lower(),
+                              "coin": coin, "strategy": strategy,
+                              "atr": str(atr), "full_close": str(full_close).lower(),
                           })
 
-          matrix = {'include': combos}
-          print(f'Generated {len(combos)} combinations')
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f'matrix={json.dumps(matrix)}\n')
-              f.write(f'count={len(combos)}\n')
-          "
+          matrix = {"include": combos}
+          print(f"Generated {len(combos)} combinations")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"matrix={json.dumps(matrix)}\n")
+              f.write(f"count={len(combos)}\n")
+          PYEOF
+          python3 /tmp/generate_matrix.py
 
   backtest:
     needs: generate-matrix
