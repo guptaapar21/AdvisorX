@@ -4,23 +4,23 @@ on:
   workflow_dispatch:
     inputs:
       coins:
-        description: 'JSON array of coins. Restricted to the three confirmed liquid, established coins only (BNB, ADA, LTC) - no newer/thinner-liquidity coins.'
+        description: 'JSON array of coins. Set to the two proven coins (SOL, DOGE) - this sweep is refining min_score on them specifically.'
         required: false
-        default: '["BNB","ADA","LTC"]'
+        default: '["SOL","DOGE"]'
       strategies:
         description: 'JSON array of presets to sweep. Locked to conservative only - the proven winner, not re-exploring.'
         required: false
         default: '["conservative"]'
       min_scores:
-        description: 'JSON array of min_score thresholds. Locked to 80 only - the proven setting, not re-testing looser values already confirmed to lose money.'
+        description: 'JSON array of min_score thresholds - sweeping upward from 75 to check if something even better than the proven 80 exists.'
         required: false
-        default: '[80]'
+        default: '[75, 78, 80, 82, 85, 88, 90]'
       atr_values:
-        description: "JSON array of ATR stop-loss multipliers to test per preset"
+        description: "Fixed to conservative's real default (2.5x) - already confirmed the right setting, not re-sweeping it."
         required: false
-        default: '[2.0, 2.25, 2.5]'
+        default: '[2.5]'
       full_close_modes:
-        description: 'JSON array of true/false. Locked to staged (false) only - full-close@1R never beat staged in any direct comparison found.'
+        description: 'Fixed to staged (false) only - already confirmed the winner in every comparison, not re-testing full-close.'
         required: false
         default: '[false]'
       days:
