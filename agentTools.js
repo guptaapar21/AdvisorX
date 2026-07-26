@@ -270,7 +270,12 @@ async function analyzeSymbol(symbol, config, trendHistoryStore) {
   };
 
   const strategyResult = strategyRouter.routeStrategy(symbol, marketState, tfConfirm, tfFilter, config.riskRules.leverageMax);
-  const opportunity = await opportunityScorer.scoreOpportunity(strategyResult, marketState, config.strategy, tradeOutcomeLog.historicalPenaltyFn);
+  // "backtested" is a reporting label, not a real scoring formula -
+  // opportunityScorer.js only knows the 5 original presets. Every
+  // /backtested threshold was found using conservative's actual formula,
+  // so that's what gets used here regardless of the label.
+  const scoringStrategy = config.strategy === "backtested" ? "conservative" : config.strategy;
+  const opportunity = await opportunityScorer.scoreOpportunity(strategyResult, marketState, scoringStrategy, tradeOutcomeLog.historicalPenaltyFn);
 
   return { symbol, marketState, strategyResult, opportunity, tfPrimary, tfConfirm, tfFilter, currentPrice: tfConfirm.currentPrice };
 }
@@ -607,7 +612,7 @@ function buildTools(config, creds) {
           if (atrPercent > 5) volatilityLevel = "high";
           else if (atrPercent < 2) volatilityLevel = "low";
 
-          const params = getStrategyParams(config.strategy, config.maxLeverage);
+          const params = getStrategyParams(config.strategy === "backtested" ? "conservative" : config.strategy, config.maxLeverage);
           const adj = params.volatilityAdjustment[volatilityLevel];
           if (volatilityLevel === "high") {
             adjustedLeverage = Math.max(1, Math.round(leverage * adj.leverageFactor));
