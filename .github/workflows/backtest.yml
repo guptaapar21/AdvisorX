@@ -4,17 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       coins:
-        description: 'JSON array of coins. Fine-tuning DOGE specifically between its aggressive (70) and balanced (78) tiers, checking the gap at finer granularity.'
+        description: 'JSON array of coins. Fine-tuning +/-2 around each established cutoff for the three confirmed profitable coins.'
         required: false
-        default: '["DOGE"]'
+        default: '["SOL","DOGE","ETH"]'
       strategies:
         description: 'JSON array of presets to sweep. Locked to conservative only - the proven winner, not re-exploring.'
         required: false
         default: '["conservative"]'
       min_scores:
-        description: 'JSON array of min_score thresholds - 1-point granularity between DOGE''s known aggressive (70, $92) and the next known point (75, $209), to see if a better step exists in between.'
+        description: 'JSON array of min_score thresholds - union of new values needed to cover +/-2 around every established cutoff (SOL 75/80/82, DOGE 73/78/82, ETH 78/82) across all three coins. Skips values already tested (71-75, 78, 80, 82, 85).'
         required: false
-        default: '[70, 71, 72, 73, 74, 75]'
+        default: '[73, 74, 76, 77, 79, 81, 83, 84]'
       atr_values:
         description: "Fixed to conservative's real default (2.5x) - already confirmed the right setting, not re-sweeping it."
         required: false
