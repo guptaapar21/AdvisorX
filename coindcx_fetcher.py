@@ -31,6 +31,7 @@ live-tested here either. Do a small test pull first in Colab before
 running a long backtest, same caution as before.
 """
 import time
+import random
 import requests
 import pandas as pd
 
@@ -54,6 +55,19 @@ def fetch_coindcx_klines(symbol="BTC", interval="5m", start_time=None, end_time=
     close, volume
     """
     pair = f"B-{symbol}_USDT"
+
+    # GitHub Actions matrix jobs all start within the same second or two -
+    # meaning many jobs' FIRST request naturally lands on CoinDCX at
+    # nearly the same instant. The failure pattern (multiple SOL jobs all
+    # failing at ~76-77s = exactly 3 retries x 25s timeout, while other
+    # SOL jobs in the same run succeeded normally) points to request
+    # contention, not a per-request fluke - retrying alone can't fix
+    # that, since all 3 retries hit the same collision window. A random
+    # startup delay spreads out when different jobs' requests actually
+    # reach CoinDCX, so parallel jobs stop landing on the exact same
+    # instant.
+    time.sleep(random.uniform(0, 8))
+
     if end_time is None:
         end_time = pd.Timestamp.utcnow()
     start_ms = int(pd.Timestamp(start_time).timestamp() * 1000)
@@ -96,7 +110,7 @@ def fetch_coindcx_klines(symbol="BTC", interval="5m", start_time=None, end_time=
                 last_err = e
                 if attempt < 2:
                     print(f"    {symbol}: request {request_count+1} failed ({e}), retrying (attempt {attempt+2}/3)...")
-                    time.sleep(2 * (attempt + 1))
+                    time.sleep(2 * (attempt + 1) + random.uniform(0, 2))
         if last_err is not None:
             raise last_err
         rows = resp.json()
