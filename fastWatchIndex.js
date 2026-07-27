@@ -1,4 +1,5 @@
 const config = require("./config");
+const runtimeConfig = require("./runtimeConfig");
 const fastWatch = require("./fastWatch");
 const { sendTelegramMessage } = require("./telegram");
 
@@ -11,7 +12,15 @@ async function run() {
     throw new Error("COINDCX_API_KEY and COINDCX_API_SECRET must be set (read-only key is sufficient)");
   }
 
-  await fastWatch.run(config, creds);
+  // Read-only: applies whatever strategy override is CURRENTLY active
+  // (as last set by the main agent's own command processing), without
+  // re-processing incoming Telegram commands itself - that stays the
+  // main agent's job, so there's no race between two processes both
+  // trying to advance the same Telegram update-id cursor.
+  const rtState = runtimeConfig.loadRuntimeConfig();
+  const effectiveConfig = runtimeConfig.applyRuntimeOverrides(config, rtState);
+
+  await fastWatch.run(effectiveConfig, creds);
 }
 
 run().catch(async (err) => {
