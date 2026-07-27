@@ -32,7 +32,9 @@ function formatReversalDetailLines(reversalDetailsBySymbol) {
     .map((sym) => {
       const d = reversalDetailsBySymbol[sym];
       const detailText = d.details && d.details.length > 0 ? d.details.join("; ") : "no active drivers this cycle";
-      return `Reversal detail (${sym}): score ${d.reversalScore} - ${detailText}`;
+      const t = d.trendScores;
+      const rawScores = t ? ` [primary ${t.primary}, confirm ${t.confirm}, filter ${t.filter}]` : "";
+      return `Reversal detail (${sym}): score ${d.reversalScore} - ${detailText}${rawScores}`;
     })
     .join("\n");
 }

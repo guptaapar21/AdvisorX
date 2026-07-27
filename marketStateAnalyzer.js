@@ -339,7 +339,16 @@ function calculateReversalScore(tfPrimary, tfConfirm, tfFilter, positionDirectio
   else if (earlyWarning && score >= 30) recommendation = "watch closely - trend weakening or divergence detected";
   else recommendation = "trend normal - continue holding";
 
-  return { reversalScore: score, earlyWarning, timeframesReversed: reversedFrames, recommendation, details };
+  return {
+    reversalScore: score, earlyWarning, timeframesReversed: reversedFrames, recommendation, details,
+    // Previously only surfaced inside a detail string, and only for
+    // whichever specific branch happened to trigger - meaning a "score 0,
+    // no active drivers" result showed literally zero numeric detail,
+    // making it impossible to tell a genuinely static reading from a
+    // real staleness bug. Now always included, every cycle, regardless
+    // of whether anything triggered.
+    trendScores: { primary: scorePrimary, confirm: scoreConfirm, filter: scoreFilter },
+  };
 }
 
 module.exports = {
