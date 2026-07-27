@@ -423,6 +423,22 @@ function buildTools(config, creds) {
       const reasons = [];
       let shouldOpen = true;
 
+      // HARD gate, cannot be bypassed by Gemini choosing to call this
+      // tool directly on a symbol that never cleared the candidate list.
+      // Previously the score threshold only existed as a soft filter
+      // inside analyze_opening_opportunities - nothing stopped a direct
+      // check_open_position/open_position call on any symbol regardless
+      // of its actual score, which is exactly how ETH opened at score 46
+      // against a real requirement of 81 under /backtested.
+      const requiredScore = getEffectiveMinScore(config, symbol);
+      if (analysis.strategyResult.action !== action) {
+        shouldOpen = false;
+        reasons.push(`current strategy signal for ${symbol} is "${analysis.strategyResult.action}", not "${action}" - direction mismatch, hard block`);
+      } else if (requiredScore !== undefined && requiredScore !== null && analysis.opportunity.totalScore < requiredScore) {
+        shouldOpen = false;
+        reasons.push(`score ${analysis.opportunity.totalScore} is below the required ${requiredScore} for ${symbol} under the current strategy - hard block, cannot be opened regardless of other checks`);
+      }
+
       // Guard against repeatedly recommending the same symbol+direction
       // across consecutive 5-min cycles before the user has had a chance
       // to act on the earlier one (or before a real position shows up on
@@ -695,6 +711,34 @@ function buildTools(config, creds) {
 
     async open_position({ contract: rawContract, action, entryPrice, stopPrice, leverage, positionSizeUsdt, reasoning }) {
       const contract = normalizeContract(rawContract);
+
+      // HARD score gate, same "move it here so it can't be bypassed"
+      // reasoning as the duplicate guard right below - check_open_position
+      // reporting shouldOpen=false only helps if the model chooses to
+      // respect that result. This directly caused a real, confirmed bug:
+      // ETH opened at score 46 against a real requirement of 81 under
+      // /backtested, because nothing on the execution path itself ever
+      // re-verified the score - the threshold only ever existed as a soft
+      // filter on analyze_opening_opportunities' candidate list.
+      const symbolForScoreCheck = contract.replace(/^[A-Z]-/, "").replace(/_USDT$/, "");
+      const requiredScore = getEffectiveMinScore(config, symbolForScoreCheck);
+      if (requiredScore !== undefined && requiredScore !== null) {
+        try {
+          const freshAnalysis = await analyzeSymbol(symbolForScoreCheck, config, loadTrendHistory());
+          if (!freshAnalysis.error && freshAnalysis.opportunity.totalScore < requiredScore) {
+            return {
+              telegramMessage: null, // silent block, matches the duplicate guard's convention
+              resultForModel: {
+                status: "blocked_below_threshold",
+                note: `${symbolForScoreCheck} scored ${freshAnalysis.opportunity.totalScore}, below the required ${requiredScore} for the current strategy - hard block, this cannot be opened. Do not retry - look for a different candidate instead.`,
+              },
+            };
+          }
+        } catch (err) {
+          runWarnings.push(`${symbolForScoreCheck}: could not re-verify score before opening - ${err.message}`);
+        }
+      }
+
       // HARD duplicate guard - this used to only live inside
       // check_open_position (a separate read tool), which only protects
       // against a duplicate IF the model happens to call that check first
