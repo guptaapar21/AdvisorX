@@ -12,7 +12,17 @@ function formatPositionLine(p) {
   const directionArrow = p.action === "long" ? "▲" : "▼";
   const pnlEmoji = p.pnlPercent !== null ? (p.pnlPercent >= 0 ? "🟢" : "🔴") : "⚪";
   const pnlStr = p.pnlPercent !== null ? `${p.pnlPercent >= 0 ? "+" : ""}${p.pnlPercent.toFixed(2)}%` : "n/a";
-  return `${pnlEmoji} *${p.contract}* ${directionArrow} ${p.action} | Entry: ${p.entryPrice} | Now: ${p.currentPrice} | ROE: ${pnlStr} | Stop: ${p.currentStop}`;
+  // entryPrice/currentPrice come straight from the exchange, already
+  // clean (e.g. 0.07314) - currentStop is computed via an ATR formula in
+  // JS floating-point and previously showed raw (e.g. 0.0718977269405086).
+  // Same rounding convention as agentTools.js's open-suggestion message:
+  // 2 decimals for prices >= 1 (e.g. BTC/ETH), 6 decimals for sub-$1
+  // coins (e.g. DOGE) - a fixed rule, not decimal-counting from a
+  // price's string form, which is fragile (JS drops trailing zeros, so
+  // 65432.10 becomes "65432.1" and would undercount to 1 decimal).
+  const decimals = p.entryPrice >= 1 ? 2 : 6;
+  const roundedStop = Number(p.currentStop).toFixed(decimals);
+  return `${pnlEmoji} *${p.contract}* ${directionArrow} ${p.action} | Entry: ${p.entryPrice} | Now: ${p.currentPrice} | ROE: ${pnlStr} | Stop: ${roundedStop}`;
 }
 
 // Called by fastWatch.js every cycle, but only ever does anything when

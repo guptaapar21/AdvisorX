@@ -779,7 +779,7 @@ function buildTools(config, creds) {
       return {
         telegramMessage: [
           `🤖 *AI SUGGESTS OPENING* ${dirEmoji} *${contract}*`,
-          `Entry: ${entryPrice} | Stop: ${stopPrice} | Leverage: ${leverage}x`,
+          `Entry: ${fmt(entryPrice)} | Stop: ${fmt(stopPrice)} | Leverage: ${leverage}x`,
           `Suggested size: ${finalPositionSizeUsdt} USDT margin`,
           ...riskNotes,
           `Targets (staged take-profit): 1R ${fmt(target1)} (close ~33%) | 2R ${fmt(target2)} (close ~33%) | 3R ${fmt(target3)} (trail rest)`,
