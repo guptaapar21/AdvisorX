@@ -90,6 +90,8 @@ def main():
     atr_override = float(atr_override_raw) if atr_override_raw else None
     min_score_raw = os.environ.get("BT_MIN_SCORE_OVERRIDE", "").strip()
     min_score_override = float(min_score_raw) if min_score_raw else None
+    reversal_threshold_raw = os.environ.get("BT_REVERSAL_THRESHOLD", "").strip()
+    reversal_threshold = float(reversal_threshold_raw) if reversal_threshold_raw else 70
     full_close_at_1r = os.environ.get("BT_FULL_CLOSE_AT_1R", "").strip().lower() in ("1", "true", "yes")
 
     print(f"Backtest window: {start_date} to {end_date} ({days} days)")
@@ -98,6 +100,7 @@ def main():
     print(f"Max hold: {max_hold_hours}h ({max_hold_bars} x 5m bars)")
     print(f"ATR multiplier override: {atr_override if atr_override is not None else '(preset default)'}")
     print(f"Min score override: {min_score_override if min_score_override is not None else '(preset default)'}")
+    print(f"Reversal exit threshold: {reversal_threshold} (live default is 70)")
     print(f"Full close at stage-1 R: {full_close_at_1r}")
 
     os.makedirs("results", exist_ok=True)
@@ -110,6 +113,8 @@ def main():
         variant_tag += f"_score{min_score_override}"
     if full_close_at_1r:
         variant_tag += "_fullclose1R"
+    if reversal_threshold != 70:
+        variant_tag += f"_rev{reversal_threshold:.0f}"
     results_path = f"results/backtest_{coins_tag}{variant_tag}_{timestamp}.csv"
     trades_path = f"results/trades_{coins_tag}{variant_tag}_{timestamp}.csv"
 
@@ -136,7 +141,7 @@ def main():
                 trades, equity = run_backtest(
                     coin, candles_5m, strategy=strategy, max_hold_bars=max_hold_bars,
                     atr_multiplier_override=atr_override, full_close_at_stage1=full_close_at_1r,
-                    min_score=min_score_override,
+                    min_score=min_score_override, reversal_exit_threshold=reversal_threshold,
                 )
             except Exception as e:
                 print(f"    FAILED: {e}")
@@ -158,7 +163,7 @@ def main():
             row = {"coin": coin, "strategy": strategy, "days": days,
                    "atr_override": atr_override if atr_override is not None else "",
                    "min_score_override": min_score_override if min_score_override is not None else "",
-                   "full_close_at_1r": full_close_at_1r, **summary}
+                   "full_close_at_1r": full_close_at_1r, "reversal_exit_threshold": reversal_threshold, **summary}
             row.pop("exit_reason_breakdown", None)  # dict - not CSV-friendly, kept in trades log instead
             all_rows.append(row)
             print(f"    {len(trades)} trades in {time.time()-t1:.0f}s | "
@@ -182,6 +187,8 @@ def main():
         variant_desc.append(f"min_score {min_score_override:.0f}")
     if full_close_at_1r:
         variant_desc.append("full-close@1R")
+    if reversal_threshold != 70:
+        variant_desc.append(f"reversal@{reversal_threshold:.0f}")
     variant_str = f" [{', '.join(variant_desc)}]" if variant_desc else ""
     lines = [f"📊 *Cloud backtest complete{variant_str}* ({start_date} to {end_date}, {days}d)"]
     if not results_df.empty:

@@ -52,7 +52,8 @@ def _closed_bucket_candles(resampled, as_of_time, rule_minutes, window=200):
 def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_positions=1,
                   max_hold_bars=None, stage_multipliers=(1, 2, 3),
                   direction_filter=None, setup_filter=None, verbose=False,
-                  full_close_at_stage1=False, atr_multiplier_override=None):
+                  full_close_at_stage1=False, atr_multiplier_override=None,
+                  reversal_exit_threshold=70):
     """
     strategy: one of "ultra-short"/"aggressive"/"balanced"/"conservative"/
     "swing-trend". Resolves that preset's real min_score, ATR stop
@@ -70,6 +71,15 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
     tighter 2.0x/2.25x instead of their default 2.5x, while keeping every
     other preset parameter - min_score, leverage, position size -
     unchanged). None = use the preset's real deployed value.
+
+    reversal_exit_threshold: the reversal score that triggers an exit.
+    Live default is 70 ("close immediately - multiple timeframes confirm
+    reversal"). Lowering this to 50 ("recommend closing - reversal risk
+    elevated") or 30 ("watch closely - trend weakening or divergence
+    detected") exits on an EARLIER, weaker reversal signal instead of
+    waiting for full multi-timeframe confirmation - trading a smaller
+    average loss/faster exit against the risk of exiting on signals that
+    would have reversed back in the position's favor.
 
     Returns (trades_df, equity_curve_series). trades_df includes
     stages_done/leverage/stop_distance_pct for fee_model.py to consume.
@@ -116,7 +126,7 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
 
             exit_reason = None
             exit_price = current_price
-            if reversal["reversal_score"] >= 70:
+            if reversal["reversal_score"] >= reversal_exit_threshold:
                 exit_reason = "reversal"
             elif hit_stop:
                 exit_reason = "stop"
