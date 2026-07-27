@@ -24,9 +24,9 @@ on:
         required: false
         default: '[false]'
       reversal_threshold:
-        description: 'Reversal score that triggers an exit. Live default is 70 ("close immediately"). Testing 50 ("recommend closing") - exits on an earlier, weaker reversal signal instead of waiting for full confirmation.'
+        description: "Reversal score that triggers an exit. Sweeping 55-70: at 70 (current), reversal NEVER fires for SOL/DOGE (0 of 80 trades) - stop-loss always wins the race first. At 50, results were worse. Checking if there's a middle point where reversal starts actually mattering."
         required: false
-        default: '[50, 70]'
+        default: '[55, 60, 65, 70]'
       days:
         description: "Lookback window in days (365 = 1 year, the agreed compute-budget cap)"
         required: false
