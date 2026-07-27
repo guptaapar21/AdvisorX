@@ -15,6 +15,15 @@ async function callGemini(contents, systemPrompt, toolDeclarations, apiKey, mode
       system_instruction: { parts: [{ text: systemPrompt }] },
       tools: [{ functionDeclarations: toolDeclarations }],
       contents,
+      // gemini-3.5-flash-lite defaults to "minimal" thinking, which
+      // Google's own docs explicitly warn "can cause premature tool
+      // termination on multi-step tasks" - and separately recommend
+      // medium/high specifically for autonomous subagents that call
+      // external APIs (exactly what this bot is). This was previously
+      // unset entirely, running on the risky default - matches the real
+      // symptom seen: 5 tool calls in a row, then an empty response with
+      // no final text and no error, no thinking level ever configured.
+      generationConfig: { thinkingConfig: { thinkingLevel: "medium" } },
     }),
   }, 30000);
 
@@ -115,6 +124,20 @@ async function runAgentCycle({ userPrompt, systemPrompt, tools, model, cooldownM
     const parts = candidate?.content?.parts || [];
     const functionCalls = parts.filter((p) => p.functionCall).map((p) => p.functionCall);
     const textParts = parts.filter((p) => p.text).map((p) => p.text);
+
+    // Previously silent: if a response comes back with no function calls
+    // AND no text (empty/blocked response), this used to just resolve to
+    // finalText=null with zero explanation of why - indistinguishable
+    // from every other "no final text" case. Gemini's own finishReason
+    // (e.g. SAFETY, RECITATION, MAX_TOKENS) and promptFeedback (why a
+    // whole response got blocked before any candidate was even produced)
+    // explain this directly when present - logging them now instead of
+    // discarding them.
+    if (functionCalls.length === 0 && textParts.length === 0) {
+      const reason = candidate?.finishReason || "no candidate returned at all";
+      const feedback = response.promptFeedback ? JSON.stringify(response.promptFeedback) : "none";
+      turnLog.push(`(empty response this turn - finishReason: ${reason}, promptFeedback: ${feedback})`);
+    }
 
     if (functionCalls.length === 0) {
       const finalText = textParts.join("\n").trim() || null;
