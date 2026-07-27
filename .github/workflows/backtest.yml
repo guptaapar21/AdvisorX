@@ -4,17 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       coins:
-        description: 'JSON array of coins. Fine-tuning +/-2 around each established cutoff for the three confirmed profitable coins.'
+        description: 'JSON array of coins - testing the reversal-exit-threshold change on the two proven coins.'
         required: false
-        default: '["SOL","DOGE","ETH"]'
+        default: '["SOL","DOGE"]'
       strategies:
         description: 'JSON array of presets to sweep. Locked to conservative only - the proven winner, not re-exploring.'
         required: false
         default: '["conservative"]'
       min_scores:
-        description: 'JSON array of min_score thresholds - union of new values needed to cover +/-2 around every established cutoff (SOL 75/80/82, DOGE 73/78/82, ETH 78/82) across all three coins. Skips values already tested (71-75, 78, 80, 82, 85).'
+        description: 'JSON array of min_score thresholds - each coin at its own proven cutoff (SOL 80, DOGE 79).'
         required: false
-        default: '[73, 74, 76, 77, 79, 81, 83, 84]'
+        default: '[79, 80]'
       atr_values:
         description: "Fixed to conservative's real default (2.5x) - already confirmed the right setting, not re-sweeping it."
         required: false
@@ -23,6 +23,10 @@ on:
         description: 'Fixed to staged (false) only - already confirmed the winner in every comparison, not re-testing full-close.'
         required: false
         default: '[false]'
+      reversal_threshold:
+        description: 'Reversal score that triggers an exit. Live default is 70 ("close immediately"). Testing 50 ("recommend closing") - exits on an earlier, weaker reversal signal instead of waiting for full confirmation.'
+        required: false
+        default: '[50, 70]'
       days:
         description: "Lookback window in days (365 = 1 year, the agreed compute-budget cap)"
         required: false
@@ -55,6 +59,7 @@ jobs:
           IN_MIN_SCORES: ${{ inputs.min_scores }}
           IN_ATR_VALUES: ${{ inputs.atr_values }}
           IN_FULL_CLOSE_MODES: ${{ inputs.full_close_modes }}
+          IN_REVERSAL_THRESHOLD: ${{ inputs.reversal_threshold }}
         run: |
           cat > /tmp/generate_matrix.py << 'PYEOF'
           import json, os
@@ -64,6 +69,7 @@ jobs:
           min_scores = json.loads(os.environ["IN_MIN_SCORES"])
           atr_values = json.loads(os.environ["IN_ATR_VALUES"])
           full_close_modes = json.loads(os.environ["IN_FULL_CLOSE_MODES"])
+          reversal_thresholds = json.loads(os.environ["IN_REVERSAL_THRESHOLD"])
 
           combos = []
           for coin in coins:
@@ -71,11 +77,13 @@ jobs:
                   for min_score in min_scores:
                       for atr in atr_values:
                           for full_close in full_close_modes:
-                              combos.append({
-                                  "coin": coin, "strategy": strategy,
-                                  "min_score": str(min_score),
-                                  "atr": str(atr), "full_close": str(full_close).lower(),
-                              })
+                              for reversal in reversal_thresholds:
+                                  combos.append({
+                                      "coin": coin, "strategy": strategy,
+                                      "min_score": str(min_score),
+                                      "atr": str(atr), "full_close": str(full_close).lower(),
+                                      "reversal": str(reversal),
+                                  })
 
           matrix = {"include": combos}
           print(f"Generated {len(combos)} combinations")
@@ -106,7 +114,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
 
-      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / score ${{ matrix.min_score }} / ATR ${{ matrix.atr }} / full_close=${{ matrix.full_close }})
+      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / score ${{ matrix.min_score }} / ATR ${{ matrix.atr }} / full_close=${{ matrix.full_close }} / reversal=${{ matrix.reversal }})
         working-directory: cloud-backtest
         env:
           BT_COINS: ${{ matrix.coin }}
@@ -115,6 +123,7 @@ jobs:
           BT_MAX_HOLD_HOURS: ${{ inputs.max_hold_hours }}
           BT_ATR_OVERRIDE: ${{ matrix.atr }}
           BT_MIN_SCORE_OVERRIDE: ${{ matrix.min_score }}
+          BT_REVERSAL_THRESHOLD: ${{ matrix.reversal }}
           BT_FULL_CLOSE_AT_1R: ${{ matrix.full_close }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
