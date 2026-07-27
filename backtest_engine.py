@@ -1,0 +1,315 @@
+"""
+The backtest engine. Walks forward through 5m candles (the "primary"
+timeframe), building 15m ("confirm") and 1h ("filter") context at each
+step from ONLY fully-closed higher-timeframe candles as of that moment -
+avoids look-ahead bias.
+
+REBUILT to be preset-aware: takes a `strategy` name (one of ultra-short/
+aggressive/balanced/conservative/swing-trend) and resolves that preset's
+real min_score, ATR stop-multiplier/distance bounds, and leverage bounds
+from scoring_stoploss.py's verified tables - instead of always using
+balanced's numbers regardless of what preset was requested.
+
+Also now captures per-trade: stages_done, leverage, and stop_distance_pct
+- needed by fee_model.py to compute real fee/interest costs after the
+fact, as a separate, clearly-labeled step rather than baked silently into
+this core simulation loop.
+"""
+import pandas as pd
+import numpy as np
+
+from indicators import ema, rsi, macd, macd_histogram_turn, atr_ratio, atr_wilder
+from market_state_analyzer import (
+    build_timeframe_indicators, determine_trend_strength, determine_momentum_state,
+    determine_market_state, calculate_triple_timeframe_consistency, calculate_trend_score,
+    calculate_reversal_score,
+)
+from strategy_logic import route_strategy
+from scoring_stoploss import (
+    score_opportunity, should_open_position, analyze_market_volatility,
+    calculate_r_multiple, calculate_target_price,
+    STRATEGY_SCORE_WEIGHTS, STRATEGY_STOP_LOSS, STRATEGY_LEVERAGE_BOUNDS,
+)
+from coindcx_fetcher import resample_candles
+
+MIN_CANDLES_NEEDED = 55  # matches the live bot's own minimum
+
+
+def _closed_bucket_candles(resampled, as_of_time, rule_minutes, window=200):
+    """Returns the last `window` fully-closed buckets as of `as_of_time` -
+    bounded rolling window (fixes the O(n^2) unbounded-slice bug that
+    likely caused Colab hangs on full-year runs)."""
+    sliced = resampled.loc[:as_of_time].tail(window)
+    if len(sliced) == 0:
+        return sliced
+    last_bucket_start = sliced.index[-1]
+    bucket_end = last_bucket_start + pd.Timedelta(minutes=rule_minutes)
+    if bucket_end > as_of_time + pd.Timedelta(minutes=5):
+        return sliced.iloc[:-1]
+    return sliced
+
+
+def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_positions=1,
+                  max_hold_bars=None, stage_multipliers=(1, 2, 3),
+                  direction_filter=None, setup_filter=None, verbose=False,
+                  full_close_at_stage1=False, atr_multiplier_override=None,
+                  reversal_exit_threshold=70, raw_reversal_threshold=None):
+    """
+    strategy: one of "ultra-short"/"aggressive"/"balanced"/"conservative"/
+    "swing-trend". Resolves that preset's real min_score, ATR stop
+    multiplier/distance bounds, and leverage from the verified tables in
+    scoring_stoploss.py.
+
+    full_close_at_stage1: if True, closes 100% of the position the moment
+    the (volatility-adjusted) 1R target is hit, instead of the normal
+    33.33%/33.33%/0% staged exit across 1R/2R/3R. A genuinely different
+    exit policy, not a variant of "fewer fee legs" - it changes which R
+    the position books, not just how many fills it takes to book it.
+
+    atr_multiplier_override: if set, overrides the preset's own default
+    ATR stop-loss multiplier (e.g. testing conservative/swing-trend at a
+    tighter 2.0x/2.25x instead of their default 2.5x, while keeping every
+    other preset parameter - min_score, leverage, position size -
+    unchanged). None = use the preset's real deployed value.
+
+    reversal_exit_threshold: the BUCKETED reversal score that triggers an
+    exit (live default 70, "close immediately"). This score only ever
+    takes fixed stacked values (12/20/25/40/52/57/65/77/...), so testing
+    55 vs 60 vs 65 always gives identical results if no trade's real
+    reading ever fell between them - confirmed empirically already.
+
+    raw_reversal_threshold: NEW - bypasses the bucket entirely and checks
+    the underlying continuous primary-timeframe trend number directly
+    (e.g. -8, -23, -41, not a fixed step). None = disabled, only the
+    bucketed check above runs (matches current live behavior exactly).
+    When set, adds a genuinely continuous exit check alongside the
+    bucketed one - whichever fires first still wins. Each trade's
+    exit_reason will show "raw_reversal_beat_stop" (this genuinely
+    triggered before the stop would have on the same bar - a real save)
+    vs "raw_reversal_same_bar_as_stop" (fired on the same bar the stop
+    also would have - no actual benefit over just waiting for the stop),
+    so this data point answers "does this actually save anything" directly,
+    not just "does it exit differently."
+
+    Returns (trades_df, equity_curve_series). trades_df includes
+    stages_done/leverage/stop_distance_pct for fee_model.py to consume.
+    """
+    weights = STRATEGY_SCORE_WEIGHTS[strategy]
+    stop_cfg = STRATEGY_STOP_LOSS[strategy]
+    atr_multiplier = atr_multiplier_override if atr_multiplier_override is not None else stop_cfg["atr_multiplier"]
+    lev_bounds = STRATEGY_LEVERAGE_BOUNDS[strategy]
+    resolved_leverage = (lev_bounds["min"] + lev_bounds["max"]) / 2
+    effective_min_score = min_score if min_score is not None else weights["min_score"]
+
+    candles_15m_full = resample_candles(candles_5m, "15m")
+    candles_1h_full = resample_candles(candles_5m, "1h")
+
+    trades = []
+    open_position = None
+    trend_history = {"primary": [], "confirm": [], "filter": []}
+    equity = 1.0
+    equity_curve = []
+
+    n = len(candles_5m)
+    for i in range(MIN_CANDLES_NEEDED, n):
+        t = candles_5m.index[i]
+        primary_slice = candles_5m.iloc[max(0, i - 200):i + 1]
+        confirm_slice = _closed_bucket_candles(candles_15m_full, t, 15)
+        filter_slice = _closed_bucket_candles(candles_1h_full, t, 60)
+
+        if len(primary_slice) < MIN_CANDLES_NEEDED or len(confirm_slice) < MIN_CANDLES_NEEDED or len(filter_slice) < MIN_CANDLES_NEEDED:
+            equity_curve.append((t, equity))
+            continue
+
+        current_price = primary_slice["close"].iloc[-1]
+
+        tf_primary = build_timeframe_indicators(primary_slice)
+        tf_confirm = build_timeframe_indicators(confirm_slice)
+        tf_filter = build_timeframe_indicators(filter_slice)
+
+        if open_position is not None:
+            pos = open_position
+            direction = pos["direction"]
+
+            reversal = calculate_reversal_score(tf_primary, tf_confirm, tf_filter, direction, trend_history)
+            hit_stop = current_price <= pos["stop"] if direction == "long" else current_price >= pos["stop"]
+
+            # Raw-continuous check: uses the underlying primary trend
+            # number directly (e.g. -8, -23, -41) instead of the bucketed
+            # reversal_score (12/20/25/40...), which jumps in fixed steps
+            # and can't distinguish "just starting to turn" from "well
+            # advanced" within the same bucket - exactly why 55/60/65
+            # produced identical results earlier. target_sign matches
+            # calculate_reversal_score's own convention (long positions
+            # watch for the score turning negative, short positions watch
+            # for it turning positive).
+            raw_primary = reversal["trend_scores"]["primary"]
+            target_sign = -1 if direction == "long" else 1
+            raw_reversal_triggered = (
+                raw_reversal_threshold is not None
+                and np.sign(raw_primary) == target_sign
+                and abs(raw_primary) >= raw_reversal_threshold
+            )
+
+            exit_reason = None
+            exit_price = current_price
+            if reversal["reversal_score"] >= reversal_exit_threshold:
+                exit_reason = "reversal"
+            elif raw_reversal_triggered:
+                # This is the exit we're actually testing: did it fire
+                # BEFORE the stop would have, i.e. did it genuinely save
+                # something, or is it just closing early on a move the
+                # stop was about to catch anyway? hit_stop is already
+                # computed above for this exact bar, so this is a direct,
+                # honest same-bar comparison, not an estimate.
+                exit_reason = "raw_reversal_beat_stop" if not hit_stop else "raw_reversal_same_bar_as_stop"
+            elif hit_stop:
+                exit_reason = "stop"
+                exit_price = pos["stop"]
+            elif max_hold_bars is not None and (i - pos["entry_index"]) >= max_hold_bars:
+                exit_reason = "max_hold_time"
+            else:
+                vol = analyze_market_volatility(confirm_slice)
+                current_r = calculate_r_multiple(pos["entry"], current_price, pos["stop"], direction)
+                s1, s2, s3 = stage_multipliers
+                adj_r = {"1": s1 * vol["adjustment_factor"], "2": s2 * vol["adjustment_factor"], "3": s3 * vol["adjustment_factor"]}
+                if full_close_at_stage1 and current_r >= adj_r["1"] and pos["stages_done"] == 0:
+                    # Close the ENTIRE position here - no partial, no
+                    # trailing continuation. stages_done stays 0 so the
+                    # remaining_fraction math below correctly treats this
+                    # as a 100%-of-position exit at this R level.
+                    exit_reason = "target_1r_full_close"
+                elif current_r >= adj_r["3"] and pos["stages_done"] == 2:
+                    pos["stages_done"] = 3
+                    pos["stop"] = calculate_target_price(pos["entry"], pos["stop"], s2, direction)
+                elif current_r >= adj_r["2"] and pos["stages_done"] == 1:
+                    pos["stages_done"] = 2
+                    pos["realized_r"] += adj_r["2"] * 0.3333
+                    pos["last_staged_r"] = adj_r["2"]
+                    pos["stop"] = calculate_target_price(pos["entry"], pos["stop"], s1, direction)
+                elif current_r >= adj_r["1"] and pos["stages_done"] == 0:
+                    pos["stages_done"] = 1
+                    pos["realized_r"] += adj_r["1"] * 0.3333
+                    pos["last_staged_r"] = adj_r["1"]
+                    pos["stop"] = pos["entry"]
+
+            if exit_reason:
+                final_r = calculate_r_multiple(pos["entry"], exit_price, pos["initial_stop"], direction)
+                remaining_fraction = 1.0 - (0.3333 * pos["stages_done"] if pos["stages_done"] < 3 else 0.6667)
+                total_r = pos["realized_r"] + final_r * remaining_fraction
+                trades.append({
+                    "symbol": symbol, "strategy": strategy, "direction": direction,
+                    "entry_time": pos["entry_time"], "exit_time": t,
+                    "entry_price": pos["entry"], "exit_price": exit_price, "r_achieved": total_r,
+                    "exit_reason": exit_reason, "setup_type": pos["setup_type"],
+                    "is_breakout_extension": pos.get("is_breakout_extension", False),
+                    "bars_held": i - pos["entry_index"],
+                    # ---- new fields, needed by fee_model.py ----
+                    "stages_done": pos["stages_done"],
+                    "leverage": pos["leverage"],
+                    "stop_distance_pct": pos["stop_distance_pct"],
+                })
+                equity *= (1 + total_r * 0.01)  # 1% risk per trade convention (unchanged)
+                open_position = None
+
+        elif open_position is None:
+            trend_strength = determine_trend_strength(tf_primary)
+            momentum_state = determine_momentum_state(tf_confirm)
+            market_state = determine_market_state(trend_strength, momentum_state, tf_confirm)
+            market_state["atr_ratio"] = tf_filter["atr_ratio"]
+
+            alignment_score = calculate_triple_timeframe_consistency(tf_primary, tf_confirm, tf_filter)
+            strategy_result = route_strategy(symbol, market_state, tf_confirm, tf_filter)
+            opp = score_opportunity(strategy_result, market_state, alignment_score, tf_filter["atr_ratio"],
+                                     symbol, strategy=strategy, leverage=resolved_leverage)
+
+            if strategy_result["action"] != "wait" and opp["total_score"] >= effective_min_score:
+                direction = strategy_result["action"]
+                setup_type = strategy_result["strategy_type"]
+                if direction_filter is not None and direction != direction_filter:
+                    pass
+                elif setup_filter is not None and setup_type != setup_filter:
+                    pass
+                else:
+                    can_open, sl_result = should_open_position(
+                        tf_filter["candles"], direction, current_price,
+                        atr_multiplier=atr_multiplier,
+                        min_stop_pct=stop_cfg["min_distance"], max_stop_pct=stop_cfg["max_distance"],
+                    )
+                    if can_open:
+                        stop_distance_pct = abs(current_price - sl_result["stop_price"]) / current_price
+                        open_position = {
+                            "direction": direction, "entry": current_price, "entry_time": t, "entry_index": i,
+                            "stop": sl_result["stop_price"], "initial_stop": sl_result["stop_price"],
+                            "stages_done": 0, "realized_r": 0.0, "last_staged_r": 0.0,
+                            "setup_type": strategy_result["strategy_type"],
+                            "is_breakout_extension": strategy_result.get("is_breakout_extension", False),
+                            "leverage": resolved_leverage,
+                            "stop_distance_pct": stop_distance_pct,
+                        }
+
+        for key, tf in (("primary", tf_primary), ("confirm", tf_confirm), ("filter", tf_filter)):
+            trend_history[key].append(calculate_trend_score(tf))
+            if len(trend_history[key]) > 5:
+                trend_history[key].pop(0)
+
+        equity_curve.append((t, equity))
+
+    trades_df = pd.DataFrame(trades)
+    equity_series = pd.Series(dict(equity_curve))
+    return trades_df, equity_series
+
+
+def summarize_results(trades_df):
+    """Reports gross (r_achieved, pre-fee), net (net_r, post-fee), AND
+    real-dollar numbers side by side, once fee_model.apply_fees_and_interest()
+    and apply_dollar_pnl() have been run on trades_df. Dollar figures use
+    the standing $500 capital / 5% fixed risk per trade convention
+    (fee_model.DEFAULT_CAPITAL / DEFAULT_RISK_PCT) - added because R-
+    multiples alone were hard to reason about in practical terms."""
+    if len(trades_df) == 0:
+        return {"total_trades": 0}
+    has_net = "net_r" in trades_df.columns
+    has_dollar = "dollar_pnl" in trades_df.columns
+    wins_gross = trades_df[trades_df["r_achieved"] > 0]
+    losses_gross = trades_df[trades_df["r_achieved"] <= 0]
+
+    summary = {
+        "total_trades": len(trades_df),
+        "win_rate_pct_gross": round(len(wins_gross) / len(trades_df) * 100, 1),
+        "avg_r_gross": round(trades_df["r_achieved"].mean(), 3),
+        "total_r_gross": round(trades_df["r_achieved"].sum(), 2),
+        "avg_bars_held": round(trades_df["bars_held"].mean(), 1),
+        "exit_reason_breakdown": trades_df["exit_reason"].value_counts().to_dict(),
+        "breakout_extension_trades": int(trades_df["is_breakout_extension"].sum()),
+    }
+    # The key number the raw-reversal-threshold feature exists to answer:
+    # of the trades that exited via the raw check, what fraction actually
+    # beat the stop (a genuine save) vs just coincided with it (no real
+    # benefit over waiting)?
+    beat_stop = int((trades_df["exit_reason"] == "raw_reversal_beat_stop").sum())
+    same_bar = int((trades_df["exit_reason"] == "raw_reversal_same_bar_as_stop").sum())
+    if beat_stop + same_bar > 0:
+        summary["raw_reversal_beat_stop_rate_pct"] = round(beat_stop / (beat_stop + same_bar) * 100, 1)
+        summary["raw_reversal_beat_stop_count"] = beat_stop
+        summary["raw_reversal_same_bar_count"] = same_bar
+    if has_net:
+        wins_net = trades_df[trades_df["net_r"] > 0]
+        summary.update({
+            "win_rate_pct_net": round(len(wins_net) / len(trades_df) * 100, 1),
+            "avg_r_net": round(trades_df["net_r"].mean(), 3),
+            "total_r_net": round(trades_df["net_r"].sum(), 2),
+            "avg_fee_interest_r_cost": round(trades_df["fee_interest_r_cost"].mean(), 3),
+        })
+    if has_dollar:
+        wins_d = trades_df[trades_df["dollar_pnl"] > 0]
+        losses_d = trades_df[trades_df["dollar_pnl"] <= 0]
+        summary.update({
+            "total_dollar_pnl": round(trades_df["dollar_pnl"].sum(), 2),
+            "avg_dollar_win": round(wins_d["dollar_pnl"].mean(), 2) if len(wins_d) else 0,
+            "avg_dollar_loss": round(losses_d["dollar_pnl"].mean(), 2) if len(losses_d) else 0,
+            "biggest_dollar_win": round(trades_df["dollar_pnl"].max(), 2),
+            "biggest_dollar_loss": round(trades_df["dollar_pnl"].min(), 2),
+            "final_dollar_running_total": round(trades_df["dollar_running_total"].iloc[-1], 2),
+        })
+    return summary
