@@ -30,7 +30,11 @@ on:
       raw_reversal_threshold:
         description: "NEW - bypasses the bucketed reversal score entirely and checks the raw continuous primary-timeframe trend number directly. Empty array = disabled (matches current live behavior). Each result reports what fraction of raw-reversal exits actually beat the stop-loss (a genuine save) vs just coincided with it."
         required: false
-        default: '[10, 15, 20, 25, 30]'
+        default: '[]'
+      skip_filter_timeframe:
+        description: "NEW - testing whether the 1h filter timeframe earns its computational cost. true = substitutes the 15m confirm timeframe wherever the 1h filter would normally be used, and never builds the 1h data at all (real speed test, not an approximation). false = current 3-timeframe behavior. Testing both for direct comparison."
+        required: false
+        default: '[true, false]'
       days:
         description: "Lookback window in days (365 = 1 year, the agreed compute-budget cap)"
         required: false
@@ -65,6 +69,7 @@ jobs:
           IN_FULL_CLOSE_MODES: ${{ inputs.full_close_modes }}
           IN_REVERSAL_THRESHOLD: ${{ inputs.reversal_threshold }}
           IN_RAW_REVERSAL_THRESHOLD: ${{ inputs.raw_reversal_threshold }}
+          IN_SKIP_FILTER_TIMEFRAME: ${{ inputs.skip_filter_timeframe }}
         run: |
           cat > /tmp/generate_matrix.py << 'PYEOF'
           import json, os
@@ -76,6 +81,7 @@ jobs:
           full_close_modes = json.loads(os.environ["IN_FULL_CLOSE_MODES"])
           reversal_thresholds = json.loads(os.environ["IN_REVERSAL_THRESHOLD"])
           raw_reversal_thresholds = json.loads(os.environ["IN_RAW_REVERSAL_THRESHOLD"]) or [None]
+          skip_filter_modes = json.loads(os.environ["IN_SKIP_FILTER_TIMEFRAME"])
 
           combos = []
           for coin in coins:
@@ -85,13 +91,15 @@ jobs:
                           for full_close in full_close_modes:
                               for reversal in reversal_thresholds:
                                   for raw_reversal in raw_reversal_thresholds:
-                                      combos.append({
-                                          "coin": coin, "strategy": strategy,
-                                          "min_score": str(min_score),
-                                          "atr": str(atr), "full_close": str(full_close).lower(),
-                                          "reversal": str(reversal),
-                                          "raw_reversal": "" if raw_reversal is None else str(raw_reversal),
-                                      })
+                                      for skip_filter in skip_filter_modes:
+                                          combos.append({
+                                              "coin": coin, "strategy": strategy,
+                                              "min_score": str(min_score),
+                                              "atr": str(atr), "full_close": str(full_close).lower(),
+                                              "reversal": str(reversal),
+                                              "raw_reversal": "" if raw_reversal is None else str(raw_reversal),
+                                              "skip_filter": str(skip_filter).lower(),
+                                          })
 
           matrix = {"include": combos}
           print(f"Generated {len(combos)} combinations")
@@ -122,7 +130,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
 
-      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / score ${{ matrix.min_score }} / ATR ${{ matrix.atr }} / full_close=${{ matrix.full_close }} / reversal=${{ matrix.reversal }} / raw_reversal=${{ matrix.raw_reversal }})
+      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / score ${{ matrix.min_score }} / ATR ${{ matrix.atr }} / full_close=${{ matrix.full_close }} / reversal=${{ matrix.reversal }} / raw_reversal=${{ matrix.raw_reversal }} / skip_filter=${{ matrix.skip_filter }})
         working-directory: cloud-backtest
         env:
           BT_COINS: ${{ matrix.coin }}
@@ -133,6 +141,7 @@ jobs:
           BT_MIN_SCORE_OVERRIDE: ${{ matrix.min_score }}
           BT_REVERSAL_THRESHOLD: ${{ matrix.reversal }}
           BT_RAW_REVERSAL_THRESHOLD: ${{ matrix.raw_reversal }}
+          BT_SKIP_FILTER_TIMEFRAME: ${{ matrix.skip_filter }}
           BT_FULL_CLOSE_AT_1R: ${{ matrix.full_close }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
