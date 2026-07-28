@@ -31,6 +31,7 @@ live-tested here either. Do a small test pull first in Colab before
 running a long backtest, same caution as before.
 """
 import time
+import random
 import requests
 import pandas as pd
 
@@ -54,6 +55,19 @@ def fetch_coindcx_klines(symbol="BTC", interval="5m", start_time=None, end_time=
     close, volume
     """
     pair = f"B-{symbol}_USDT"
+
+    # GitHub Actions matrix jobs all start within the same second or two -
+    # meaning many jobs' FIRST request naturally lands on CoinDCX at
+    # nearly the same instant. The failure pattern (multiple SOL jobs all
+    # failing at ~76-77s = exactly 3 retries x 25s timeout, while other
+    # SOL jobs in the same run succeeded normally) points to request
+    # contention, not a per-request fluke - retrying alone can't fix
+    # that, since all 3 retries hit the same collision window. A random
+    # startup delay spreads out when different jobs' requests actually
+    # reach CoinDCX, so parallel jobs stop landing on the exact same
+    # instant.
+    time.sleep(random.uniform(0, 8))
+
     if end_time is None:
         end_time = pd.Timestamp.utcnow()
     start_ms = int(pd.Timestamp(start_time).timestamp() * 1000)
@@ -74,8 +88,31 @@ def fetch_coindcx_klines(symbol="BTC", interval="5m", start_time=None, end_time=
             "endTime": min(cursor + step_ms, end_ms),
             "limit": limit_per_call,
         }
-        resp = requests.get(BASE, params=params, timeout=15)
-        resp.raise_for_status()
+        # 3 retries with backoff on a transient failure (timeout, connection
+        # reset, momentary 5xx) - a single unprotected request repeated
+        # 500+ times per full-year fetch was near-guaranteed to fail
+        # somewhere eventually, which is exactly what kept happening
+        # (recurring SOL timeouts killing the whole job on one bad request
+        # out of hundreds). Slightly longer timeout (25s, up from 15s) too,
+        # but the retry is what actually matters here - a timeout that
+        # happens 1 time in 200 requests will still happen eventually
+        # over enough calls, retry is what survives that, not a bigger
+        # number alone.
+        last_err = None
+        resp = None
+        for attempt in range(3):
+            try:
+                resp = requests.get(BASE, params=params, timeout=25)
+                resp.raise_for_status()
+                last_err = None
+                break
+            except (requests.exceptions.RequestException,) as e:
+                last_err = e
+                if attempt < 2:
+                    print(f"    {symbol}: request {request_count+1} failed ({e}), retrying (attempt {attempt+2}/3)...")
+                    time.sleep(2 * (attempt + 1) + random.uniform(0, 2))
+        if last_err is not None:
+            raise last_err
         rows = resp.json()
         request_count += 1
 
@@ -112,9 +149,18 @@ def fetch_coindcx_klines(symbol="BTC", interval="5m", start_time=None, end_time=
 def resample_candles(base_candles, target_interval):
     """Resamples finer candles up to a coarser interval - e.g. 5m -> 1h -
     same aggregation logic as the live bot's aggregateCandles (first open,
-    last close, max high, min low, summed volume), using pandas resample."""
-    rule_map = {"5m": "5min", "15m": "15min", "1h": "1h", "4h": "4h", "1d": "1D"}
-    rule = rule_map[target_interval]
+    last close, max high, min low, summed volume), using pandas resample.
+
+    target_interval accepts either a legacy string key (backward
+    compatible: "5m","15m","1h","4h","1d") or a raw integer number of
+    minutes (e.g. 1, 3, 30) - added to test genuinely different timeframe
+    combinations (e.g. 1m/5m/15m or 3m/15m/30m instead of the fixed
+    5m/15m/1h), not just skip or cache the existing ones."""
+    legacy_rule_map = {"5m": "5min", "15m": "15min", "1h": "1h", "4h": "4h", "1d": "1D"}
+    if isinstance(target_interval, str):
+        rule = legacy_rule_map[target_interval]
+    else:
+        rule = f"{int(target_interval)}min"
     out = base_candles.resample(rule).agg({
         "open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum",
     })

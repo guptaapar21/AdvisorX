@@ -35,16 +35,23 @@ from coindcx_fetcher import resample_candles
 MIN_CANDLES_NEEDED = 55  # matches the live bot's own minimum
 
 
-def _closed_bucket_candles(resampled, as_of_time, rule_minutes, window=200):
+def _closed_bucket_candles(resampled, as_of_time, rule_minutes, window=200, primary_step_minutes=5):
     """Returns the last `window` fully-closed buckets as of `as_of_time` -
     bounded rolling window (fixes the O(n^2) unbounded-slice bug that
-    likely caused Colab hangs on full-year runs)."""
+    likely caused Colab hangs on full-year runs).
+
+    primary_step_minutes: how far the outer loop actually steps forward
+    each iteration. Previously hardcoded to a bare 5-minute tolerance,
+    silently assuming the primary timeframe was always 5m - now that it's
+    configurable, using the wrong tolerance here means treating a candle
+    as "closed" earlier or later than it really is, which is a real
+    lookahead-bias risk specifically on faster combos like 1m primary."""
     sliced = resampled.loc[:as_of_time].tail(window)
     if len(sliced) == 0:
         return sliced
     last_bucket_start = sliced.index[-1]
     bucket_end = last_bucket_start + pd.Timedelta(minutes=rule_minutes)
-    if bucket_end > as_of_time + pd.Timedelta(minutes=5):
+    if bucket_end > as_of_time + pd.Timedelta(minutes=primary_step_minutes):
         return sliced.iloc[:-1]
     return sliced
 
@@ -53,7 +60,9 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                   max_hold_bars=None, stage_multipliers=(1, 2, 3),
                   direction_filter=None, setup_filter=None, verbose=False,
                   full_close_at_stage1=False, atr_multiplier_override=None,
-                  reversal_exit_threshold=70):
+                  reversal_exit_threshold=70, raw_reversal_threshold=None,
+                  skip_filter_timeframe=False, confirm_minutes=15, filter_minutes=60,
+                  primary_minutes=5):
     """
     strategy: one of "ultra-short"/"aggressive"/"balanced"/"conservative"/
     "swing-trend". Resolves that preset's real min_score, ATR stop
@@ -72,14 +81,43 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
     other preset parameter - min_score, leverage, position size -
     unchanged). None = use the preset's real deployed value.
 
-    reversal_exit_threshold: the reversal score that triggers an exit.
-    Live default is 70 ("close immediately - multiple timeframes confirm
-    reversal"). Lowering this to 50 ("recommend closing - reversal risk
-    elevated") or 30 ("watch closely - trend weakening or divergence
-    detected") exits on an EARLIER, weaker reversal signal instead of
-    waiting for full multi-timeframe confirmation - trading a smaller
-    average loss/faster exit against the risk of exiting on signals that
-    would have reversed back in the position's favor.
+    reversal_exit_threshold: the BUCKETED reversal score that triggers an
+    exit (live default 70, "close immediately"). This score only ever
+    takes fixed stacked values (12/20/25/40/52/57/65/77/...), so testing
+    55 vs 60 vs 65 always gives identical results if no trade's real
+    reading ever fell between them - confirmed empirically already.
+
+    raw_reversal_threshold: NEW - bypasses the bucket entirely and checks
+    the underlying continuous primary-timeframe trend number directly
+    (e.g. -8, -23, -41, not a fixed step). None = disabled, only the
+    bucketed check above runs (matches current live behavior exactly).
+    When set, adds a genuinely continuous exit check alongside the
+    bucketed one - whichever fires first still wins. Each trade's
+    exit_reason will show "raw_reversal_beat_stop" (this genuinely
+    triggered before the stop would have on the same bar - a real save)
+    vs "raw_reversal_same_bar_as_stop" (fired on the same bar the stop
+    also would have - no actual benefit over just waiting for the stop),
+    so this data point answers "does this actually save anything" directly,
+    not just "does it exit differently."
+
+    skip_filter_timeframe: NEW - when True, substitutes tf_confirm (15m)
+    everywhere tf_filter (1h) would normally be used (market_state's
+    atr_ratio, route_strategy, score_opportunity, timeframe-alignment
+    scoring), and never builds the 1h slice or its indicators at all.
+    Directly tests whether the filter timeframe earns its own
+    computational cost, or whether entries are just as good using only
+    2 timeframes (primary+confirm) instead of 3. Real speed test, not a
+    approximation - the 1h resample/indicator work is skipped entirely,
+    not just cached.
+
+    confirm_minutes / filter_minutes: NEW - the actual confirm/filter
+    timeframe intervals, in minutes. Defaults (15/60) match the live
+    bot's real deployed 15m/1h setup exactly. Override to test genuinely
+    faster combinations (e.g. confirm_minutes=5, filter_minutes=15 for a
+    1m/5m/15m setup, alongside a primary_minutes override in main.py) -
+    tests whether a quicker-reacting timeframe combination still
+    produces good entries, given real evidence that scores can shift a
+    lot within a single 15-minute window.
 
     Returns (trades_df, equity_curve_series). trades_df includes
     stages_done/leverage/stop_distance_pct for fee_model.py to consume.
@@ -91,8 +129,28 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
     resolved_leverage = (lev_bounds["min"] + lev_bounds["max"]) / 2
     effective_min_score = min_score if min_score is not None else weights["min_score"]
 
-    candles_15m_full = resample_candles(candles_5m, "15m")
-    candles_1h_full = resample_candles(candles_5m, "1h")
+    candles_confirm_full = resample_candles(candles_5m, confirm_minutes)
+    candles_filter_full = None if skip_filter_timeframe else resample_candles(candles_5m, filter_minutes)
+
+    # Bug 3 fix: previously nothing stopped a nonsensical timeframe
+    # ordering (e.g. primary >= confirm) from silently running a
+    # logically broken backtest instead of failing clearly.
+    if primary_minutes >= confirm_minutes:
+        raise ValueError(f"primary_minutes ({primary_minutes}) must be smaller than confirm_minutes ({confirm_minutes})")
+    if not skip_filter_timeframe and confirm_minutes >= filter_minutes:
+        raise ValueError(f"confirm_minutes ({confirm_minutes}) must be smaller than filter_minutes ({filter_minutes})")
+
+    # Bug 2 fix: preserves the ORIGINAL real-world lookback span (not
+    # just a fixed bar count) regardless of which interval combination is
+    # used - previously a fixed 200-bar window meant faster combos (e.g.
+    # 1m primary) silently got 5x LESS real lookback history for the
+    # exact same indicators (EMA20/50 etc.), confounding any comparison
+    # between combos. These minute-targets match what 200 bars
+    # represented at the combo this was originally tuned around
+    # (5m/15m/60m).
+    primary_window_bars = max(55, round(1000 / primary_minutes))
+    confirm_window_bars = max(55, round(3000 / confirm_minutes))
+    filter_window_bars = max(55, round(12000 / filter_minutes))
 
     trades = []
     open_position = None
@@ -101,21 +159,52 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
     equity_curve = []
 
     n = len(candles_5m)
+    # Confirm(15m)/filter(1h) only actually change once every 3 / 12
+    # primary(5m) iterations respectively - but were being fully
+    # recomputed from scratch every single iteration regardless. Caching
+    # by the slice's own last timestamp - a cheap, correctness-preserving
+    # check - and only recomputing when it's genuinely a new closed
+    # candle cuts ~2/3 of confirm computation and ~11/12 of filter
+    # computation, since indicator math is otherwise identical to the
+    # last time this exact slice was seen.
+    cached_confirm_end = None
+    cached_tf_confirm = None
+    cached_filter_end = None
+    cached_tf_filter = None
+
     for i in range(MIN_CANDLES_NEEDED, n):
         t = candles_5m.index[i]
-        primary_slice = candles_5m.iloc[max(0, i - 200):i + 1]
-        confirm_slice = _closed_bucket_candles(candles_15m_full, t, 15)
-        filter_slice = _closed_bucket_candles(candles_1h_full, t, 60)
+        primary_slice = candles_5m.iloc[max(0, i - primary_window_bars):i + 1]
+        confirm_slice = _closed_bucket_candles(candles_confirm_full, t, confirm_minutes, window=confirm_window_bars, primary_step_minutes=primary_minutes)
+        filter_slice = None if skip_filter_timeframe else _closed_bucket_candles(candles_filter_full, t, filter_minutes, window=filter_window_bars, primary_step_minutes=primary_minutes)
 
-        if len(primary_slice) < MIN_CANDLES_NEEDED or len(confirm_slice) < MIN_CANDLES_NEEDED or len(filter_slice) < MIN_CANDLES_NEEDED:
+        filter_len_ok = True if skip_filter_timeframe else len(filter_slice) >= MIN_CANDLES_NEEDED
+        if len(primary_slice) < MIN_CANDLES_NEEDED or len(confirm_slice) < MIN_CANDLES_NEEDED or not filter_len_ok:
             equity_curve.append((t, equity))
             continue
 
         current_price = primary_slice["close"].iloc[-1]
 
         tf_primary = build_timeframe_indicators(primary_slice)
-        tf_confirm = build_timeframe_indicators(confirm_slice)
-        tf_filter = build_timeframe_indicators(filter_slice)
+
+        confirm_end = confirm_slice.index[-1]
+        if confirm_end != cached_confirm_end:
+            cached_tf_confirm = build_timeframe_indicators(confirm_slice)
+            cached_confirm_end = confirm_end
+        tf_confirm = cached_tf_confirm
+
+        if skip_filter_timeframe:
+            # Real speed test, not an approximation - the 1h slice/
+            # indicators are never built at all in this mode, not just
+            # cached. tf_confirm stands in wherever tf_filter would be
+            # used downstream.
+            tf_filter = tf_confirm
+        else:
+            filter_end = filter_slice.index[-1]
+            if filter_end != cached_filter_end:
+                cached_tf_filter = build_timeframe_indicators(filter_slice)
+                cached_filter_end = filter_end
+            tf_filter = cached_tf_filter
 
         if open_position is not None:
             pos = open_position
@@ -124,10 +213,35 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
             reversal = calculate_reversal_score(tf_primary, tf_confirm, tf_filter, direction, trend_history)
             hit_stop = current_price <= pos["stop"] if direction == "long" else current_price >= pos["stop"]
 
+            # Raw-continuous check: uses the underlying primary trend
+            # number directly (e.g. -8, -23, -41) instead of the bucketed
+            # reversal_score (12/20/25/40...), which jumps in fixed steps
+            # and can't distinguish "just starting to turn" from "well
+            # advanced" within the same bucket - exactly why 55/60/65
+            # produced identical results earlier. target_sign matches
+            # calculate_reversal_score's own convention (long positions
+            # watch for the score turning negative, short positions watch
+            # for it turning positive).
+            raw_primary = reversal["trend_scores"]["primary"]
+            target_sign = -1 if direction == "long" else 1
+            raw_reversal_triggered = (
+                raw_reversal_threshold is not None
+                and np.sign(raw_primary) == target_sign
+                and abs(raw_primary) >= raw_reversal_threshold
+            )
+
             exit_reason = None
             exit_price = current_price
             if reversal["reversal_score"] >= reversal_exit_threshold:
                 exit_reason = "reversal"
+            elif raw_reversal_triggered:
+                # This is the exit we're actually testing: did it fire
+                # BEFORE the stop would have, i.e. did it genuinely save
+                # something, or is it just closing early on a move the
+                # stop was about to catch anyway? hit_stop is already
+                # computed above for this exact bar, so this is a direct,
+                # honest same-bar comparison, not an estimate.
+                exit_reason = "raw_reversal_beat_stop" if not hit_stop else "raw_reversal_same_bar_as_stop"
             elif hit_stop:
                 exit_reason = "stop"
                 exit_price = pos["stop"]
@@ -245,9 +359,25 @@ def summarize_results(trades_df):
         "avg_r_gross": round(trades_df["r_achieved"].mean(), 3),
         "total_r_gross": round(trades_df["r_achieved"].sum(), 2),
         "avg_bars_held": round(trades_df["bars_held"].mean(), 1),
+        # Bug 5 fix: avg_bars_held alone is silently misleading when
+        # comparing across different timeframe combos, since a "bar" now
+        # means a different real duration depending on primary_minutes.
+        # This needs the actual interval to convert correctly, so it's
+        # computed by the caller (main.py) after this function returns -
+        # see avg_hours_held added to the row dict there.
         "exit_reason_breakdown": trades_df["exit_reason"].value_counts().to_dict(),
         "breakout_extension_trades": int(trades_df["is_breakout_extension"].sum()),
     }
+    # The key number the raw-reversal-threshold feature exists to answer:
+    # of the trades that exited via the raw check, what fraction actually
+    # beat the stop (a genuine save) vs just coincided with it (no real
+    # benefit over waiting)?
+    beat_stop = int((trades_df["exit_reason"] == "raw_reversal_beat_stop").sum())
+    same_bar = int((trades_df["exit_reason"] == "raw_reversal_same_bar_as_stop").sum())
+    if beat_stop + same_bar > 0:
+        summary["raw_reversal_beat_stop_rate_pct"] = round(beat_stop / (beat_stop + same_bar) * 100, 1)
+        summary["raw_reversal_beat_stop_count"] = beat_stop
+        summary["raw_reversal_same_bar_count"] = same_bar
     if has_net:
         wins_net = trades_df[trades_df["net_r"] > 0]
         summary.update({

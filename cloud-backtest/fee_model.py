@@ -78,13 +78,21 @@ def fee_and_interest_r_cost(stages_done, leverage, stop_distance_pct, bars_held,
     return fee_r_cost + interest_r_cost
 
 
-def apply_fees_and_interest(trades_df):
+def apply_fees_and_interest(trades_df, bar_minutes=5):
     """Adds 'fee_interest_r_cost' and 'net_r' columns to a trades
     DataFrame produced by run_backtest(). Requires the trade dict to
     include 'stages_done', 'leverage', and 'stop_distance_pct' - all three
     are now captured by the updated backtest engine specifically so this
     can run as a separate, clearly-labeled post-processing step rather
-    than being baked invisibly into the core simulation loop."""
+    than being baked invisibly into the core simulation loop.
+
+    bar_minutes: the REAL duration of one bars_held unit. Previously this
+    was never passed through at all - the call site always used the
+    function's own 5-minute default regardless of what primary_minutes
+    actually was for that run, silently overcharging (or undercharging)
+    simulated margin interest by up to 5x whenever a non-default
+    timeframe combination was used (e.g. 1m primary bars being counted as
+    if each represented 5 real minutes)."""
     if len(trades_df) == 0:
         trades_df["fee_interest_r_cost"] = []
         trades_df["net_r"] = []
@@ -93,7 +101,7 @@ def apply_fees_and_interest(trades_df):
     trades_df = trades_df.copy()
     trades_df["fee_interest_r_cost"] = trades_df.apply(
         lambda row: fee_and_interest_r_cost(
-            row["stages_done"], row["leverage"], row["stop_distance_pct"], row["bars_held"]
+            row["stages_done"], row["leverage"], row["stop_distance_pct"], row["bars_held"], bar_minutes=bar_minutes
         ),
         axis=1,
     )

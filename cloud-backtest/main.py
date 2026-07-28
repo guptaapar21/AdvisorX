@@ -81,7 +81,8 @@ def main():
     strategies = _env_list("BT_STRATEGIES", DEFAULT_STRATEGIES)
     days = int(os.environ.get("BT_DAYS", "365"))
     max_hold_hours = float(os.environ.get("BT_MAX_HOLD_HOURS", "36"))
-    max_hold_bars = round(max_hold_hours * 60 / 5)  # 5m bars
+    primary_minutes = int(os.environ.get("BT_PRIMARY_MINUTES", "5").strip() or "5")
+    max_hold_bars = round(max_hold_hours * 60 / primary_minutes)
 
     end_date = datetime.now(timezone.utc).date()
     start_date = end_date - timedelta(days=days)
@@ -92,15 +93,23 @@ def main():
     min_score_override = float(min_score_raw) if min_score_raw else None
     reversal_threshold_raw = os.environ.get("BT_REVERSAL_THRESHOLD", "").strip()
     reversal_threshold = float(reversal_threshold_raw) if reversal_threshold_raw else 70
+    raw_reversal_raw = os.environ.get("BT_RAW_REVERSAL_THRESHOLD", "").strip()
+    raw_reversal_threshold = float(raw_reversal_raw) if raw_reversal_raw else None
+    skip_filter_timeframe = os.environ.get("BT_SKIP_FILTER_TIMEFRAME", "").strip().lower() in ("1", "true", "yes")
+    confirm_minutes = int(os.environ.get("BT_CONFIRM_MINUTES", "15").strip() or "15")
+    filter_minutes = int(os.environ.get("BT_FILTER_MINUTES", "60").strip() or "60")
     full_close_at_1r = os.environ.get("BT_FULL_CLOSE_AT_1R", "").strip().lower() in ("1", "true", "yes")
 
     print(f"Backtest window: {start_date} to {end_date} ({days} days)")
     print(f"Coins: {coins}")
     print(f"Strategies: {strategies}")
-    print(f"Max hold: {max_hold_hours}h ({max_hold_bars} x 5m bars)")
+    print(f"Max hold: {max_hold_hours}h ({max_hold_bars} x {primary_minutes}m bars)")
     print(f"ATR multiplier override: {atr_override if atr_override is not None else '(preset default)'}")
     print(f"Min score override: {min_score_override if min_score_override is not None else '(preset default)'}")
     print(f"Reversal exit threshold: {reversal_threshold} (live default is 70)")
+    print(f"Raw reversal threshold: {raw_reversal_threshold if raw_reversal_threshold is not None else '(disabled)'}")
+    print(f"Skip filter (1h) timeframe: {skip_filter_timeframe}")
+    print(f"Timeframe combination: primary {primary_minutes}m / confirm {confirm_minutes}m / filter {filter_minutes}m (live default: 5m/15m/60m)")
     print(f"Full close at stage-1 R: {full_close_at_1r}")
 
     os.makedirs("results", exist_ok=True)
@@ -115,6 +124,12 @@ def main():
         variant_tag += "_fullclose1R"
     if reversal_threshold != 70:
         variant_tag += f"_rev{reversal_threshold:.0f}"
+    if raw_reversal_threshold is not None:
+        variant_tag += f"_rawrev{raw_reversal_threshold:.0f}"
+    if skip_filter_timeframe:
+        variant_tag += "_2tf"
+    if (primary_minutes, confirm_minutes, filter_minutes) != (5, 15, 60):
+        variant_tag += f"_tf{primary_minutes}-{confirm_minutes}-{filter_minutes}"
     results_path = f"results/backtest_{coins_tag}{variant_tag}_{timestamp}.csv"
     trades_path = f"results/trades_{coins_tag}{variant_tag}_{timestamp}.csv"
 
@@ -131,8 +146,8 @@ def main():
             print(f"  FAILED to fetch {coin}: {e}")
             errors.append(f"{coin} fetch: {e}")
             continue
-        candles_5m = resample_candles(candles_1m, "5m")
-        print(f"  {coin}: {len(candles_1m)} 1m candles -> {len(candles_5m)} 5m candles in {time.time()-t0:.0f}s")
+        candles_5m = resample_candles(candles_1m, primary_minutes)
+        print(f"  {coin}: {len(candles_1m)} 1m candles -> {len(candles_5m)} {primary_minutes}m candles in {time.time()-t0:.0f}s")
 
         for strategy in strategies:
             print(f"  --- {coin} / {strategy} ---")
@@ -142,6 +157,10 @@ def main():
                     coin, candles_5m, strategy=strategy, max_hold_bars=max_hold_bars,
                     atr_multiplier_override=atr_override, full_close_at_stage1=full_close_at_1r,
                     min_score=min_score_override, reversal_exit_threshold=reversal_threshold,
+                    raw_reversal_threshold=raw_reversal_threshold,
+                    skip_filter_timeframe=skip_filter_timeframe,
+                    confirm_minutes=confirm_minutes, filter_minutes=filter_minutes,
+                    primary_minutes=primary_minutes,
                 )
             except Exception as e:
                 print(f"    FAILED: {e}")
@@ -154,16 +173,32 @@ def main():
                 all_rows.append({"coin": coin, "strategy": strategy, "total_trades": 0})
                 continue
 
-            trades = apply_fees_and_interest(trades)
+            trades = apply_fees_and_interest(trades, bar_minutes=primary_minutes)
             trades = apply_dollar_pnl(trades)  # standing $500/5%-fixed convention, see fee_model.py
             trades["coin"] = coin  # already has 'strategy' from the engine itself
             all_trades.append(trades)
 
             summary = summarize_results(trades)
+            if "avg_bars_held" in summary:
+                # Bug 5 fix: avg_bars_held alone is silently misleading
+                # once different timeframe combos are being compared -
+                # "12 bars" means 12 minutes at primary=1m but 60 minutes
+                # at primary=5m. Adding the real-time-converted version
+                # right alongside it, computed here where primary_minutes
+                # is actually known.
+                summary["avg_hours_held"] = round(summary["avg_bars_held"] * primary_minutes / 60.0, 2)
             row = {"coin": coin, "strategy": strategy, "days": days,
                    "atr_override": atr_override if atr_override is not None else "",
                    "min_score_override": min_score_override if min_score_override is not None else "",
-                   "full_close_at_1r": full_close_at_1r, "reversal_exit_threshold": reversal_threshold, **summary}
+                   "full_close_at_1r": full_close_at_1r, "reversal_exit_threshold": reversal_threshold,
+                   # Bug 7 fix: previously only present in the filename tag,
+                   # not as real columns - meaning concatenating multiple
+                   # results CSVs together (which is how every sweep in
+                   # this project has actually been analyzed) would lose
+                   # track of which row came from which timeframe combo.
+                   "primary_minutes": primary_minutes, "confirm_minutes": confirm_minutes,
+                   "filter_minutes": filter_minutes, "skip_filter_timeframe": skip_filter_timeframe,
+                   **summary}
             row.pop("exit_reason_breakdown", None)  # dict - not CSV-friendly, kept in trades log instead
             all_rows.append(row)
             print(f"    {len(trades)} trades in {time.time()-t1:.0f}s | "
@@ -189,6 +224,12 @@ def main():
         variant_desc.append("full-close@1R")
     if reversal_threshold != 70:
         variant_desc.append(f"reversal@{reversal_threshold:.0f}")
+    if raw_reversal_threshold is not None:
+        variant_desc.append(f"rawreversal@{raw_reversal_threshold:.0f}")
+    if skip_filter_timeframe:
+        variant_desc.append("2tf-no-filter")
+    if (primary_minutes, confirm_minutes, filter_minutes) != (5, 15, 60):
+        variant_desc.append(f"tf{primary_minutes}m-{confirm_minutes}m-{filter_minutes}m")
     variant_str = f" [{', '.join(variant_desc)}]" if variant_desc else ""
     lines = [f"📊 *Cloud backtest complete{variant_str}* ({start_date} to {end_date}, {days}d)"]
     if not results_df.empty:
@@ -196,11 +237,14 @@ def main():
             if r.get("total_trades", 0) == 0:
                 lines.append(f"{r['coin']}/{r['strategy']}: 0 trades")
             else:
+                beat_stop_note = ""
+                if "raw_reversal_beat_stop_rate_pct" in r.index and pd.notna(r["raw_reversal_beat_stop_rate_pct"]):
+                    beat_stop_note = f" | raw-reversal beat stop {r['raw_reversal_beat_stop_rate_pct']:.0f}% of the time it fired"
                 lines.append(
                     f"{r['coin']}/{r['strategy']}: {int(r['total_trades'])} trades | "
                     f"net avgR {r['avg_r_net']:+.3f} (gross {r['avg_r_gross']:+.3f}) | "
                     f"win {r['win_rate_pct_net']:.0f}% | "
-                    f"${r['total_dollar_pnl']:+.0f} on $500 cap/5% risk"
+                    f"${r['total_dollar_pnl']:+.0f} on $500 cap/5% risk{beat_stop_note}"
                 )
     if errors:
         lines.append(f"⚠️ {len(errors)} error(s): " + " | ".join(errors[:3]))
