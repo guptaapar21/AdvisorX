@@ -1,0 +1,197 @@
+name: AdvisorX Cloud Backtest
+
+on:
+  workflow_dispatch:
+    inputs:
+      coins:
+        description: 'JSON array of coins - testing the reversal-exit-threshold change on the two proven coins.'
+        required: false
+        default: '["SOL","DOGE"]'
+      strategies:
+        description: 'JSON array of presets to sweep. Locked to conservative only - the proven winner, not re-exploring.'
+        required: false
+        default: '["conservative"]'
+      min_scores:
+        description: 'JSON array of min_score thresholds - each coin at its own proven cutoff (SOL 80, DOGE 79).'
+        required: false
+        default: '[79, 80]'
+      atr_values:
+        description: "Fixed to conservative's real default (2.5x) - already confirmed the right setting, not re-sweeping it."
+        required: false
+        default: '[2.5]'
+      full_close_modes:
+        description: 'Fixed to staged (false) only - already confirmed the winner in every comparison, not re-testing full-close.'
+        required: false
+        default: '[false]'
+      reversal_threshold:
+        description: "Reversal score that triggers an exit. Sweeping 55-70: at 70 (current), reversal NEVER fires for SOL/DOGE (0 of 80 trades) - stop-loss always wins the race first. At 50, results were worse. Checking if there's a middle point where reversal starts actually mattering."
+        required: false
+        default: '[70]'
+      raw_reversal_threshold:
+        description: "NEW - bypasses the bucketed reversal score entirely and checks the raw continuous primary-timeframe trend number directly. Empty array = disabled (matches current live behavior). Each result reports what fraction of raw-reversal exits actually beat the stop-loss (a genuine save) vs just coincided with it."
+        required: false
+        default: '[]'
+      skip_filter_timeframe:
+        description: "NEW - testing whether the 1h filter timeframe earns its computational cost. true = substitutes the 15m confirm timeframe wherever the 1h filter would normally be used, and never builds the 1h data at all (real speed test, not an approximation). false = current 3-timeframe behavior."
+        required: false
+        default: '[false]'
+      timeframe_combos:
+        description: 'JSON array of [primary_minutes, confirm_minutes, filter_minutes] triples. Default (5,15,60) is the live bot''s real deployed combination. Also testing (3,15,30) and (1,5,15) - genuinely faster combinations, given real evidence that scores can shift a lot within a single 15-minute window. WARNING: primary=1 means ~5x more loop iterations than primary=5 over the same year, so that combo will take noticeably longer to run.'
+        required: false
+        default: '[[5,15,60],[3,15,30],[1,5,15]]'
+      days:
+        description: "Lookback window in days (365 = 1 year, the agreed compute-budget cap)"
+        required: false
+        default: "365"
+      max_hold_hours:
+        description: "Max hold time in hours (36 matches the live bot's deployed default)"
+        required: false
+        default: "36"
+
+jobs:
+  # Builds the full cross-product (coin x strategy x min_score x atr x
+  # full_close) as a single JSON list - default inputs give
+  # 2 coins x 2 strategies x 4 min_scores x 3 atr x 2 full_close = 96
+  # combinations, each its own independent parallel job.
+  generate-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.build.outputs.matrix }}
+      count: ${{ steps.build.outputs.count }}
+    steps:
+      - id: build
+        env:
+          # Env vars, not inline ${{ }} substitution inside the script
+          # body - the JSON inputs contain double quotes, which collide
+          # with a `python3 -c "..."` shell string's own quoting and
+          # break the command (this bit us once already - see the fix
+          # history). Env vars sidestep shell-quoting entirely.
+          IN_COINS: ${{ inputs.coins }}
+          IN_STRATEGIES: ${{ inputs.strategies }}
+          IN_MIN_SCORES: ${{ inputs.min_scores }}
+          IN_ATR_VALUES: ${{ inputs.atr_values }}
+          IN_FULL_CLOSE_MODES: ${{ inputs.full_close_modes }}
+          IN_REVERSAL_THRESHOLD: ${{ inputs.reversal_threshold }}
+          IN_RAW_REVERSAL_THRESHOLD: ${{ inputs.raw_reversal_threshold }}
+          IN_SKIP_FILTER_TIMEFRAME: ${{ inputs.skip_filter_timeframe }}
+          IN_TIMEFRAME_COMBOS: ${{ inputs.timeframe_combos }}
+        run: |
+          cat > /tmp/generate_matrix.py << 'PYEOF'
+          import json, os
+
+          coins = json.loads(os.environ["IN_COINS"])
+          strategies = json.loads(os.environ["IN_STRATEGIES"])
+          min_scores = json.loads(os.environ["IN_MIN_SCORES"])
+          atr_values = json.loads(os.environ["IN_ATR_VALUES"])
+          full_close_modes = json.loads(os.environ["IN_FULL_CLOSE_MODES"])
+          reversal_thresholds = json.loads(os.environ["IN_REVERSAL_THRESHOLD"])
+          raw_reversal_thresholds = json.loads(os.environ["IN_RAW_REVERSAL_THRESHOLD"]) or [None]
+          skip_filter_modes = json.loads(os.environ["IN_SKIP_FILTER_TIMEFRAME"])
+          timeframe_combos = json.loads(os.environ["IN_TIMEFRAME_COMBOS"])
+
+          combos = []
+          for coin in coins:
+              for strategy in strategies:
+                  for min_score in min_scores:
+                      for atr in atr_values:
+                          for full_close in full_close_modes:
+                              for reversal in reversal_thresholds:
+                                  for raw_reversal in raw_reversal_thresholds:
+                                      for skip_filter in skip_filter_modes:
+                                          for tf in timeframe_combos:
+                                              combos.append({
+                                                  "coin": coin, "strategy": strategy,
+                                                  "min_score": str(min_score),
+                                                  "atr": str(atr), "full_close": str(full_close).lower(),
+                                                  "reversal": str(reversal),
+                                                  "raw_reversal": "" if raw_reversal is None else str(raw_reversal),
+                                                  "skip_filter": str(skip_filter).lower(),
+                                                  "primary_min": str(tf[0]), "confirm_min": str(tf[1]), "filter_min": str(tf[2]),
+                                              })
+
+          matrix = {"include": combos}
+          print(f"Generated {len(combos)} combinations")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"matrix={json.dumps(matrix)}\n")
+              f.write(f"count={len(combos)}\n")
+          PYEOF
+          python3 /tmp/generate_matrix.py
+
+  backtest:
+    needs: generate-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+      fail-fast: false  # one combo failing/timing out must never cancel the others
+    # One (coin, strategy) pair with ONE min_score/atr/exit-mode combo is a
+    # single-variant run - roughly the same cost as one preset in the
+    # original per-coin job (~8-10 min for a full year). 60 min is
+    # generous headroom, nowhere near GitHub's 360-min hard ceiling.
+    # Bumped from 60 to 150 minutes: the (1,5,15) timeframe combo runs
+    # ~5x more loop iterations than the default (5,15,60), and real
+    # observed timing (a full-year 5m-primary DOGE run took ~18 min
+    # total) means the 1m-primary combo could approach or exceed the old
+    # 60-min limit and get silently killed with zero results - exactly
+    # the combo this feature was built to test.
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+
+      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / score ${{ matrix.min_score }} / ATR ${{ matrix.atr }} / full_close=${{ matrix.full_close }} / reversal=${{ matrix.reversal }} / raw_reversal=${{ matrix.raw_reversal }} / skip_filter=${{ matrix.skip_filter }} / tf=${{ matrix.primary_min }}-${{ matrix.confirm_min }}-${{ matrix.filter_min }})
+        working-directory: cloud-backtest
+        env:
+          BT_COINS: ${{ matrix.coin }}
+          BT_STRATEGIES: ${{ matrix.strategy }}
+          BT_DAYS: ${{ inputs.days }}
+          BT_MAX_HOLD_HOURS: ${{ inputs.max_hold_hours }}
+          BT_ATR_OVERRIDE: ${{ matrix.atr }}
+          BT_MIN_SCORE_OVERRIDE: ${{ matrix.min_score }}
+          BT_REVERSAL_THRESHOLD: ${{ matrix.reversal }}
+          BT_RAW_REVERSAL_THRESHOLD: ${{ matrix.raw_reversal }}
+          BT_SKIP_FILTER_TIMEFRAME: ${{ matrix.skip_filter }}
+          BT_PRIMARY_MINUTES: ${{ matrix.primary_min }}
+          BT_CONFIRM_MINUTES: ${{ matrix.confirm_min }}
+          BT_FILTER_MINUTES: ${{ matrix.filter_min }}
+          BT_FULL_CLOSE_AT_1R: ${{ matrix.full_close }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py
+
+      - name: Commit results
+        working-directory: cloud-backtest
+        run: |
+          git config user.name "coindcx-backtest-bot"
+          git config user.email "actions@github.com"
+          git add results/
+          git diff --staged --quiet && exit 0
+          git commit -m "Add backtest results: ${{ matrix.coin }}/${{ matrix.strategy }} score${{ matrix.min_score }} ATR${{ matrix.atr }} fullclose=${{ matrix.full_close }} [skip ci]"
+          for i in 1 2 3 4 5; do
+            if git push; then
+              exit 0
+            fi
+            echo "Push rejected (attempt $i), pulling and retrying..."
+            if git pull --rebase; then
+              continue
+            fi
+            git rebase --abort
+            git fetch origin main
+            git reset --soft origin/main
+            git add results/
+            git commit -m "Add backtest results: ${{ matrix.coin }}/${{ matrix.strategy }} score${{ matrix.min_score }} ATR${{ matrix.atr }} fullclose=${{ matrix.full_close }} [skip ci]" --allow-empty
+          done
+          echo "Failed to push results after 5 attempts."
+          exit 1
+
+      - name: Upload results as workflow artifact too
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest-results-${{ matrix.coin }}-${{ matrix.strategy }}-score${{ matrix.min_score }}-atr${{ matrix.atr }}-fc${{ matrix.full_close }}
+          path: cloud-backtest/results/
+          retention-days: 90
