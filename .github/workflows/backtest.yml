@@ -32,9 +32,13 @@ on:
         required: false
         default: '[]'
       skip_filter_timeframe:
-        description: "NEW - testing whether the 1h filter timeframe earns its computational cost. true = substitutes the 15m confirm timeframe wherever the 1h filter would normally be used, and never builds the 1h data at all (real speed test, not an approximation). false = current 3-timeframe behavior. Testing both for direct comparison."
+        description: "NEW - testing whether the 1h filter timeframe earns its computational cost. true = substitutes the 15m confirm timeframe wherever the 1h filter would normally be used, and never builds the 1h data at all (real speed test, not an approximation). false = current 3-timeframe behavior."
         required: false
-        default: '[true, false]'
+        default: '[false]'
+      timeframe_combos:
+        description: 'JSON array of [primary_minutes, confirm_minutes, filter_minutes] triples. Default (5,15,60) is the live bot''s real deployed combination. Also testing (3,15,30) and (1,5,15) - genuinely faster combinations, given real evidence that scores can shift a lot within a single 15-minute window. WARNING: primary=1 means ~5x more loop iterations than primary=5 over the same year, so that combo will take noticeably longer to run.'
+        required: false
+        default: '[[5,15,60],[3,15,30],[1,5,15]]'
       days:
         description: "Lookback window in days (365 = 1 year, the agreed compute-budget cap)"
         required: false
@@ -70,6 +74,7 @@ jobs:
           IN_REVERSAL_THRESHOLD: ${{ inputs.reversal_threshold }}
           IN_RAW_REVERSAL_THRESHOLD: ${{ inputs.raw_reversal_threshold }}
           IN_SKIP_FILTER_TIMEFRAME: ${{ inputs.skip_filter_timeframe }}
+          IN_TIMEFRAME_COMBOS: ${{ inputs.timeframe_combos }}
         run: |
           cat > /tmp/generate_matrix.py << 'PYEOF'
           import json, os
@@ -82,6 +87,7 @@ jobs:
           reversal_thresholds = json.loads(os.environ["IN_REVERSAL_THRESHOLD"])
           raw_reversal_thresholds = json.loads(os.environ["IN_RAW_REVERSAL_THRESHOLD"]) or [None]
           skip_filter_modes = json.loads(os.environ["IN_SKIP_FILTER_TIMEFRAME"])
+          timeframe_combos = json.loads(os.environ["IN_TIMEFRAME_COMBOS"])
 
           combos = []
           for coin in coins:
@@ -92,14 +98,16 @@ jobs:
                               for reversal in reversal_thresholds:
                                   for raw_reversal in raw_reversal_thresholds:
                                       for skip_filter in skip_filter_modes:
-                                          combos.append({
-                                              "coin": coin, "strategy": strategy,
-                                              "min_score": str(min_score),
-                                              "atr": str(atr), "full_close": str(full_close).lower(),
-                                              "reversal": str(reversal),
-                                              "raw_reversal": "" if raw_reversal is None else str(raw_reversal),
-                                              "skip_filter": str(skip_filter).lower(),
-                                          })
+                                          for tf in timeframe_combos:
+                                              combos.append({
+                                                  "coin": coin, "strategy": strategy,
+                                                  "min_score": str(min_score),
+                                                  "atr": str(atr), "full_close": str(full_close).lower(),
+                                                  "reversal": str(reversal),
+                                                  "raw_reversal": "" if raw_reversal is None else str(raw_reversal),
+                                                  "skip_filter": str(skip_filter).lower(),
+                                                  "primary_min": str(tf[0]), "confirm_min": str(tf[1]), "filter_min": str(tf[2]),
+                                              })
 
           matrix = {"include": combos}
           print(f"Generated {len(combos)} combinations")
@@ -119,7 +127,13 @@ jobs:
     # single-variant run - roughly the same cost as one preset in the
     # original per-coin job (~8-10 min for a full year). 60 min is
     # generous headroom, nowhere near GitHub's 360-min hard ceiling.
-    timeout-minutes: 60
+    # Bumped from 60 to 150 minutes: the (1,5,15) timeframe combo runs
+    # ~5x more loop iterations than the default (5,15,60), and real
+    # observed timing (a full-year 5m-primary DOGE run took ~18 min
+    # total) means the 1m-primary combo could approach or exceed the old
+    # 60-min limit and get silently killed with zero results - exactly
+    # the combo this feature was built to test.
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
 
@@ -130,7 +144,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
 
-      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / score ${{ matrix.min_score }} / ATR ${{ matrix.atr }} / full_close=${{ matrix.full_close }} / reversal=${{ matrix.reversal }} / raw_reversal=${{ matrix.raw_reversal }} / skip_filter=${{ matrix.skip_filter }})
+      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / score ${{ matrix.min_score }} / ATR ${{ matrix.atr }} / full_close=${{ matrix.full_close }} / reversal=${{ matrix.reversal }} / raw_reversal=${{ matrix.raw_reversal }} / skip_filter=${{ matrix.skip_filter }} / tf=${{ matrix.primary_min }}-${{ matrix.confirm_min }}-${{ matrix.filter_min }})
         working-directory: cloud-backtest
         env:
           BT_COINS: ${{ matrix.coin }}
@@ -142,6 +156,9 @@ jobs:
           BT_REVERSAL_THRESHOLD: ${{ matrix.reversal }}
           BT_RAW_REVERSAL_THRESHOLD: ${{ matrix.raw_reversal }}
           BT_SKIP_FILTER_TIMEFRAME: ${{ matrix.skip_filter }}
+          BT_PRIMARY_MINUTES: ${{ matrix.primary_min }}
+          BT_CONFIRM_MINUTES: ${{ matrix.confirm_min }}
+          BT_FILTER_MINUTES: ${{ matrix.filter_min }}
           BT_FULL_CLOSE_AT_1R: ${{ matrix.full_close }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
