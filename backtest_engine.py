@@ -53,7 +53,8 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                   max_hold_bars=None, stage_multipliers=(1, 2, 3),
                   direction_filter=None, setup_filter=None, verbose=False,
                   full_close_at_stage1=False, atr_multiplier_override=None,
-                  reversal_exit_threshold=70, raw_reversal_threshold=None):
+                  reversal_exit_threshold=70, raw_reversal_threshold=None,
+                  skip_filter_timeframe=False):
     """
     strategy: one of "ultra-short"/"aggressive"/"balanced"/"conservative"/
     "swing-trend". Resolves that preset's real min_score, ATR stop
@@ -91,6 +92,16 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
     so this data point answers "does this actually save anything" directly,
     not just "does it exit differently."
 
+    skip_filter_timeframe: NEW - when True, substitutes tf_confirm (15m)
+    everywhere tf_filter (1h) would normally be used (market_state's
+    atr_ratio, route_strategy, score_opportunity, timeframe-alignment
+    scoring), and never builds the 1h slice or its indicators at all.
+    Directly tests whether the filter timeframe earns its own
+    computational cost, or whether entries are just as good using only
+    2 timeframes (primary+confirm) instead of 3. Real speed test, not a
+    approximation - the 1h resample/indicator work is skipped entirely,
+    not just cached.
+
     Returns (trades_df, equity_curve_series). trades_df includes
     stages_done/leverage/stop_distance_pct for fee_model.py to consume.
     """
@@ -102,7 +113,7 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
     effective_min_score = min_score if min_score is not None else weights["min_score"]
 
     candles_15m_full = resample_candles(candles_5m, "15m")
-    candles_1h_full = resample_candles(candles_5m, "1h")
+    candles_1h_full = None if skip_filter_timeframe else resample_candles(candles_5m, "1h")
 
     trades = []
     open_position = None
@@ -111,21 +122,52 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
     equity_curve = []
 
     n = len(candles_5m)
+    # Confirm(15m)/filter(1h) only actually change once every 3 / 12
+    # primary(5m) iterations respectively - but were being fully
+    # recomputed from scratch every single iteration regardless. Caching
+    # by the slice's own last timestamp - a cheap, correctness-preserving
+    # check - and only recomputing when it's genuinely a new closed
+    # candle cuts ~2/3 of confirm computation and ~11/12 of filter
+    # computation, since indicator math is otherwise identical to the
+    # last time this exact slice was seen.
+    cached_confirm_end = None
+    cached_tf_confirm = None
+    cached_filter_end = None
+    cached_tf_filter = None
+
     for i in range(MIN_CANDLES_NEEDED, n):
         t = candles_5m.index[i]
         primary_slice = candles_5m.iloc[max(0, i - 200):i + 1]
         confirm_slice = _closed_bucket_candles(candles_15m_full, t, 15)
-        filter_slice = _closed_bucket_candles(candles_1h_full, t, 60)
+        filter_slice = None if skip_filter_timeframe else _closed_bucket_candles(candles_1h_full, t, 60)
 
-        if len(primary_slice) < MIN_CANDLES_NEEDED or len(confirm_slice) < MIN_CANDLES_NEEDED or len(filter_slice) < MIN_CANDLES_NEEDED:
+        filter_len_ok = True if skip_filter_timeframe else len(filter_slice) >= MIN_CANDLES_NEEDED
+        if len(primary_slice) < MIN_CANDLES_NEEDED or len(confirm_slice) < MIN_CANDLES_NEEDED or not filter_len_ok:
             equity_curve.append((t, equity))
             continue
 
         current_price = primary_slice["close"].iloc[-1]
 
         tf_primary = build_timeframe_indicators(primary_slice)
-        tf_confirm = build_timeframe_indicators(confirm_slice)
-        tf_filter = build_timeframe_indicators(filter_slice)
+
+        confirm_end = confirm_slice.index[-1]
+        if confirm_end != cached_confirm_end:
+            cached_tf_confirm = build_timeframe_indicators(confirm_slice)
+            cached_confirm_end = confirm_end
+        tf_confirm = cached_tf_confirm
+
+        if skip_filter_timeframe:
+            # Real speed test, not an approximation - the 1h slice/
+            # indicators are never built at all in this mode, not just
+            # cached. tf_confirm stands in wherever tf_filter would be
+            # used downstream.
+            tf_filter = tf_confirm
+        else:
+            filter_end = filter_slice.index[-1]
+            if filter_end != cached_filter_end:
+                cached_tf_filter = build_timeframe_indicators(filter_slice)
+                cached_filter_end = filter_end
+            tf_filter = cached_tf_filter
 
         if open_position is not None:
             pos = open_position

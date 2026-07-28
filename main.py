@@ -94,6 +94,7 @@ def main():
     reversal_threshold = float(reversal_threshold_raw) if reversal_threshold_raw else 70
     raw_reversal_raw = os.environ.get("BT_RAW_REVERSAL_THRESHOLD", "").strip()
     raw_reversal_threshold = float(raw_reversal_raw) if raw_reversal_raw else None
+    skip_filter_timeframe = os.environ.get("BT_SKIP_FILTER_TIMEFRAME", "").strip().lower() in ("1", "true", "yes")
     full_close_at_1r = os.environ.get("BT_FULL_CLOSE_AT_1R", "").strip().lower() in ("1", "true", "yes")
 
     print(f"Backtest window: {start_date} to {end_date} ({days} days)")
@@ -104,6 +105,7 @@ def main():
     print(f"Min score override: {min_score_override if min_score_override is not None else '(preset default)'}")
     print(f"Reversal exit threshold: {reversal_threshold} (live default is 70)")
     print(f"Raw reversal threshold: {raw_reversal_threshold if raw_reversal_threshold is not None else '(disabled)'}")
+    print(f"Skip filter (1h) timeframe: {skip_filter_timeframe}")
     print(f"Full close at stage-1 R: {full_close_at_1r}")
 
     os.makedirs("results", exist_ok=True)
@@ -120,6 +122,8 @@ def main():
         variant_tag += f"_rev{reversal_threshold:.0f}"
     if raw_reversal_threshold is not None:
         variant_tag += f"_rawrev{raw_reversal_threshold:.0f}"
+    if skip_filter_timeframe:
+        variant_tag += "_2tf"
     results_path = f"results/backtest_{coins_tag}{variant_tag}_{timestamp}.csv"
     trades_path = f"results/trades_{coins_tag}{variant_tag}_{timestamp}.csv"
 
@@ -148,6 +152,7 @@ def main():
                     atr_multiplier_override=atr_override, full_close_at_stage1=full_close_at_1r,
                     min_score=min_score_override, reversal_exit_threshold=reversal_threshold,
                     raw_reversal_threshold=raw_reversal_threshold,
+                    skip_filter_timeframe=skip_filter_timeframe,
                 )
             except Exception as e:
                 print(f"    FAILED: {e}")
@@ -197,6 +202,8 @@ def main():
         variant_desc.append(f"reversal@{reversal_threshold:.0f}")
     if raw_reversal_threshold is not None:
         variant_desc.append(f"rawreversal@{raw_reversal_threshold:.0f}")
+    if skip_filter_timeframe:
+        variant_desc.append("2tf-no-filter")
     variant_str = f" [{', '.join(variant_desc)}]" if variant_desc else ""
     lines = [f"📊 *Cloud backtest complete{variant_str}* ({start_date} to {end_date}, {days}d)"]
     if not results_df.empty:
