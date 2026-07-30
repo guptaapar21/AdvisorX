@@ -28,17 +28,17 @@ on:
         required: false
         default: '[70]'
       raw_reversal_threshold:
-        description: "NEW - bypasses the bucketed reversal score entirely and checks the raw continuous primary-timeframe trend number directly. Empty array = disabled (matches current live behavior). Each result reports what fraction of raw-reversal exits actually beat the stop-loss (a genuine save) vs just coincided with it."
+        description: "NEW - bypasses the bucketed reversal score entirely and checks the raw continuous primary-timeframe trend number directly. Each result reports what fraction of raw-reversal exits actually beat the stop-loss (a genuine save) vs just coincided with it."
         required: false
-        default: '[]'
+        default: '[10, 15, 20, 25, 30]'
       skip_filter_timeframe:
-        description: "NEW - testing whether the 1h filter timeframe earns its computational cost. true = substitutes the 15m confirm timeframe wherever the 1h filter would normally be used, and never builds the 1h data at all (real speed test, not an approximation). false = current 3-timeframe behavior."
+        description: "Already confirmed the 1h filter timeframe earns its cost - fixed to false, not re-testing."
         required: false
         default: '[false]'
       timeframe_combos:
-        description: 'JSON array of [primary_minutes, confirm_minutes, filter_minutes] triples. Default (5,15,60) is the live bot''s real deployed combination. Also testing (3,15,30) and (1,5,15) - genuinely faster combinations, given real evidence that scores can shift a lot within a single 15-minute window. WARNING: primary=1 means ~5x more loop iterations than primary=5 over the same year, so that combo will take noticeably longer to run.'
+        description: "JSON array of [primary_minutes, confirm_minutes, filter_minutes] triples. Already tested (3,15,30), (1,5,15), and (3,10,30) - all clearly worse than the current (5,15,60). Fixed to baseline only for this run."
         required: false
-        default: '[[5,15,60],[3,15,30],[1,5,15]]'
+        default: '[[5,15,60]]'
       days:
         description: "Lookback window in days (365 = 1 year, the agreed compute-budget cap)"
         required: false
