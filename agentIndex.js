@@ -4,7 +4,6 @@ const { generateAgentInstructions } = require("./agentInstructions");
 const { runAgentCycle } = require("./geminiAgent");
 const { sendTelegramMessage } = require("./telegram");
 const runtimeConfig = require("./runtimeConfig");
-const idleThrottle = require("./idleThrottle");
 const { runPreFilter } = require("./preFilter");
 
 function crispSummary(text) {
@@ -126,17 +125,13 @@ async function run() {
 
   if (!preFilterResult.isActive) {
     // Nothing worth spending a Gemini call on this run - skip the agent
-    // entirely and just report the pre-filter's own real findings,
-    // throttled to once every 15 min. The moment a position opens or a
-    // candidate clears score, isActive flips true and this throttle stops
-    // applying - every run messages immediately from then on (~5 min).
+    // entirely. Previously sent a throttled "no setup cleared" message
+    // once every 15 min; now fully silent - no Telegram message at all
+    // when nothing clears and no position is open. Still logs to the
+    // console/Action log for anyone checking manually.
     console.log("Skipping Gemini this run - pre-filter found nothing active.");
     const message = formatIdleMessage(preFilterResult, config);
-    if (idleThrottle.shouldSendIdleMessage()) {
-      await sendTelegramMessage(`🧠 ${message}`);
-    } else {
-      console.log("Idle run - Telegram message suppressed (throttled to every 15 min while nothing is happening).");
-    }
+    console.log(`(Idle - not sent to Telegram): ${message}`);
     console.log("Run complete (pre-filter only, no Gemini used).");
     return;
   }
@@ -144,7 +139,6 @@ async function run() {
   // Something's active (a real position, or a candidate cleared minScore) -
   // worth spending a Gemini call to actually reason about it.
   console.log("Pre-filter found activity - invoking the full Gemini agent...");
-  idleThrottle.resetIdleThrottle();
 
   const tools = buildTools(config, creds);
   const systemPrompt = generateAgentInstructions(config);

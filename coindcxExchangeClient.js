@@ -194,6 +194,18 @@ async function getPositions(creds, page = "1", size = "50") {
   return privatePost("/exchange/v1/derivatives/futures/positions", { page, size }, creds);
 }
 
+// Best-effort - this endpoint path follows the same convention as
+// /positions above and is confirmed to exist as a real CoinDCX feature
+// via third-party API wrapper libraries, but the exact path was NOT
+// independently verified against CoinDCX's own official documentation.
+// Callers MUST wrap this in a try/catch and treat a failure as "unknown,"
+// not as "no pending orders" - added specifically so a pending, unfilled
+// limit order doesn't get silently missed by a duplicate-position check
+// that only looks at filled positions.
+async function getActiveOrders(creds, page = "1", size = "50") {
+  return privatePost("/exchange/v1/derivatives/futures/orders/active", { page, size }, creds);
+}
+
 // ---- WRITE / EXECUTION: intercepted, never touches the exchange ----
 // Each returns a plain descriptor of the intended action. agentTools.js
 // turns this into a Telegram message and a synthetic tool result for the
@@ -222,6 +234,7 @@ module.exports = {
   getOrderBook,
   getBalances,
   getPositions,
+  getActiveOrders,
   placeOrder,
   cancelOrder,
   closePosition,

@@ -283,6 +283,59 @@ async function analyzeSymbol(symbol, config, trendHistoryStore) {
 // CoinDCX's getPositions response includes an entry per contract even when
 // flat (size 0) - counting raw array length treats every configured symbol
 // as "an open position" regardless of whether anything is actually open.
+// Checks whether contract+action already exists as a REAL, executed
+// position OR a pending, unfilled order on the exchange. Single shared
+// implementation used by both check_open_position and open_position -
+// previously this exact matching logic was copy-pasted independently in
+// both places (a real maintenance risk: a future fix to one copy could
+// easily miss the other).
+//
+// How callers MUST use the result:
+//   - verified: false -> the core position check itself failed (e.g.
+//     network error). Genuinely unknown whether a duplicate exists.
+//     Callers MUST fail closed (treat as if a duplicate might exist),
+//     not fail open - the whole point of this check is duplicate
+//     prevention, so silently assuming "no duplicate" on an error
+//     defeats its purpose exactly when it matters most.
+//   - verified: true, exists: true -> confirmed real duplicate
+//     (position or pending order), block.
+//   - verified: true, exists: false, note: non-null -> positions
+//     confirmed clear, but the pending-orders check (best-effort, path
+//     not independently verified against CoinDCX's official docs)
+//     failed - proceed, but the note should be surfaced so this gap is
+//     visible rather than silently assumed away.
+async function checkRealPositionOrOrder(exchange, creds, contract, action) {
+  let positionMatch;
+  try {
+    const positionsRaw = await exchange.getPositions(creds);
+    const activePositions = getActivePositions(positionsRaw);
+    positionMatch = activePositions.some((p) => {
+      const posContract = p.pair ?? p.contract;
+      const posDirection = Number(p.active_pos ?? p.size ?? 0) > 0 ? "long" : "short";
+      return posContract === contract && posDirection === action;
+    });
+  } catch (err) {
+    return { verified: false, exists: null, error: `position check failed: ${err.message}` };
+  }
+  if (positionMatch) return { verified: true, exists: true, via: "position" };
+
+  let orderMatch = false;
+  let note = null;
+  try {
+    const ordersRaw = await exchange.getActiveOrders(creds);
+    const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
+    orderMatch = orders.some((o) => {
+      const orderContract = o.pair ?? o.contract;
+      const orderSide = (o.side || "").toLowerCase(); // CoinDCX order convention: buy/sell
+      const orderDirection = orderSide === "buy" ? "long" : orderSide === "sell" ? "short" : null;
+      return orderContract === contract && orderDirection === action;
+    });
+  } catch (err) {
+    note = `pending-order check failed (${err.message}) - only confirmed no FILLED position exists; a pending unfilled limit order, if any, was not verified`;
+  }
+  return { verified: true, exists: orderMatch, via: orderMatch ? "pending_order" : null, note };
+}
+
 // This filters down to genuinely active positions only, matching the size
 // check already used correctly elsewhere (calculate_risk, check_total_exposure).
 function getActivePositions(positionsRaw) {
@@ -439,36 +492,42 @@ function buildTools(config, creds) {
         reasons.push(`score ${analysis.opportunity.totalScore} is below the required ${requiredScore} for ${symbol} under the current strategy - hard block, cannot be opened regardless of other checks`);
       }
 
-      // Guard against repeatedly recommending the same symbol+direction
-      // across consecutive 5-min cycles before the user has had a chance
-      // to act on the earlier one (or before a real position shows up on
-      // the exchange). Without this, every cycle that still likes a setup
-      // re-suggests it as a "new" trade - if several near-identical
-      // suggestions get executed, positions stack unintentionally.
+      // Guard against re-suggesting a symbol+direction that's ALREADY a
+      // real, executed position (or pending order) on the exchange - but
+      // otherwise keep recommending it every cycle for as long as it
+      // keeps clearing. Cheap local check FIRST: only pay the real
+      // network cost if there's actually a prior advisory to verify
+      // against - the common case (a symbol with no suggestion history
+      // at all) now makes zero extra API calls, not one guaranteed call
+      // every time regardless of relevance.
+      //
+      // This tool is read-only by design (logged as "[read]" throughout
+      // this bot) - it no longer mutates advisory state itself. Clearing
+      // a stale advisory is open_position's job now, since that's the
+      // tool actually allowed to write.
       const contract = `B-${symbol}_USDT`; // matches this bot's futures pair convention
       const existingAdvisory = advisoryStore.getAdvisory(advisories, contract, action);
-      const ADVISORY_DEDUPE_MS = 60 * 60 * 1000; // 60 min
       if (existingAdvisory) {
-        const ageMs = Date.now() - existingAdvisory.openedAt;
-        if (ageMs < ADVISORY_DEDUPE_MS) {
+        const check = await checkRealPositionOrOrder(exchange, creds, contract, action);
+        if (!check.verified) {
+          // Core check failed - genuinely unknown, fail CLOSED (assume a
+          // duplicate might exist) rather than silently assuming it's
+          // safe to proceed, which would defeat the point of this guard
+          // exactly when it matters most.
           shouldOpen = false;
-          reasons.push(
-            `already recommended opening ${contract} ${action} ${Math.round(ageMs / 60000)} min ago ` +
-            `(entry ${existingAdvisory.entryPrice}, stop ${existingAdvisory.initialStop}) - avoiding a duplicate/stacked suggestion. ` +
-            `If that one wasn't executed, treat this as the same trade, not a new one.`
-          );
-        } else {
-          // Stale enough that a fresh look is reasonable - clear it so a
-          // genuinely new advisory can be recorded if this gets opened.
-          advisoryStore.clearAdvisory(advisories, contract, action);
-          advisoriesDirty = true;
-          reasons.push(`a prior recommendation for ${contract} ${action} was over ${Math.round(ageMs / 60000)} min old and has expired - treating this as a fresh evaluation`);
+          reasons.push(`Could not verify whether ${contract} ${action} already exists on the exchange (${check.error}) - blocking as a precaution until this can be confirmed.`);
+        } else if (check.exists) {
+          shouldOpen = false;
+          reasons.push(`${contract} ${action} already exists on the exchange (${check.via}) - not a new suggestion.`);
+        } else if (check.note) {
+          reasons.push(check.note);
         }
       }
 
       const stopCheck = stopLossCalculator.shouldOpenPosition(analysis.tfFilter.candles, action, analysis.currentPrice, config.stopLoss);
       reasons.push(stopCheck.reason);
       shouldOpen = shouldOpen && stopCheck.shouldOpen;
+
 
       try {
         const positionsRaw = await exchange.getPositions(creds);
@@ -752,19 +811,38 @@ function buildTools(config, creds) {
       // the original suggestion, matching neither the original stop nor
       // any legitimate stage-trail level. Moving the SAME check here makes
       // it impossible to bypass, regardless of tool-call order.
-      const existingAdvisory = advisoryStore.getAdvisory(advisories, contract, action);
-      const ADVISORY_DEDUPE_MS = 60 * 60 * 1000; // matches check_open_position's window exactly
-      if (existingAdvisory && (Date.now() - existingAdvisory.openedAt < ADVISORY_DEDUPE_MS)) {
-        const ageMin = Math.round((Date.now() - existingAdvisory.openedAt) / 60000);
-        return {
-          telegramMessage: null, // no Telegram spam for a blocked duplicate - this should be silent/internal
-          resultForModel: {
-            status: "blocked_duplicate",
-            note: `A ${contract} ${action} was already recommended ${ageMin} min ago (entry ${existingAdvisory.entryPrice}, ` +
-              `stop ${existingAdvisory.initialStop}) - refusing to open again/overwrite that tracking. If that one wasn't ` +
-              `executed, treat this as the same trade, not a new one. Do not call open_position again for this symbol+direction.`,
-          },
-        };
+      //
+      // Cheap local check first (only pays the real network cost if an
+      // advisory already exists to verify), shared helper (same matching
+      // logic as check_open_position, not a second independent copy),
+      // and fails CLOSED on error rather than silently allowing a
+      // possible duplicate through.
+      const existingAdvisoryForOpen = advisoryStore.getAdvisory(advisories, contract, action);
+      if (existingAdvisoryForOpen) {
+        const check = await checkRealPositionOrOrder(exchange, creds, contract, action);
+        if (!check.verified) {
+          return {
+            telegramMessage: null,
+            resultForModel: {
+              status: "blocked_unverified",
+              note: `Could not verify whether ${contract} ${action} already exists on the exchange (${check.error}) - blocking as a precaution until this can be confirmed. Do not retry immediately.`,
+            },
+          };
+        }
+        if (check.exists) {
+          return {
+            telegramMessage: null, // no Telegram spam for a blocked duplicate - this should be silent/internal
+            resultForModel: {
+              status: "blocked_duplicate",
+              note: `${contract} ${action} already exists on the exchange (${check.via}) - refusing to open again/overwrite that tracking. Do not call open_position again for this symbol+direction.`,
+            },
+          };
+        }
+        // Confirmed no real duplicate (positions, and orders if that
+        // check succeeded) - this suggestion is genuinely allowed to
+        // proceed and overwrite the stale advisory with fresh values,
+        // which is open_position's legitimate job as the write/action tool.
+        if (check.note) runWarnings.push(`${symbol}: ${check.note}`);
       }
 
       // Real dollar-risk cap: this was a flagged gap that sat too long
