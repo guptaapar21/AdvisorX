@@ -11,6 +11,7 @@ const { BACKTESTED_COINS, buildScanThresholdMap, getTierLabel } = require("./bac
 const exchange = require("./coindcxExchangeClient");
 const { getActivePositions } = require("./positionUtils");
 const advisoryStore = require("./advisoryStore");
+const tradeOutcomeLog = require("./tradeOutcomeLog");
 
 const RUNTIME_FILE = path.join(__dirname, "runtimeConfig.json");
 const VALID_STRATEGIES = ["ultra-short", "swing-trend", "conservative", "balanced", "aggressive", "backtested"];
@@ -208,6 +209,23 @@ async function processIncomingCommands(runtimeState, creds) {
           await sendTelegramMessage(`❌ /closeposition failed: ${err.message}. Please check and close manually on CoinDCX if needed.`);
         }
       }
+    }
+
+    // /clearcooldowns [SYMBOL] - clears logged trade outcomes, either
+    // everything or just one coin. Added specifically because a bug once
+    // fabricated a burst of fake "closed" outcomes within seconds of each
+    // other, wrongly triggering real cooldowns on coins that never
+    // actually had a loss - this gives a real, direct way to reset that
+    // instead of manually editing tradeOutcomeLog.json by hand.
+    const clearMatch = msg.text.trim().match(/^\/clearcooldowns(?:\s+(\S+))?\s*$/i);
+    if (clearMatch) {
+      const symbol = clearMatch[1] ? clearMatch[1].toUpperCase() : null;
+      const result = tradeOutcomeLog.clearOutcomes(symbol);
+      await sendTelegramMessage(
+        symbol
+          ? `✅ Cleared ${result.clearedCount} logged outcome(s) for ${symbol}. Its cooldown (if any) is reset.`
+          : `✅ Cleared all logged trade outcomes. All cooldowns reset across every coin.`
+      );
     }
   }
 

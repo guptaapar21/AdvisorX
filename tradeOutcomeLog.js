@@ -100,4 +100,20 @@ function isSymbolInCooldown(symbol) {
   return { inCooldown: false };
 }
 
-module.exports = { recordOutcome, getSymbolLossStats, calculateHistoricalLossPenalty, historicalPenaltyFn, isSymbolInCooldown };
+// Clears logged outcomes - either everything (no symbol given) or just
+// one coin's entries. Added specifically so a bad batch of entries (e.g.
+// fabricated outcomes from a bug, not real trades) can be cleared via a
+// real command instead of manually editing tradeOutcomeLog.json by hand.
+function clearOutcomes(symbol = null) {
+  if (!symbol) {
+    saveLog([]);
+    return { clearedCount: "all" };
+  }
+  const entries = loadLog();
+  const before = entries.length;
+  const remaining = entries.filter((e) => e.symbol !== symbol);
+  saveLog(remaining);
+  return { clearedCount: before - remaining.length };
+}
+
+module.exports = { recordOutcome, getSymbolLossStats, calculateHistoricalLossPenalty, historicalPenaltyFn, isSymbolInCooldown, clearOutcomes };
