@@ -1125,6 +1125,7 @@ function buildTools(config, creds) {
       // remaining once it triggers. Cancel and replace it sized to the
       // new remaining quantity.
       let bracketCleanupNote = "";
+      let legacyEndpointUnverifiable = false;
       try {
         const advForCleanup = advisoryStore.getAdvisory(advisories, contract, action);
         const knownOrderIds = [advForCleanup?.stopOrderId, advForCleanup?.takeProfitOrderId].filter(Boolean);
@@ -1144,9 +1145,18 @@ function buildTools(config, creds) {
           }
         } else {
           // Legacy advisory (predates order-ID tracking) or none at all -
-          // fall back to the best-effort list+filter approach.
-          const ordersRaw = await getCachedActiveOrders();
-          const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
+          // fall back to the best-effort list+filter approach, which
+          // depends on an endpoint known to 404. If THIS specific call
+          // fails, that means "couldn't check," not "confirmed a stale
+          // order" - flagged separately so the final message doesn't
+          // overstate it.
+          let orders = [];
+          try {
+            const ordersRaw = await getCachedActiveOrders();
+            orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
+          } catch {
+            legacyEndpointUnverifiable = true;
+          }
           const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
           if (oldStopPrice === null) {
             const oldStopOrder = staleOrders.find((o) => o.order_type === "stop_market");
@@ -1191,6 +1201,9 @@ function buildTools(config, creds) {
               bracketCleanupNote = `🚨 No advisory record AND no prior stop order price found - the remaining position may currently have NO stop-loss or take-profit. Check CoinDCX immediately.`;
             }
           }
+        }
+        if (legacyEndpointUnverifiable && !bracketCleanupNote) {
+          bracketCleanupNote = `ℹ️ Closed the position. Couldn't verify any leftover resting order via CoinDCX's order-listing API (a known limitation for legacy positions, not a confirmed stale order) - worth a quick manual check, but likely nothing to do.`;
         }
       } catch (err) {
         bracketCleanupNote = `⚠️ Closed the position but couldn't clean up/replace the resting bracket order (${err.message}) - please check CoinDCX for any stale orders.`;

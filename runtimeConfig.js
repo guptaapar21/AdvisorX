@@ -173,21 +173,29 @@ async function processIncomingCommands(runtimeState, creds) {
                 const advisories = advisoryStore.loadAdvisories();
                 const adv = advisoryStore.getAdvisory(advisories, contract, direction);
                 const knownOrderIds = [adv?.stopOrderId, adv?.takeProfitOrderId].filter(Boolean);
+                let legacyEndpointUnverifiable = false;
                 if (knownOrderIds.length > 0) {
                   for (const orderId of knownOrderIds) {
                     try { await exchange.cancelOrder(creds, orderId); } catch { /* likely already filled/cancelled - expected for one side */ }
                   }
                 } else {
-                  const ordersRaw = await exchange.getActiveOrders(creds);
-                  const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
-                  const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
-                  for (const order of staleOrders) {
-                    await exchange.cancelOrder(creds, order.id);
+                  try {
+                    const ordersRaw = await exchange.getActiveOrders(creds);
+                    const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
+                    const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
+                    for (const order of staleOrders) {
+                      await exchange.cancelOrder(creds, order.id);
+                    }
+                  } catch {
+                    legacyEndpointUnverifiable = true;
                   }
                 }
                 if (adv) {
                   advisoryStore.clearAdvisory(advisories, contract, direction);
                   advisoryStore.saveAdvisories(advisories);
+                }
+                if (legacyEndpointUnverifiable) {
+                  await sendTelegramMessage(`ℹ️ Closed ${contract} but couldn't verify any leftover SL/TP order via CoinDCX's order-listing API (a known limitation for legacy positions, not a confirmed stale order) - worth a quick manual check, but likely nothing to do.`);
                 }
               } catch (cleanupErr) {
                 await sendTelegramMessage(`⚠️ Closed ${contract} but couldn't confirm/cancel any leftover SL/TP orders (${cleanupErr.message}) - please check manually on CoinDCX.`);

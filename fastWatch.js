@@ -75,6 +75,7 @@ async function run(config, creds) {
     // position for it to act on anymore.
     let cancelledCount = 0;
     let cancelError = null;
+    let cancelErrorSource = null; // "confirmed_cancel_failed" | "legacy_endpoint_unverifiable"
     const knownOrderIds = [adv.stopOrderId, adv.takeProfitOrderId].filter(Boolean);
     if (knownOrderIds.length > 0) {
       // Preferred path: cancel the exact orders placed for this advisory,
@@ -92,10 +93,19 @@ async function run(config, creds) {
           cancelError = err.message;
         }
       }
-      if (cancelledCount > 0) cancelError = null;
+      if (cancelledCount > 0) {
+        cancelError = null;
+      } else {
+        // Both known-ID cancels failed on the CONFIRMED /orders/cancel
+        // endpoint - this is a genuine signal something's wrong, not an
+        // endpoint-availability artifact.
+        cancelErrorSource = "confirmed_cancel_failed";
+      }
     } else {
       // Legacy advisory recorded before order-ID tracking was added -
-      // fall back to the best-effort list+filter approach.
+      // fall back to the best-effort list+filter approach, which depends
+      // on an endpoint known to 404 (see coindcxExchangeClient.js). A
+      // failure here means "couldn't check," not "confirmed a stale order."
       try {
         const ordersRaw = await exchange.getActiveOrders(creds);
         const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
@@ -106,6 +116,7 @@ async function run(config, creds) {
         }
       } catch (err) {
         cancelError = err.message;
+        cancelErrorSource = "legacy_endpoint_unverifiable";
       }
     }
 
@@ -129,11 +140,13 @@ async function run(config, creds) {
     await sendTelegramMessage(
       `🔔 *${contract} ${action}* closed via its bracket order (stop or take-profit triggered).\n` +
       `Outcome: ${outcomeNote}\n` +
-      (cancelError
-        ? `⚠️ Could not confirm/cancel the other resting order (${cancelError}) - please check CoinDCX for any stale order on this contract.`
-        : cancelledCount > 0
-          ? `Cancelled ${cancelledCount} leftover order(s) for this contract.`
-          : `No leftover order found to cancel.`)
+      (cancelErrorSource === "confirmed_cancel_failed"
+        ? `⚠️ Tried to cancel the other resting order but the cancel itself failed (${cancelError}) - please check CoinDCX for a stale order on this contract.`
+        : cancelErrorSource === "legacy_endpoint_unverifiable"
+          ? `ℹ️ Couldn't verify the other resting order was cancelled (CoinDCX's order-listing API returned an error for this legacy position, a known limitation - not a confirmed stale order). Worth a quick manual check on CoinDCX, but likely nothing to do.`
+          : cancelledCount > 0
+            ? `Cancelled ${cancelledCount} leftover order(s) for this contract.`
+            : `No leftover order found to cancel.`)
     );
 
     advisoryStore.clearAdvisory(advisories, contract, action);
