@@ -44,23 +44,14 @@ function saveTrendHistory(store) {
 // exchange format regardless of what Gemini sends.
 function normalizeContract(contract) {
   if (!contract) return contract;
-  const symbol = contract.replace(/^[A-Z]-/, "").replace(/_USDT$/i, "");
-  return `B-${normalizeSymbolInput(symbol)}_USDT`;
-}
-
-// Same inconsistency as above, but for tools that take a bare `symbol`
-// (not a full contract string) and build the contract themselves via
-// `B-${symbol}_USDT`. Gemini has been observed passing the symbol WITH
-// the quote currency already attached (e.g. "SOLUSDT" or "ETHUSDT"
-// instead of "SOL"/"ETH"), which produces a malformed contract like
-// "B-SOLUSDT_USDT" - resolvePair() can never match that against a real
-// market, and it silently poisons advisoryStore under a key the rest of
-// the bot can never look up correctly again. Stripping a trailing
-// USDT/INR here, at the one place every such call builds its contract,
-// fixes it at the source instead of needing every caller to know about it.
-function normalizeSymbolInput(symbol) {
-  if (!symbol) return symbol;
-  return symbol.toUpperCase().replace(/(USDT|INR)$/, "");
+  // Strip a leading "B-" if already present, and a trailing USDT with
+  // ANY separator (underscore, dash) or none at all - Gemini has been
+  // observed passing all of these shapes ("SOL", "SOLUSDT", "SOL_USDT",
+  // "SOL-USDT"), and the old version only handled "_USDT" specifically,
+  // silently producing a malformed pair (e.g. "B-SOLUSDT_USDT") for
+  // every other shape - which CoinDCX correctly rejects with a 400.
+  const symbol = contract.replace(/^[A-Z]-/, "").replace(/[-_]?USDT$/i, "");
+  return `B-${symbol}_USDT`;
 }
 
 // ---- Gemini function declarations (JSON Schema) ----
@@ -89,7 +80,7 @@ const declarations = [
     parameters: {
       type: "object",
       properties: {
-        symbol: { type: "string", description: "Base asset ticker only, e.g. \"SOL\" or \"ETH\" - do NOT include the quote currency (not \"SOLUSDT\")." },
+        symbol: { type: "string" },
         action: { type: "string", enum: ["long", "short"] },
       },
       required: ["symbol", "action"],
@@ -135,7 +126,7 @@ const declarations = [
     parameters: {
       type: "object",
       properties: {
-        symbol: { type: "string", description: "Base asset ticker only, e.g. \"SOL\" or \"ETH\" - do NOT include the quote currency (not \"SOLUSDT\")." },
+        symbol: { type: "string" },
         action: { type: "string", enum: ["long", "short"] },
       },
       required: ["symbol", "action"],
@@ -148,7 +139,7 @@ const declarations = [
     parameters: {
       type: "object",
       properties: {
-        symbol: { type: "string", description: "Base asset ticker only, e.g. \"SOL\" or \"ETH\" - do NOT include the quote currency (not \"SOLUSDT\")." },
+        symbol: { type: "string" },
         action: { type: "string", enum: ["long", "short"] },
         amountUsdt: { type: "number", description: "Your proposed position margin (USDT), before adjustment" },
         leverage: { type: "number", description: "Your proposed leverage, before adjustment" },
@@ -541,7 +532,7 @@ function buildTools(config, creds) {
       // this bot) - it no longer mutates advisory state itself. Clearing
       // a stale advisory is open_position's job now, since that's the
       // tool actually allowed to write.
-      const contract = `B-${normalizeSymbolInput(symbol)}_USDT`; // matches this bot's futures pair convention
+      const contract = `B-${symbol}_USDT`; // matches this bot's futures pair convention
       const existingAdvisory = advisoryStore.getAdvisory(advisories, contract, action);
       if (existingAdvisory) {
         const check = await checkRealPositionOrOrder(exchange, creds, contract, action);
@@ -792,7 +783,7 @@ function buildTools(config, creds) {
     // Without this, a position with no clear stop/target/reversal signal
     // could otherwise sit open indefinitely.
     async check_max_hold_time({ symbol, action }) {
-      const contract = `B-${normalizeSymbolInput(symbol)}_USDT`;
+      const contract = `B-${symbol}_USDT`;
       const adv = advisoryStore.getAdvisory(advisories, contract, action);
       if (!adv) {
         return { exceededMaxHold: false, note: "no advisory on record for this position - can't verify open time" };
@@ -1048,9 +1039,7 @@ function buildTools(config, creds) {
         bracketWarning = `🚨 Position is OPEN but bracket SL/TP placement failed entirely (${err.message}) - THIS POSITION IS CURRENTLY UNPROTECTED. Close manually or set SL/TP directly on CoinDCX immediately.`;
       }
 
-      const stopOrderId = bracketResult?.stop?.id ?? null;
-      const takeProfitOrderId = bracketResult?.takeProfit?.id ?? null;
-      advisoryStore.recordOpen(advisories, contract, action, fillPrice, realStopPrice, finalPositionSizeUsdt, leverage, stopOrderId, takeProfitOrderId);
+      advisoryStore.recordOpen(advisories, contract, action, fillPrice, realStopPrice, finalPositionSizeUsdt, leverage);
       invalidatePositionCache(); // real state just changed - a new position and bracket orders now exist
       advisoriesDirty = true;
 
@@ -1125,50 +1114,23 @@ function buildTools(config, creds) {
       // remaining once it triggers. Cancel and replace it sized to the
       // new remaining quantity.
       let bracketCleanupNote = "";
-      let legacyEndpointUnverifiable = false;
       try {
-        const advForCleanup = advisoryStore.getAdvisory(advisories, contract, action);
-        const knownOrderIds = [advForCleanup?.stopOrderId, advForCleanup?.takeProfitOrderId].filter(Boolean);
-
-        // oldStopPrice is only needed as a fallback re-place price when
-        // there's NO advisory to compute a next-stage target from (below)
-        // - when an advisory exists we already know its stop level
-        // (lastAdvisedStop/initialStop) without asking the exchange at all.
-        let oldStopPrice = advForCleanup ? (advForCleanup.lastAdvisedStop ?? advForCleanup.initialStop) : null;
-
-        if (knownOrderIds.length > 0) {
-          // Preferred path: cancel the exact orders by ID via the
-          // confirmed /orders/cancel endpoint - no dependency on the
-          // unverified list-active-orders endpoint.
-          for (const orderId of knownOrderIds) {
-            try { await exchange.cancelOrder(creds, orderId); } catch { /* likely the side that already triggered - expected */ }
-          }
-        } else {
-          // Legacy advisory (predates order-ID tracking) or none at all -
-          // fall back to the best-effort list+filter approach, which
-          // depends on an endpoint known to 404. If THIS specific call
-          // fails, that means "couldn't check," not "confirmed a stale
-          // order" - flagged separately so the final message doesn't
-          // overstate it.
-          let orders = [];
-          try {
-            const ordersRaw = await getCachedActiveOrders();
-            orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
-          } catch {
-            legacyEndpointUnverifiable = true;
-          }
-          const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
-          if (oldStopPrice === null) {
-            const oldStopOrder = staleOrders.find((o) => o.order_type === "stop_market");
-            oldStopPrice = oldStopOrder ? Number(oldStopOrder.price) : null;
-          }
-          for (const order of staleOrders) {
-            await exchange.cancelOrder(creds, order.id);
-          }
+        const ordersRaw = await getCachedActiveOrders();
+        const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
+        const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
+        // Fix: capture the OLD stop price BEFORE cancelling anything -
+        // previously, if the advisory record was ever missing, the code
+        // still cancelled the real stop order unconditionally but only
+        // replaced it conditionally on the advisory existing, leaving the
+        // remaining position with NO stop-loss and no warning at all.
+        const oldStopOrder = staleOrders.find((o) => o.order_type === "stop_market");
+        const oldStopPrice = oldStopOrder ? Number(oldStopOrder.price) : null;
+        for (const order of staleOrders) {
+          await exchange.cancelOrder(creds, order.id);
         }
         if (!isFullClose) {
           const remainingQuantity = realQuantity - closeQuantity;
-          const adv = advForCleanup;
+          const adv = advisoryStore.getAdvisory(advisories, contract, action);
           if (remainingQuantity > 0) {
             if (adv) {
               const dir = action === "long" ? 1 : -1;
@@ -1176,14 +1138,10 @@ function buildTools(config, creds) {
               // Re-place the stop (untouched risk level) and a fresh
               // take-profit at the NEXT stage, both sized to what's
               // actually left now.
-              const resizeResult = await exchange.placeBracketOrders(creds, {
+              await exchange.placeBracketOrders(creds, {
                 pair: contract, direction: action, quantity: remainingQuantity, leverage: realLeverage,
                 stopPrice: adv.lastAdvisedStop ?? adv.initialStop,
                 takeProfitPrice: adv.entryPrice + dir * r * 2, // next stage after a stage-1 partial
-              });
-              advisoryStore.recordOrderIds(advisories, contract, action, {
-                stopOrderId: resizeResult?.stop?.id ?? null,
-                takeProfitOrderId: resizeResult?.takeProfit?.id ?? null,
               });
             } else if (oldStopPrice !== null) {
               // No advisory to compute a meaningful next-stage target
@@ -1201,9 +1159,6 @@ function buildTools(config, creds) {
               bracketCleanupNote = `🚨 No advisory record AND no prior stop order price found - the remaining position may currently have NO stop-loss or take-profit. Check CoinDCX immediately.`;
             }
           }
-        }
-        if (legacyEndpointUnverifiable && !bracketCleanupNote) {
-          bracketCleanupNote = `ℹ️ Closed the position. Couldn't verify any leftover resting order via CoinDCX's order-listing API (a known limitation for legacy positions, not a confirmed stale order) - worth a quick manual check, but likely nothing to do.`;
         }
       } catch (err) {
         bracketCleanupNote = `⚠️ Closed the position but couldn't clean up/replace the resting bracket order (${err.message}) - please check CoinDCX for any stale orders.`;
