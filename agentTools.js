@@ -976,14 +976,25 @@ function buildTools(config, creds) {
       // notional = margin x leverage (matches the actual dollar risk
       // already verified above, not a re-derived number).
       const notional = finalPositionSizeUsdt * leverage;
-      // Rounded to a reasonable precision before sending - the raw
-      // unrounded value (e.g. 8841.242450388265, a 12-decimal-place
-      // number) is a very plausible cause of a 400 rejection, since
-      // exchanges require order sizes in specific step sizes, not
-      // arbitrary floating-point precision. This doesn't know CoinDCX's
-      // exact per-symbol step size, but removing 12 decimal places down
-      // to 4 removes the most likely failure mode regardless.
-      const quantity = Number((notional / entryPrice).toFixed(4));
+      // Fix: confirmed via a real CoinDCX error ("Quantity should be
+      // divisible by 1.0" for DOGE) that a fixed 4-decimal rounding
+      // wasn't sufficient - different coins require different quantity
+      // increments (confirmed varies per instrument in CoinDCX's own
+      // docs). Fetches the REAL required increment for this specific
+      // instrument and rounds DOWN to the nearest valid multiple, rather
+      // than guessing one rule for every coin.
+      const rawQuantity = notional / entryPrice;
+      let quantity = Number(rawQuantity.toFixed(4)); // fallback if the instrument lookup fails
+      try {
+        const instrument = await exchange.getInstrumentDetails(contract);
+        const increment = Number(instrument.quantity_increment) || 0.0001;
+        quantity = Math.floor(rawQuantity / increment) * increment;
+        // Floating point can reintroduce noise even after this (e.g.
+        // 8841.0000000001) - clean it back up to a sane display precision.
+        quantity = Number(quantity.toFixed(8));
+      } catch (err) {
+        runWarnings.push(`${symbol}: could not fetch instrument details to confirm the exact required quantity increment (${err.message}) - using a generic 4-decimal rounding instead, which may still be rejected for coins with a coarser step size.`);
+      }
 
       let fillPrice = entryPrice;
       let entryOrderResult;

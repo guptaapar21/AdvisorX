@@ -27,6 +27,28 @@ const { fetchWithTimeout } = require("./httpTimeout");
 
 const API_BASE = "https://api.coindcx.com";
 
+// Cache within a single run - instrument specs rarely change, no need to
+// refetch for every order in the same process.
+const instrumentDetailsCache = {};
+
+// Confirmed real, needed fix: CoinDCX rejected an order with "Quantity
+// should be divisible by 1.0" - different coins require different
+// quantity increments (confirmed via CoinDCX's own docs: e.g. one sample
+// instrument required increments of 1000). A single fixed rounding rule
+// would fix DOGE but likely break other coins needing fractional
+// quantities (BTC, ETH) - this fetches the REAL required increment per
+// instrument instead of guessing one rule for all.
+async function getInstrumentDetails(pair) {
+  if (instrumentDetailsCache[pair]) return instrumentDetailsCache[pair];
+  const res = await fetchWithTimeout(`${API_BASE}/exchange/v1/derivatives/futures/data/instrument?pair=${pair}`);
+  if (!res.ok) {
+    throw new Error(`Could not fetch instrument details for ${pair}: ${res.status}`);
+  }
+  const data = await res.json();
+  instrumentDetailsCache[pair] = data.instrument;
+  return data.instrument;
+}
+
 function sign(body, secret) {
   const jsonBody = JSON.stringify(body);
   const signature = crypto.createHmac("sha256", secret).update(jsonBody).digest("hex");
@@ -294,6 +316,7 @@ module.exports = {
   getBalances,
   getPositions,
   getActiveOrders,
+  getInstrumentDetails,
   createOrder,
   placeOrder,
   placeBracketOrders,
