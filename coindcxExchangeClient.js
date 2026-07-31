@@ -220,62 +220,70 @@ async function getActiveOrders(creds, page = "1", size = "50") {
 // documentation (not a third-party guess) before writing any of this.
 
 async function createOrder(creds, { side, pair, orderType, price, totalQuantity, leverage, timeInForce }) {
-  const body = {
+  // Confirmed directly against CoinDCX's own official documentation
+  // (fetched and read directly, not inferred) - the entire order payload
+  // must be nested inside an "order" key, with only "timestamp" at the
+  // top level. The previous version sent every field flat at the top
+  // level, which is a structural mismatch CoinDCX rejects outright -
+  // this is the actual root cause of the persistent empty-body 400,
+  // not the contract naming or quantity precision fixed earlier (those
+  // were real, separate issues, but this was the blocking one).
+  //
+  // "price" is required even for market orders per the same
+  // documentation's own example (which includes it alongside
+  // order_type: "market_order") - previously omitted for market orders.
+  const order = {
     side, // "buy" or "sell"
     pair, // e.g. "B-DOGE_USDT"
     order_type: orderType, // "market_order" | "limit_order" | "stop_market" | "take_profit_market"
+    price: String(price),
     total_quantity: totalQuantity,
     leverage,
     notification: "no_notification",
     time_in_force: timeInForce || "good_till_cancel",
+    hidden: false,
+    post_only: false,
   };
-  if (price !== undefined && price !== null) body.price = price;
-  return privatePost("/exchange/v1/derivatives/futures/orders/create", body, creds);
+  return privatePost("/exchange/v1/derivatives/futures/orders/create", { order }, creds);
 }
 
 async function placeOrder(creds, { pair, direction, quantity, leverage, entryPrice, orderType }) {
   const side = direction === "long" ? "buy" : "sell";
   return createOrder(creds, {
     side, pair, orderType: orderType || "market_order",
-    price: orderType === "limit_order" ? entryPrice : undefined,
+    price: entryPrice, // required even for market orders - see createOrder's notes above
     totalQuantity: quantity, leverage,
   });
 }
 
-// Places the stop-loss and take-profit as two SEPARATE, independent
-// orders immediately after the entry - CoinDCX's API does not support
-// bundling SL/TP atomically into the entry order itself (confirmed: TP/SL
-// can only be attached once a position already exists), so "at the same
-// time" means "as the very next step, not waiting for a future cycle."
-//
-// IMPORTANT, real limitation: these are two independent orders, not a
-// native one-cancels-other (OCO) pair. If the stop fills, the take-profit
-// order is NOT automatically cancelled by the exchange, and vice versa -
-// whichever fills first leaves an orphaned opposite-side order still
-// resting on the exchange. The bot's own position-management loop MUST
-// detect this (position closed but a bracket order still open) and
-// cancel the leftover order - this is NOT free/automatic just because
-// both orders were placed.
-async function placeBracketOrders(creds, { pair, direction, quantity, leverage, stopPrice, takeProfitPrice }) {
-  const closingSide = direction === "long" ? "sell" : "buy"; // opposite side closes the position
-  const [stopResult, takeProfitResult] = await Promise.allSettled([
-    createOrder(creds, { side: closingSide, pair, orderType: "stop_market", price: stopPrice, totalQuantity: quantity, leverage }),
-    createOrder(creds, { side: closingSide, pair, orderType: "take_profit_market", price: takeProfitPrice, totalQuantity: quantity, leverage }),
-  ]);
-  return {
-    stop: stopResult.status === "fulfilled" ? stopResult.value : { error: stopResult.reason?.message },
-    takeProfit: takeProfitResult.status === "fulfilled" ? takeProfitResult.value : { error: takeProfitResult.reason?.message },
-  };
+// Rebuilt to use the REAL documented mechanism - CoinDCX has a dedicated
+// endpoint (positions/create_tpsl) that sets both stop-loss and
+// take-profit in ONE call, tied natively to the position by its real ID,
+// not two independent generic orders placed via orders/create. This was
+// confirmed directly against CoinDCX's own documentation, which
+// describes this as "position TPSL" that "closes the entire position
+// when the trigger price is reached" - meaning this is very likely also
+// the fix for the orphaned-sibling-order problem flagged earlier, since
+// it's natively tied to the position rather than two free-floating orders.
+async function placeBracketOrders(creds, { positionId, stopPrice, takeProfitPrice }) {
+  const body = { id: positionId };
+  if (stopPrice !== undefined && stopPrice !== null) {
+    body.stop_loss = { stop_price: String(stopPrice), order_type: "stop_market" };
+  }
+  if (takeProfitPrice !== undefined && takeProfitPrice !== null) {
+    body.take_profit = { stop_price: String(takeProfitPrice), order_type: "take_profit_market" };
+  }
+  return privatePost("/exchange/v1/derivatives/futures/positions/create_tpsl", body, creds);
 }
 
 async function cancelOrder(creds, orderId) {
   return privatePost("/exchange/v1/derivatives/futures/orders/cancel", { id: orderId }, creds);
 }
 
-async function closePosition(creds, { pair, direction, quantity, leverage }) {
+async function closePosition(creds, { pair, direction, quantity, leverage, currentPrice }) {
   // Closing a position is just an order in the opposite direction.
   const closingSide = direction === "long" ? "sell" : "buy";
-  return createOrder(creds, { side: closingSide, pair, orderType: "market_order", totalQuantity: quantity, leverage });
+  return createOrder(creds, { side: closingSide, pair, orderType: "market_order", price: currentPrice, totalQuantity: quantity, leverage });
 }
 
 module.exports = {

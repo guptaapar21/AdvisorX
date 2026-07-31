@@ -1034,19 +1034,27 @@ function buildTools(config, creds) {
 
       let bracketResult = null;
       let bracketWarning = "";
-      try {
-        bracketResult = await exchange.placeBracketOrders(creds, {
-          pair: contract, direction: action, quantity, leverage,
-          stopPrice: realStopPrice, takeProfitPrice: realTarget1, // stage 1 - see notes below on staged TP limitation
-        });
-        if (bracketResult.stop?.error || bracketResult.takeProfit?.error) {
-          bracketWarning = `⚠️ Bracket order issue - stop: ${bracketResult.stop?.error || "ok"}, take-profit: ${bracketResult.takeProfit?.error || "ok"}. Check CoinDCX directly and consider closing manually if unprotected.`;
+      if (!confirmedPosition || !confirmedPosition.id) {
+        bracketWarning = `🚨 Position is OPEN but its real position ID could not be confirmed - could not place bracket SL/TP. THIS POSITION IS CURRENTLY UNPROTECTED. Set SL/TP directly on CoinDCX immediately.`;
+      } else {
+        try {
+          bracketResult = await exchange.placeBracketOrders(creds, {
+            positionId: confirmedPosition.id,
+            stopPrice: realStopPrice, takeProfitPrice: realTarget1, // stage 1 - see notes below on staged TP limitation
+          });
+          const slFailed = bracketResult?.stop_loss?.error || bracketResult?.stop_loss?.success === false;
+          const tpFailed = bracketResult?.take_profit?.error || bracketResult?.take_profit?.success === false;
+          if (slFailed || tpFailed) {
+            bracketWarning = `⚠️ Bracket order issue - stop-loss: ${bracketResult?.stop_loss?.error || "ok"}, take-profit: ${bracketResult?.take_profit?.error || "ok"}. Check CoinDCX directly and consider closing manually if unprotected.`;
+          }
+        } catch (err) {
+          bracketWarning = `🚨 Position is OPEN but bracket SL/TP placement failed entirely (${err.message}) - THIS POSITION IS CURRENTLY UNPROTECTED. Close manually or set SL/TP directly on CoinDCX immediately.`;
         }
-      } catch (err) {
-        bracketWarning = `🚨 Position is OPEN but bracket SL/TP placement failed entirely (${err.message}) - THIS POSITION IS CURRENTLY UNPROTECTED. Close manually or set SL/TP directly on CoinDCX immediately.`;
       }
 
-      advisoryStore.recordOpen(advisories, contract, action, fillPrice, realStopPrice, finalPositionSizeUsdt, leverage);
+      const stopOrderId = bracketResult?.stop_loss?.id ?? null;
+      const takeProfitOrderId = bracketResult?.take_profit?.id ?? null;
+      advisoryStore.recordOpen(advisories, contract, action, fillPrice, realStopPrice, finalPositionSizeUsdt, leverage, stopOrderId, takeProfitOrderId);
       invalidatePositionCache(); // real state just changed - a new position and bracket orders now exist
       advisoriesDirty = true;
 
@@ -1105,7 +1113,7 @@ function buildTools(config, creds) {
       const isFullClose = sizePercent >= 100;
 
       try {
-        await exchange.closePosition(creds, { pair: contract, direction: action, quantity: closeQuantity, leverage: realLeverage });
+        await exchange.closePosition(creds, { pair: contract, direction: action, quantity: closeQuantity, leverage: realLeverage, currentPrice });
       } catch (err) {
         return {
           telegramMessage: `🚨 *CLOSE ORDER FAILED* for \`${contract}\` ${action}: ${err.message}. Position may still be open - please check CoinDCX directly.`,
@@ -1146,7 +1154,7 @@ function buildTools(config, creds) {
               // take-profit at the NEXT stage, both sized to what's
               // actually left now.
               await exchange.placeBracketOrders(creds, {
-                pair: contract, direction: action, quantity: remainingQuantity, leverage: realLeverage,
+                positionId: realPosition.id,
                 stopPrice: adv.lastAdvisedStop ?? adv.initialStop,
                 takeProfitPrice: adv.entryPrice + dir * r * 2, // next stage after a stage-1 partial
               });
@@ -1156,11 +1164,7 @@ function buildTools(config, creds) {
               // (captured above) rather than leave the position with
               // nothing at all. Explicitly warn that no take-profit was
               // restored, instead of silently doing less than expected.
-              const closingSide = action === "long" ? "sell" : "buy";
-              await exchange.createOrder(creds, {
-                side: closingSide, pair: contract, orderType: "stop_market",
-                price: oldStopPrice, totalQuantity: remainingQuantity, leverage: realLeverage,
-              });
+              await exchange.placeBracketOrders(creds, { positionId: realPosition.id, stopPrice: oldStopPrice });
               bracketCleanupNote = `⚠️ No advisory record found - re-placed the stop-loss at its same level (${oldStopPrice}) to keep the remaining position protected, but did NOT re-place a take-profit target (couldn't compute a meaningful one without the original tracked levels).`;
             } else {
               bracketCleanupNote = `🚨 No advisory record AND no prior stop order price found - the remaining position may currently have NO stop-loss or take-profit. Check CoinDCX immediately.`;
@@ -1242,44 +1246,43 @@ function buildTools(config, creds) {
       const realQuantity = Math.abs(Number(realPosition.active_pos ?? realPosition.size ?? 0));
       const realLeverage = Number(realPosition.leverage) || 1;
 
-      // CoinDCX has no "modify existing order price" endpoint - moving a
-      // stop means cancelling the old resting stop order and placing a
-      // new one at the updated price. Only touches the STOP order - any
-      // resting take-profit order for this contract is left alone.
-      let cancelNote = "";
-      try {
-        const ordersRaw = await getCachedActiveOrders();
-        const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
-        const oldStopOrders = orders.filter((o) => (o.pair ?? o.contract) === contract && o.order_type === "stop_market");
-        for (const order of oldStopOrders) {
-          await exchange.cancelOrder(creds, order.id);
-        }
-      } catch (err) {
-        cancelNote = `⚠️ Couldn't confirm/cancel the old stop order (${err.message}) - there may now be two resting stop orders. Please check CoinDCX directly.`;
+      // create_tpsl is native to the POSITION, not a standalone resting
+      // order - calling it again with a new stop_price replaces the old
+      // one server-side. No manual cancel-and-relist needed, unlike the
+      // old (incorrect) mechanism this replaces.
+      const adv = advisoryStore.getAdvisory(advisories, contract, action);
+      let currentTakeProfit = null;
+      if (adv) {
+        const dir = action === "long" ? 1 : -1;
+        const r = Math.abs(adv.entryPrice - adv.initialStop);
+        const stagesAdvised = adv.stagesAdvised ? Object.keys(adv.stagesAdvised).length : 0;
+        currentTakeProfit = adv.entryPrice + dir * r * (stagesAdvised + 1); // keep whatever the next stage target already was
       }
 
-      const closingSide = action === "long" ? "sell" : "buy";
       try {
-        await exchange.createOrder(creds, { side: closingSide, pair: contract, orderType: "stop_market", price: newStop, totalQuantity: realQuantity, leverage: realLeverage });
+        await exchange.placeBracketOrders(creds, {
+          positionId: realPosition.id,
+          stopPrice: newStop,
+          takeProfitPrice: currentTakeProfit,
+        });
       } catch (err) {
         return {
-          telegramMessage: `🚨 *STOP UPDATE FAILED* for \`${contract}\` ${action}: couldn't place the new stop at ${newStop} (${err.message}). ${cancelNote} The position may currently have NO stop-loss protecting it - check CoinDCX immediately.`,
-          resultForModel: { status: "execution_failed", note: `New stop order failed: ${err.message}` },
+          telegramMessage: `🚨 *STOP UPDATE FAILED* for \`${contract}\` ${action}: couldn't move the stop to ${newStop} (${err.message}). The position may currently have NO stop-loss protecting it - check CoinDCX immediately.`,
+          resultForModel: { status: "execution_failed", note: `Stop update failed: ${err.message}` },
         };
       }
 
       advisoryStore.recordStopUpdate(advisories, contract, action, newStop);
       advisoriesDirty = true;
-      invalidatePositionCache(); // real state just changed - old stop cancelled, new one placed
+      invalidatePositionCache(); // real state just changed - stop moved
       return {
         telegramMessage: [
           `✅ *STOP MOVED* ${dirEmoji} \`${contract}\` → ${newStop}`,
           `Reasoning: ${reasoning}`,
-          cancelNote,
           ``,
-          `_Executed automatically - old stop cancelled, new one placed on CoinDCX._`,
+          `_Executed automatically on CoinDCX._`,
         ].filter(Boolean).join("\n"),
-        resultForModel: { status: "executed", note: cancelNote || "Stop order replaced successfully." },
+        resultForModel: { status: "executed", note: "Stop moved successfully." },
       };
     },
 
@@ -1314,7 +1317,7 @@ function buildTools(config, creds) {
       const remainingQuantity = realQuantity - closeQuantity;
 
       try {
-        await exchange.closePosition(creds, { pair: contract, direction: action, quantity: closeQuantity, leverage: realLeverage });
+        await exchange.closePosition(creds, { pair: contract, direction: action, quantity: closeQuantity, leverage: realLeverage, currentPrice });
       } catch (err) {
         return {
           telegramMessage: `🚨 *PARTIAL TAKE-PROFIT FAILED* for \`${contract}\` ${action}: ${err.message}. Position unchanged - check CoinDCX directly.`,
@@ -1348,7 +1351,7 @@ function buildTools(config, creds) {
             const r = Math.abs(adv.entryPrice - adv.initialStop);
             const nextStageTarget = adv.entryPrice + dir * r * (stage + 1);
             await exchange.placeBracketOrders(creds, {
-              pair: contract, direction: action, quantity: remainingQuantity, leverage: realLeverage,
+              positionId: realPosition.id,
               stopPrice: newStop, takeProfitPrice: nextStageTarget,
             });
           } else {
@@ -1357,11 +1360,7 @@ function buildTools(config, creds) {
             // stop when no advisory existed - a meaningless order, not a
             // real profit target. Place stop-only instead, matching the
             // same honest fallback used in close_position.
-            const closingSide = action === "long" ? "sell" : "buy";
-            await exchange.createOrder(creds, {
-              side: closingSide, pair: contract, orderType: "stop_market",
-              price: newStop, totalQuantity: remainingQuantity, leverage: realLeverage,
-            });
+            await exchange.placeBracketOrders(creds, { positionId: realPosition.id, stopPrice: newStop });
             bracketNote = `⚠️ No advisory record found - re-placed only the stop-loss (${newStop}), did NOT place a take-profit (couldn't compute a meaningful next-stage target without the original tracked levels).`;
           }
         }
