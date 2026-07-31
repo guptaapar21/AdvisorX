@@ -48,9 +48,7 @@ jobs:
         run: |
           git config user.name "coindcx-fastwatch-bot"
           git config user.email "actions@github.com"
-          for f in fastWatchState.json advisories.json tradeOutcomeLog.json balanceState.json; do
-            [ -f "$f" ] && git add "$f"
-          done
+          for f in fastWatchState.json advisories.json tradeOutcomeLog.json balanceState.json recentCloses.json; do [ -f "$f" ] && git add "$f"; done
           git diff --staged --quiet && exit 0
           git commit -m "Update fast-watch state [skip ci]"
           for i in 1 2 3; do
@@ -65,9 +63,7 @@ jobs:
             git rebase --abort
             git fetch origin main
             git reset --soft origin/main
-            for f in fastWatchState.json advisories.json tradeOutcomeLog.json balanceState.json; do
-              [ -f "$f" ] && git add "$f"
-            done
+            for f in fastWatchState.json advisories.json tradeOutcomeLog.json balanceState.json recentCloses.json; do [ -f "$f" ] && git add "$f"; done
             git commit -m "Update fast-watch state [skip ci]" --allow-empty
           done
           echo "Failed to push state after 3 attempts."
