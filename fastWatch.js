@@ -120,6 +120,22 @@ async function run(config, creds) {
       }
     }
 
+    // Fix: only treat this as a real, order-backed position that
+    // genuinely closed if we have actual evidence of that (a known order
+    // ID recorded when it was opened). Without that, this advisory is
+    // either an advisory-only suggestion that was never executed, or
+    // predates real execution entirely - reporting a fabricated P&L
+    // percentage and feeding it into the real balance tracker / trade
+    // outcome log would corrupt both with fictional trades that never
+    // happened. Previously this ran unconditionally for every advisory
+    // with no matching position, regardless of whether it was ever real.
+    if (knownOrderIds.length === 0) {
+      console.log(`Fast watch: clearing stale advisory for ${contract} ${action} - no real order IDs on record, so no real outcome to report (likely a never-executed suggestion or pre-dates order tracking).`);
+      advisoryStore.clearAdvisory(advisories, contract, action);
+      advisoriesDirty = true;
+      continue;
+    }
+
     // Record the real outcome using the last known price (close enough -
     // this runs every ~2 minutes, so price shouldn't have moved far from
     // whatever level actually triggered the close).
