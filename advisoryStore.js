@@ -30,7 +30,7 @@ function keyFor(contract, action) {
 
 // Called when the agent decides to open a position - records its own
 // entry/stop recommendation as the reference point for later stage/R math.
-function recordOpen(advisories, contract, action, entryPrice, stopPrice, positionSizeUsdt, leverage, stopOrderId = null, takeProfitOrderId = null) {
+function recordOpen(advisories, contract, action, entryPrice, stopPrice, positionSizeUsdt, leverage, verifiedBracket = false) {
   advisories[keyFor(contract, action)] = {
     entryPrice,
     initialStop: stopPrice,
@@ -44,13 +44,13 @@ function recordOpen(advisories, contract, action, entryPrice, stopPrice, positio
     positionSizeUsdt,
     leverage,
     remainingSizeUsdt: positionSizeUsdt,
-    // Real exchange order IDs for the bracket, if it was placed
-    // successfully - used both to cancel by known ID directly (more
-    // reliable than the order-listing endpoint) and to tell whether this
-    // position actually has real protection (the fallback safety
-    // monitor in fastWatch.js depends entirely on these being accurate).
-    stopOrderId,
-    takeProfitOrderId,
+    // Confirmed directly against CoinDCX's own documentation: TP/SL is a
+    // native attribute of the POSITION itself (take_profit_trigger/
+    // stop_loss_trigger fields), not a separate order with its own ID.
+    // This records whether the bracket was verified as actually set
+    // at the moment of opening - fastWatch re-checks the LIVE position
+    // each cycle rather than trusting this to stay accurate forever.
+    verifiedBracket,
   };
   return advisories;
 }

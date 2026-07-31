@@ -15,7 +15,7 @@ const { bollingerBands, priceVsBB, atrWilder } = require("./indicators");
 const advisoryStore = require("./advisoryStore");
 const recentCloseTracker = require("./recentCloseTracker");
 const { getEffectiveMinScore } = require("./runtimeConfig");
-const { getActivePositions, computePortfolioRiskAndMargin } = require("./positionUtils");
+const { getActivePositions, computePortfolioRiskAndMargin, hasRealBracket } = require("./positionUtils");
 const balanceTracker = require("./balanceTracker");
 const tradeOutcomeLog = require("./tradeOutcomeLog");
 const { getStrategyParams } = require("./strategyParams");
@@ -312,6 +312,23 @@ async function analyzeSymbol(symbol, config, trendHistoryStore) {
 //     not independently verified against CoinDCX's official docs)
 //     failed - proceed, but the note should be surfaced so this gap is
 //     visible rather than silently assumed away.
+// Shared fix for the same class of bug in every function that sends a
+// price to CoinDCX - confirmed via a real error ("Price should be
+// divisible by 0.01") that prices computed via arithmetic routinely
+// don't match the instrument's real required tick size. Confirmed
+// "price_increment" as the real field name directly against CoinDCX's
+// own documentation, not guessed.
+async function roundToInstrumentTick(exchange, contract, price, runWarnings, symbol) {
+  let priceIncrement = 0.01;
+  try {
+    const instrument = await exchange.getInstrumentDetails(contract);
+    priceIncrement = Number(instrument.price_increment) || 0.01;
+  } catch (err) {
+    if (runWarnings) runWarnings.push(`${symbol}: could not fetch instrument details to confirm the exact required price tick size (${err.message}) - using a generic 0.01 fallback, which may still be rejected for coins with a finer tick size.`);
+  }
+  return Number((Math.round(price / priceIncrement) * priceIncrement).toFixed(8));
+}
+
 async function checkRealPositionOrOrder(exchange, creds, contract, action) {
   let positionMatch;
   try {
@@ -1013,6 +1030,7 @@ function buildTools(config, creds) {
       // than guessing one rule for every coin.
       const rawQuantity = notional / entryPrice;
       let quantity = Number(rawQuantity.toFixed(4)); // fallback if the instrument lookup fails
+      let priceIncrement = 0.01; // fallback if the instrument lookup fails
       try {
         const instrument = await exchange.getInstrumentDetails(contract);
         const increment = Number(instrument.quantity_increment) || 0.0001;
@@ -1020,9 +1038,19 @@ function buildTools(config, creds) {
         // Floating point can reintroduce noise even after this (e.g.
         // 8841.0000000001) - clean it back up to a sane display precision.
         quantity = Number(quantity.toFixed(8));
+        // Fix: the exact same class of bug as quantity, just for price -
+        // confirmed via a real CoinDCX error ("Price should be divisible
+        // by 0.01") that stop/target prices computed via arithmetic
+        // (entry ± R) routinely produce values like 74.3125 that don't
+        // match the instrument's real required tick size. Confirmed
+        // "price_increment" as the real field name directly against
+        // CoinDCX's own documentation before using it.
+        priceIncrement = Number(instrument.price_increment) || 0.01;
       } catch (err) {
-        runWarnings.push(`${symbol}: could not fetch instrument details to confirm the exact required quantity increment (${err.message}) - using a generic 4-decimal rounding instead, which may still be rejected for coins with a coarser step size.`);
+        runWarnings.push(`${symbol}: could not fetch instrument details to confirm the exact required quantity/price increment (${err.message}) - using generic rounding instead, which may still be rejected.`);
       }
+      const roundToTick = (price) => Number((Math.round(price / priceIncrement) * priceIncrement).toFixed(8));
+      entryPrice = roundToTick(entryPrice);
 
       let fillPrice = entryPrice;
       let entryOrderResult;
@@ -1123,13 +1151,13 @@ function buildTools(config, creds) {
       // price slipped from the estimate, recompute stop/target around the
       // REAL entry so the risk (R) is what was actually verified above,
       // not silently distorted by slippage.
-      const realStopPrice = fillPrice + (stopPrice - entryPrice);
-      const realTarget1 = fillPrice + dir * r * 1;
-      const realTarget2 = fillPrice + dir * r * 2;
-      const realTarget3 = fillPrice + dir * r * 3;
+      const realStopPrice = roundToTick(fillPrice + (stopPrice - entryPrice));
+      const realTarget1 = roundToTick(fillPrice + dir * r * 1);
+      const realTarget2 = roundToTick(fillPrice + dir * r * 2);
+      const realTarget3 = roundToTick(fillPrice + dir * r * 3);
 
-      let bracketResult = null;
       let bracketWarning = "";
+      let verifiedBracket = false;
       if (!confirmedPosition || !confirmedPosition.id) {
         const allDiagnostics = [...fillDiagnostics, ...idDiagnostics];
         bracketWarning = [
@@ -1137,24 +1165,43 @@ function buildTools(config, creds) {
           allDiagnostics.length > 0 ? `Diagnostic detail:\n${allDiagnostics.map((d) => `  - ${d}`).join("\n")}` : "(no diagnostic detail captured - this itself is worth reporting)",
         ].filter(Boolean).join("\n");
       } else {
+        let bracketPlacementSucceeded = false;
         try {
-          bracketResult = await exchange.placeBracketOrders(creds, {
+          await exchange.placeBracketOrders(creds, {
             positionId: confirmedPosition.id,
             stopPrice: realStopPrice, takeProfitPrice: realTarget1, // stage 1 - see notes below on staged TP limitation
           });
-          const slFailed = bracketResult?.stop_loss?.error || bracketResult?.stop_loss?.success === false;
-          const tpFailed = bracketResult?.take_profit?.error || bracketResult?.take_profit?.success === false;
-          if (slFailed || tpFailed) {
-            bracketWarning = `⚠️ Bracket order issue - stop-loss: ${bracketResult?.stop_loss?.error || "ok"}, take-profit: ${bracketResult?.take_profit?.error || "ok"}. Check CoinDCX directly and consider closing manually if unprotected.`;
-          }
+          bracketPlacementSucceeded = true;
         } catch (err) {
           bracketWarning = `🚨 Position is OPEN but bracket SL/TP placement failed entirely (${err.message}) - THIS POSITION IS CURRENTLY UNPROTECTED. Close manually or set SL/TP directly on CoinDCX immediately.`;
         }
+        if (bracketPlacementSucceeded) {
+          // Don't trust the response shape - directly re-check the
+          // REAL position's own trigger fields (confirmed directly from
+          // CoinDCX's own docs: TP/SL lives on the position itself, not
+          // a separate order). Same reliable mechanism already used for
+          // fill-confirmation, not an assumption about what the create_
+          // tpsl response looks like.
+          try {
+            invalidatePositionCache();
+            const positionsRaw = await getCachedPositions();
+            const activePositions = getActivePositions(positionsRaw);
+            const freshPosition = activePositions.find((p) => (p.pair ?? p.contract) === contract);
+            verifiedBracket = freshPosition ? hasRealBracket(freshPosition) : false;
+            if (!verifiedBracket) {
+              bracketWarning = `🚨 Bracket placement call succeeded, but the position's own stop-loss/take-profit fields are NOT actually set when re-checked directly. THIS POSITION IS CURRENTLY UNPROTECTED. Check CoinDCX directly.`;
+            }
+          } catch (err) {
+            // The PLACEMENT call itself succeeded - only this
+            // verification re-check failed. Genuinely different from
+            // placement failing, and shouldn't be reported the same
+            // way (this may well be protected, just unconfirmed).
+            bracketWarning = `⚠️ Bracket placement call succeeded, but couldn't verify it afterward (${err.message}) - this position is LIKELY protected, but please confirm directly on CoinDCX rather than assume.`;
+          }
+        }
       }
 
-      const stopOrderId = bracketResult?.stop_loss?.id ?? null;
-      const takeProfitOrderId = bracketResult?.take_profit?.id ?? null;
-      advisoryStore.recordOpen(advisories, contract, action, fillPrice, realStopPrice, finalPositionSizeUsdt, leverage, stopOrderId, takeProfitOrderId);
+      advisoryStore.recordOpen(advisories, contract, action, fillPrice, realStopPrice, finalPositionSizeUsdt, leverage, verifiedBracket);
       invalidatePositionCache(); // real state just changed - a new position and bracket orders now exist
       advisoriesDirty = true;
 
@@ -1213,7 +1260,9 @@ function buildTools(config, creds) {
       const isFullClose = sizePercent >= 100;
 
       try {
-        await exchange.closePosition(creds, { pair: contract, direction: action, quantity: closeQuantity, leverage: realLeverage, currentPrice });
+        const symbolForRounding = contract.replace(/^[A-Z]-/, "").replace(/_USDT$/, "");
+        const roundedCurrentPrice = await roundToInstrumentTick(exchange, contract, currentPrice, runWarnings, symbolForRounding);
+        await exchange.closePosition(creds, { pair: contract, direction: action, quantity: closeQuantity, leverage: realLeverage, currentPrice: roundedCurrentPrice });
       } catch (err) {
         return {
           telegramMessage: `🚨 *CLOSE ORDER FAILED* for \`${contract}\` ${action}: ${err.message}. Position may still be open - please check CoinDCX directly.`,
@@ -1221,59 +1270,50 @@ function buildTools(config, creds) {
         };
       }
 
-      // Bracket cleanup: full close -> cancel BOTH resting orders (SL and
-      // TP), nothing left to protect. Partial close -> the stop-loss
-      // still protects what's left and stays untouched, but the OLD
-      // take-profit order was sized for the ORIGINAL full quantity - if
-      // left as-is, it would try to close MORE than what's actually
-      // remaining once it triggers. Cancel and replace it sized to the
-      // new remaining quantity.
+      // Bracket update: TP/SL is native to the POSITION itself (confirmed
+      // directly from CoinDCX's own docs - take_profit_trigger/
+      // stop_loss_trigger fields), not a separate resting order. This
+      // means create_tpsl simply OVERWRITES the existing levels directly
+      // - there's no separate "cancel the old order first" step needed
+      // at all, and a full close naturally clears it since the position
+      // itself ceases to exist.
       let bracketCleanupNote = "";
-      try {
-        const ordersRaw = await getCachedActiveOrders();
-        const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
-        const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
-        // Fix: capture the OLD stop price BEFORE cancelling anything -
-        // previously, if the advisory record was ever missing, the code
-        // still cancelled the real stop order unconditionally but only
-        // replaced it conditionally on the advisory existing, leaving the
-        // remaining position with NO stop-loss and no warning at all.
-        const oldStopOrder = staleOrders.find((o) => o.order_type === "stop_market");
-        const oldStopPrice = oldStopOrder ? Number(oldStopOrder.price) : null;
-        for (const order of staleOrders) {
-          await exchange.cancelOrder(creds, order.id);
-        }
-        if (!isFullClose) {
+      if (!isFullClose) {
+        try {
           const remainingQuantity = realQuantity - closeQuantity;
           const adv = advisoryStore.getAdvisory(advisories, contract, action);
           if (remainingQuantity > 0) {
             if (adv) {
               const dir = action === "long" ? 1 : -1;
               const r = Math.abs(adv.entryPrice - adv.initialStop);
-              // Re-place the stop (untouched risk level) and a fresh
-              // take-profit at the NEXT stage, both sized to what's
-              // actually left now.
+              const roundedStop = await roundToInstrumentTick(exchange, contract, adv.lastAdvisedStop ?? adv.initialStop, runWarnings, symbolForRounding);
+              const roundedTarget = await roundToInstrumentTick(exchange, contract, adv.entryPrice + dir * r * 2, runWarnings, symbolForRounding);
               await exchange.placeBracketOrders(creds, {
                 positionId: realPosition.id,
-                stopPrice: adv.lastAdvisedStop ?? adv.initialStop,
-                takeProfitPrice: adv.entryPrice + dir * r * 2, // next stage after a stage-1 partial
+                stopPrice: roundedStop,
+                takeProfitPrice: roundedTarget, // next stage after a stage-1 partial
               });
-            } else if (oldStopPrice !== null) {
-              // No advisory to compute a meaningful next-stage target
-              // from - re-place JUST the stop at its same real level
-              // (captured above) rather than leave the position with
-              // nothing at all. Explicitly warn that no take-profit was
-              // restored, instead of silently doing less than expected.
-              await exchange.placeBracketOrders(creds, { positionId: realPosition.id, stopPrice: oldStopPrice });
-              bracketCleanupNote = `⚠️ No advisory record found - re-placed the stop-loss at its same level (${oldStopPrice}) to keep the remaining position protected, but did NOT re-place a take-profit target (couldn't compute a meaningful one without the original tracked levels).`;
             } else {
-              bracketCleanupNote = `🚨 No advisory record AND no prior stop order price found - the remaining position may currently have NO stop-loss or take-profit. Check CoinDCX immediately.`;
+              // No advisory to compute a meaningful next-stage target
+              // from - read the CURRENT stop level directly from the
+              // position's own real field (confirmed, not guessed) and
+              // re-affirm just that, rather than leave the position
+              // with nothing tracked at all.
+              const isSetField = (v) => v !== undefined && v !== null && v !== "None" && Number(v) !== 0;
+              const currentStop = isSetField(realPosition.stop_loss_trigger) ? Number(realPosition.stop_loss_trigger) : null;
+              if (currentStop !== null) {
+                await exchange.placeBracketOrders(creds, { positionId: realPosition.id, stopPrice: currentStop });
+                bracketCleanupNote = `⚠️ No advisory record found - re-affirmed the stop-loss at its current real level (${currentStop}), but did NOT set a take-profit target (couldn't compute a meaningful one without the original tracked levels).`;
+              } else {
+                bracketCleanupNote = `🚨 No advisory record AND no real bracket currently set on this position - the remaining position may currently have NO stop-loss or take-profit. Check CoinDCX immediately.`;
+              }
             }
           }
+        } catch (err) {
+          bracketCleanupNote = `⚠️ Closed part of the position but couldn't update the bracket for what's left (${err.message}) - please check CoinDCX directly.`;
         }
-      } catch (err) {
-        bracketCleanupNote = `⚠️ Closed the position but couldn't clean up/replace the resting bracket order (${err.message}) - please check CoinDCX for any stale orders.`;
       }
+
 
       // Auto-record the outcome based on THIS bot's own advised entry price
       // vs currentPrice - happens regardless of whether the user actually
@@ -1360,11 +1400,15 @@ function buildTools(config, creds) {
         currentTakeProfit = adv.entryPrice + dir * r * (stagesAdvised + 1); // keep whatever the next stage target already was
       }
 
+      const symbolForRounding = contract.replace(/^[A-Z]-/, "").replace(/_USDT$/, "");
+      const roundedNewStop = await roundToInstrumentTick(exchange, contract, newStop, runWarnings, symbolForRounding);
+      const roundedTakeProfit = currentTakeProfit !== null ? await roundToInstrumentTick(exchange, contract, currentTakeProfit, runWarnings, symbolForRounding) : null;
+
       try {
         await exchange.placeBracketOrders(creds, {
           positionId: realPosition.id,
-          stopPrice: newStop,
-          takeProfitPrice: currentTakeProfit,
+          stopPrice: roundedNewStop,
+          takeProfitPrice: roundedTakeProfit,
         });
       } catch (err) {
         return {
@@ -1418,7 +1462,9 @@ function buildTools(config, creds) {
       const remainingQuantity = realQuantity - closeQuantity;
 
       try {
-        await exchange.closePosition(creds, { pair: contract, direction: action, quantity: closeQuantity, leverage: realLeverage, currentPrice });
+        const symbolForRounding = contract.replace(/^[A-Z]-/, "").replace(/_USDT$/, "");
+        const roundedCurrentPrice = await roundToInstrumentTick(exchange, contract, currentPrice, runWarnings, symbolForRounding);
+        await exchange.closePosition(creds, { pair: contract, direction: action, quantity: closeQuantity, leverage: realLeverage, currentPrice: roundedCurrentPrice });
       } catch (err) {
         return {
           telegramMessage: `🚨 *PARTIAL TAKE-PROFIT FAILED* for \`${contract}\` ${action}: ${err.message}. Position unchanged - check CoinDCX directly.`,
@@ -1426,34 +1472,24 @@ function buildTools(config, creds) {
         };
       }
 
-      // Replace resting bracket orders sized to what's left: the stop
-      // moves to newStop (typically breakeven/trailed), and the
-      // take-profit moves to the next stage - both need cancelling and
-      // re-placing, same reasoning as update_position_stop_loss and
-      // close_position's partial-close cleanup.
+      // Bracket update: TP/SL is native to the POSITION itself (confirmed
+      // directly from CoinDCX's own docs), not a separate resting order
+      // - create_tpsl simply overwrites the existing levels directly, no
+      // separate cancel step needed at all.
       let bracketNote = "";
+      const symbolForBracket = contract.replace(/^[A-Z]-/, "").replace(/_USDT$/, "");
       try {
-        // Fix: cancel stale orders UNCONDITIONALLY, not just when
-        // remainingQuantity > 0 - previously a FULL close via this exact
-        // path (closePercent=100, remainingQuantity=0) skipped
-        // cancellation entirely, leaving the old stop/take-profit
-        // orphaned on the exchange with no position left for them to act on.
-        const ordersRaw = await getCachedActiveOrders();
-        const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
-        const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
-        for (const order of staleOrders) {
-          await exchange.cancelOrder(creds, order.id);
-        }
-
         if (remainingQuantity > 0) {
           const adv = advisoryStore.getAdvisory(advisories, contract, action);
+          const roundedNewStop = await roundToInstrumentTick(exchange, contract, newStop, runWarnings, symbolForBracket);
           if (adv) {
             const dir = action === "long" ? 1 : -1;
             const r = Math.abs(adv.entryPrice - adv.initialStop);
             const nextStageTarget = adv.entryPrice + dir * r * (stage + 1);
+            const roundedTarget = await roundToInstrumentTick(exchange, contract, nextStageTarget, runWarnings, symbolForBracket);
             await exchange.placeBracketOrders(creds, {
               positionId: realPosition.id,
-              stopPrice: newStop, takeProfitPrice: nextStageTarget,
+              stopPrice: roundedNewStop, takeProfitPrice: roundedTarget,
             });
           } else {
             // Fix: previously fell back to `nextStageTarget ?? newStop`,
@@ -1461,12 +1497,12 @@ function buildTools(config, creds) {
             // stop when no advisory existed - a meaningless order, not a
             // real profit target. Place stop-only instead, matching the
             // same honest fallback used in close_position.
-            await exchange.placeBracketOrders(creds, { positionId: realPosition.id, stopPrice: newStop });
+            await exchange.placeBracketOrders(creds, { positionId: realPosition.id, stopPrice: roundedNewStop });
             bracketNote = `⚠️ No advisory record found - re-placed only the stop-loss (${newStop}), did NOT place a take-profit (couldn't compute a meaningful next-stage target without the original tracked levels).`;
           }
         }
       } catch (err) {
-        bracketNote = `⚠️ Took partial profit but couldn't replace the resting stop/take-profit orders (${err.message}) - the remaining position may currently be UNPROTECTED. Check CoinDCX immediately.`;
+        bracketNote = `⚠️ Took partial profit but couldn't update the bracket for what's left (${err.message}) - the remaining position may currently be UNPROTECTED. Check CoinDCX immediately.`;
       }
 
       // Auto-record the partial outcome too, same logic as close_position.

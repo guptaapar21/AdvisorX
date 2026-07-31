@@ -56,9 +56,22 @@ async function computePortfolioRiskAndMargin(exchange, creds) {
 
 // This filters down to genuinely active positions only, matching the size
 // check already used correctly elsewhere (calculate_risk, check_total_exposure).
+// Confirmed directly from CoinDCX's own official documentation: the
+// position object itself carries take_profit_trigger/stop_loss_trigger
+// fields - TP/SL is a native attribute of the position, not a separate
+// resting order. The "not set" representation is inconsistent in
+// CoinDCX's own sample data (shows as the string "None" in one example,
+// numeric 0.0 in another) - this checks for both.
+function hasRealBracket(position) {
+  const tp = position.take_profit_trigger;
+  const sl = position.stop_loss_trigger;
+  const isSet = (v) => v !== undefined && v !== null && v !== "None" && Number(v) !== 0;
+  return isSet(tp) && isSet(sl);
+}
+
 function getActivePositions(positionsRaw) {
   const positions = Array.isArray(positionsRaw) ? positionsRaw : (positionsRaw?.data || []);
   return positions.filter((p) => Math.abs(Number(p.active_pos ?? p.size ?? 0)) > 0);
 }
 
-module.exports = { getActivePositions, computePortfolioRiskAndMargin };
+module.exports = { getActivePositions, computePortfolioRiskAndMargin, hasRealBracket };

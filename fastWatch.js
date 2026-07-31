@@ -27,7 +27,7 @@ const exchange = require("./coindcxExchangeClient");
 const advisoryStore = require("./advisoryStore");
 const recentCloseTracker = require("./recentCloseTracker");
 const { sendTelegramMessage } = require("./telegram");
-const { getActivePositions } = require("./positionUtils");
+const { getActivePositions, hasRealBracket } = require("./positionUtils");
 const scorecard = require("./scorecard");
 const tradeOutcomeLog = require("./tradeOutcomeLog");
 const balanceTracker = require("./balanceTracker");
@@ -71,53 +71,29 @@ async function run(config, creds) {
     if (stillOpen) continue;
 
     // Only treat this as a real, order-backed position that genuinely
-    // closed if we have actual evidence of that (a known order ID
-    // recorded when it was opened). Without that, this advisory is
-    // either an advisory-only suggestion that was never executed, or
-    // predates real execution entirely - reporting a fabricated P&L
-    // percentage and feeding it into the real balance tracker / trade
-    // outcome log would corrupt both with fictional trades that never
-    // happened. This is the exact root cause of the earlier 117-message
-    // corruption incident - re-added here after being found missing.
-    const knownOrderIds = [adv.stopOrderId, adv.takeProfitOrderId].filter(Boolean);
-    if (knownOrderIds.length === 0) {
-      console.log(`Fast watch: clearing stale advisory for ${contract} ${action} - no real order IDs on record, so no real outcome to report (likely a never-executed suggestion or pre-dates order tracking).`);
+    // closed if we have actual evidence it was ever really protected
+    // (verifiedBracket, recorded once at open time - confirmed directly
+    // from CoinDCX's own docs that TP/SL is a native position attribute,
+    // not a separate order, so there's nothing to re-check on a position
+    // that no longer exists). Without that, this advisory is either an
+    // advisory-only suggestion that was never executed, or predates real
+    // execution entirely - reporting a fabricated P&L percentage and
+    // feeding it into the real balance tracker / trade outcome log would
+    // corrupt both with fictional trades that never happened. This is
+    // the exact root cause of the earlier 117-message corruption
+    // incident - re-added here after being found missing.
+    if (!adv.verifiedBracket) {
+      console.log(`Fast watch: clearing stale advisory for ${contract} ${action} - bracket was never verified as real, so no real outcome to report (likely a never-executed suggestion or pre-dates order tracking).`);
       advisoryStore.clearAdvisory(advisories, contract, action);
       advisoriesDirty = true;
       continue;
     }
 
-    // This advisory's position is gone - it closed since we last
-    // checked (via one side of its bracket, or some other real close).
-    // Cancel whatever's left over for this contract. Prefers the known
-    // order IDs directly (the reliable /orders/cancel endpoint) over
-    // depending entirely on the order-listing endpoint, which has been
-    // confirmed unreliable (404) in this exact codebase before.
-    let cancelledCount = 0;
-    let cancelError = null;
-    for (const orderId of knownOrderIds) {
-      try {
-        await exchange.cancelOrder(creds, orderId);
-        cancelledCount++;
-      } catch (err) {
-        cancelError = err.message;
-      }
-    }
-    try {
-      const ordersRaw = await exchange.getActiveOrders(creds);
-      const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
-      const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
-      for (const order of staleOrders) {
-        await exchange.cancelOrder(creds, order.id);
-        cancelledCount++;
-      }
-    } catch (err) {
-      cancelError = err.message;
-    }
-
-    // Record the real outcome using the last known price (close enough -
-    // this runs every ~2 minutes, so price shouldn't have moved far from
-    // whatever level actually triggered the close).
+    // This advisory's position is gone - it closed since we last checked
+    // (via one side of its bracket, or some other real close). Nothing
+    // to separately cancel: TP/SL is native to the position itself
+    // (confirmed directly from CoinDCX's docs), so it disappears along
+    // with the position - there's no separate resting order left behind.
     const symbol = contractToSymbol(contract);
     let outcomeNote = "";
     try {
@@ -134,12 +110,7 @@ async function run(config, creds) {
 
     await sendTelegramMessage(
       `🔔 *${contract} ${action}* closed via its bracket order (stop or take-profit triggered).\n` +
-      `Outcome: ${outcomeNote}\n` +
-      (cancelError
-        ? `⚠️ Could not confirm/cancel the other resting order (${cancelError}) - please check CoinDCX for any stale order on this contract.`
-        : cancelledCount > 0
-          ? `Cancelled ${cancelledCount} leftover order(s) for this contract.`
-          : `No leftover order found to cancel.`)
+      `Outcome: ${outcomeNote}`
     );
 
     advisoryStore.clearAdvisory(advisories, contract, action);
@@ -192,16 +163,19 @@ async function run(config, creds) {
     const currentStop = adv.lastAdvisedStop;
     const stopCrossed = action === "long" ? currentPrice <= currentStop : currentPrice >= currentStop;
 
-    // Fallback safety monitor - ONLY for positions missing a REAL resting
-    // bracket order (stopOrderId/takeProfitOrderId), meaning there is
-    // currently nothing on the exchange itself protecting this position
-    // at all. Uses the trade's own already-known stop/1R-target levels,
-    // just enforced here in software with a 0.9x safety margin (not a
-    // new arbitrary number) - accounts for this only checking once every
-    // 1-2 minutes, not tick-by-tick like a real resting order would.
-    // A working real bracket is unaffected by any of this.
-    const hasRealBracket = adv.stopOrderId && adv.takeProfitOrderId;
-    if (!hasRealBracket) {
+    // Fallback safety monitor - ONLY for positions missing a REAL
+    // resting bracket, checked LIVE against the position's own
+    // take_profit_trigger/stop_loss_trigger fields (confirmed directly
+    // from CoinDCX's docs - TP/SL is native to the position, not a
+    // separate order). More accurate than a value recorded once at open
+    // time, since it reflects the position's current real state even if
+    // the bracket was fixed or broken after opening. Uses the trade's
+    // own already-known stop/1R-target levels, just enforced here in
+    // software with a 0.9x safety margin (not a new arbitrary number) -
+    // accounts for this only checking once every 1-2 minutes, not
+    // tick-by-tick like a real resting order would. A working real
+    // bracket is unaffected by any of this.
+    if (!hasRealBracket(pos)) {
       const fallbackStopLevel = adv.entryPrice - dir * r * 0.9; // 0.9x the way to the real stop
       const fallbackTargetLevel = adv.entryPrice + dir * r * 0.9; // 0.9R
       const stopFallbackCrossed = action === "long" ? currentPrice <= fallbackStopLevel : currentPrice >= fallbackStopLevel;
