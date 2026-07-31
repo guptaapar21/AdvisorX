@@ -9,10 +9,14 @@
 // plain recurring position status (entry/current/stop/PnL) every cycle
 // while a position is open.
 //
-// IMPORTANT: this never places or modifies any real order. It's purely
-// informational, same as everything else in this bot. Your REAL protection
-// against a bad move is still the stop-loss order you place on CoinDCX
-// yourself - this just tells you faster when a level has been crossed.
+// UPDATED: this bot now DOES place real orders (entry, and a bracket
+// stop-loss/take-profit immediately after). That bracket is two
+// INDEPENDENT orders, not a native one-cancels-other pair - when one side
+// fills and the position closes, the other side is left resting on the
+// exchange with nothing left to act on. THIS is the layer responsible for
+// catching that: every cycle, it checks whether any advisory it's
+// tracking no longer has a matching real position, and if so, cancels
+// whatever's left over and records the real outcome.
 //
 // Rebuilt: no more liveSnapshot.json / KWGT widget feed, no more edited
 // scorecard message, no more coin scores here. Flat = totally silent.
@@ -22,8 +26,10 @@
 const exchange = require("./coindcxExchangeClient");
 const advisoryStore = require("./advisoryStore");
 const { sendTelegramMessage } = require("./telegram");
-const { getActivePositions } = require("./agentTools");
+const { getActivePositions } = require("./positionUtils");
 const scorecard = require("./scorecard");
+const tradeOutcomeLog = require("./tradeOutcomeLog");
+const balanceTracker = require("./balanceTracker");
 
 const fs = require("fs");
 const path = require("path");
@@ -44,13 +50,83 @@ async function run(config, creds) {
   const positionsRaw = await exchange.getPositions(creds);
   const activePositions = getActivePositions(positionsRaw);
 
+  // Orphaned-bracket-order cleanup - THE actual gap this file was always
+  // supposed to cover (per the header comment) but never actually
+  // implemented. Runs BEFORE the early-return-on-flat check below, since
+  // the exact case that matters is "a position just closed" - meaning
+  // activePositions may now be empty or missing this specific contract,
+  // which is precisely when a leftover bracket order needs cancelling.
+  const advisories = advisoryStore.loadAdvisories();
+  let advisoriesDirty = false;
+  for (const [key, adv] of Object.entries(advisories)) {
+    const lastColon = key.lastIndexOf(":");
+    const contract = key.slice(0, lastColon);
+    const action = key.slice(lastColon + 1);
+    const stillOpen = activePositions.some((p) => {
+      const posContract = p.pair ?? p.contract;
+      const posDirection = Number(p.active_pos ?? p.size ?? 0) > 0 ? "long" : "short";
+      return posContract === contract && posDirection === action;
+    });
+    if (stillOpen) continue;
+
+    // This advisory's position is gone - it closed since we last
+    // checked (via one side of its bracket, or some other real close).
+    // Cancel whatever's left over for this contract, since there's no
+    // position for it to act on anymore.
+    let cancelledCount = 0;
+    let cancelError = null;
+    try {
+      const ordersRaw = await exchange.getActiveOrders(creds);
+      const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
+      const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
+      for (const order of staleOrders) {
+        await exchange.cancelOrder(creds, order.id);
+        cancelledCount++;
+      }
+    } catch (err) {
+      cancelError = err.message;
+    }
+
+    // Record the real outcome using the last known price (close enough -
+    // this runs every ~2 minutes, so price shouldn't have moved far from
+    // whatever level actually triggered the close).
+    const symbol = contractToSymbol(contract);
+    let outcomeNote = "";
+    try {
+      const currentPrice = await exchange.getCurrentPrice(symbol, config.marketType);
+      const dir = action === "long" ? 1 : -1;
+      const pnlPercent = ((currentPrice - adv.entryPrice) * dir / adv.entryPrice) * 100;
+      tradeOutcomeLog.recordOutcome(symbol, Number(pnlPercent.toFixed(2)), "bracket_order");
+      const dollarPnl = adv.positionSizeUsdt * adv.leverage * (pnlPercent / 100);
+      balanceTracker.applyPnl(dollarPnl);
+      outcomeNote = `~${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}% (approx, based on current price - exact bracket trigger price isn't directly known)`;
+    } catch (err) {
+      outcomeNote = `couldn't compute (${err.message})`;
+    }
+
+    await sendTelegramMessage(
+      `🔔 *${contract} ${action}* closed via its bracket order (stop or take-profit triggered).\n` +
+      `Outcome: ${outcomeNote}\n` +
+      (cancelError
+        ? `⚠️ Could not confirm/cancel the other resting order (${cancelError}) - please check CoinDCX for any stale order on this contract.`
+        : cancelledCount > 0
+          ? `Cancelled ${cancelledCount} leftover order(s) for this contract.`
+          : `No leftover order found to cancel.`)
+    );
+
+    advisoryStore.clearAdvisory(advisories, contract, action);
+    advisoriesDirty = true;
+  }
+  if (advisoriesDirty) {
+    advisoryStore.saveAdvisories(advisories);
+  }
+
   if (activePositions.length === 0) {
     // Flat: no interaction at all, no Telegram message of any kind.
     console.log("Fast watch: no open positions, nothing to check, staying silent.");
     return;
   }
 
-  const advisories = advisoryStore.loadAdvisories();
   const reconciled = advisoryStore.reconcileWithRealPositions(advisories, activePositions);
   if (reconciled) {
     advisoryStore.saveAdvisories(advisories);

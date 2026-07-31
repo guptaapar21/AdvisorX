@@ -83,7 +83,12 @@ module.exports = {
   geminiKeyCooldownMinutes: 60,
 
   // ---- Full agent mode (agentIndex.js) ----
-  // maxPositions is a hard limit; leverageMin/Max and positionSize% come
+  // maxPositions is now DEAD/unused - the actual rule is "one position
+  // per coin" (enforced automatically via checkRealPositionOrOrder in
+  // agentTools.js), not a global count across all coins combined. Left
+  // here rather than deleted in case anything external still reads it,
+  // but nothing in this codebase does anymore. leverageMin/Max and
+  // positionSize% come
   // from the selected strategy preset (see strategyParams.js) - the AI
   // picks a position size as a % of balance within that range, informed
   // by signal strength, rather than a risk-distance formula (that's how

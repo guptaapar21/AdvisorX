@@ -8,6 +8,8 @@ const { getTelegramUpdates, sendTelegramMessage } = require("./telegram");
 const { getStrategyParams } = require("./strategyParams");
 const { STRATEGY_SCORE_WEIGHTS } = require("./opportunityScorer");
 const { BACKTESTED_COINS, buildScanThresholdMap, getTierLabel } = require("./backtestedStrategy");
+const exchange = require("./coindcxExchangeClient");
+const { getActivePositions } = require("./positionUtils");
 
 const RUNTIME_FILE = path.join(__dirname, "runtimeConfig.json");
 const VALID_STRATEGIES = ["ultra-short", "swing-trend", "conservative", "balanced", "aggressive", "backtested"];
@@ -28,7 +30,7 @@ function saveRuntimeConfig(state) {
 // valid ones. Always sends a confirmation (or rejection) reply so a
 // mistyped command is never silently ignored. Returns the possibly-updated
 // runtime state.
-async function processIncomingCommands(runtimeState) {
+async function processIncomingCommands(runtimeState, creds) {
   const { messages, latestUpdateId } = await getTelegramUpdates(runtimeState.lastTelegramUpdateId);
 
   for (const msg of messages) {
@@ -75,7 +77,33 @@ async function processIncomingCommands(runtimeState) {
             : `ℹ️ Futures balance in use: *${trackedBalance.toFixed(2)} USDT* (as last set via /setbalance, no closed trades yet to adjust it)`;
         }
       }
-      await sendTelegramMessage(`ℹ️ Current strategy: *${current}*\n${balanceLine}`);
+      const autoTradeLine = runtimeState.autoTradingPaused
+        ? "⏸️ Automatic trading: PAUSED (send /resumeauto to re-enable)"
+        : "▶️ Automatic trading: ACTIVE";
+
+      // Fix #7: previously no single place showed a consolidated view of
+      // everything currently open at once - each position reported
+      // individually via its own updates, but "3 positions open right
+      // now: SOL, DOGE, ETH, $X total risk" didn't exist anywhere.
+      let portfolioLine = "ℹ️ Positions: unable to check right now.";
+      if (creds && creds.apiKey) {
+        try {
+          const { computePortfolioRiskAndMargin } = require("./positionUtils");
+          const portfolio = await computePortfolioRiskAndMargin(exchange, creds);
+          if (portfolio.positions.length === 0) {
+            portfolioLine = "ℹ️ Positions: none currently open.";
+          } else {
+            const lines = portfolio.positions.map((p) =>
+              `  ${p.contract}: ${p.quantity.toFixed(2)} qty @ ${p.leverage}x${p.riskUsdt !== null ? ` (risk: ${p.riskUsdt.toFixed(2)} USDT)` : " (stop not found)"}`
+            );
+            portfolioLine = `ℹ️ ${portfolio.positions.length} position(s) open, ${portfolio.totalRiskUsdt.toFixed(2)} USDT total risk:\n${lines.join("\n")}`;
+          }
+        } catch (err) {
+          portfolioLine = `ℹ️ Positions: couldn't verify (${err.message}).`;
+        }
+      }
+
+      await sendTelegramMessage(`ℹ️ Current strategy: *${current}*\n${balanceLine}\n${autoTradeLine}\n${portfolioLine}`);
     }
 
     // Lets her correct/update the tracked futures balance straight from
@@ -91,6 +119,72 @@ async function processIncomingCommands(runtimeState) {
         await sendTelegramMessage(`✅ Futures balance updated to *${newBalance} USDT*. Takes effect from the next run.`);
       } else {
         await sendTelegramMessage(`❌ Couldn't parse a valid balance from "${msg.text}". Try: /setbalance 120`);
+      }
+    }
+    // /pauseauto and /resumeauto - stops/restarts AUTOMATIC real order
+    // placement for NEW entries only. An already-open position's resting
+    // SL/TP bracket orders are untouched either way - they live on the
+    // exchange independently of the bot, which is the whole point of
+    // placing them immediately as real orders rather than relying on the
+    // bot's own uptime to manage the exit.
+    if (msg.text.trim().match(/^\/pause(auto)?\s*$/i)) {
+      runtimeState.autoTradingPaused = true;
+      await sendTelegramMessage(
+        "⏸️ Automatic trading PAUSED. No new real orders will be placed until /resumeauto. " +
+        "Any position already open keeps its existing stop-loss/take-profit exactly as placed - this does not touch that."
+      );
+    }
+    if (msg.text.trim().match(/^\/resume(auto)?\s*$/i)) {
+      runtimeState.autoTradingPaused = false;
+      await sendTelegramMessage("▶️ Automatic trading RESUMED. Takes effect from the next run.");
+    }
+
+    // /closeposition - manual override, executes a REAL close
+    // immediately (not queued for the next cycle), and cleans up
+    // whichever resting bracket order (SL or TP) is left over - closing
+    // manually doesn't cancel those automatically, they'd otherwise sit
+    // on the exchange with nothing to act on.
+    if (msg.text.trim().match(/^\/close\s*(position|all)?\s*$/i)) {
+      if (!creds || !creds.apiKey) {
+        await sendTelegramMessage("❌ /closeposition needs exchange credentials, which aren't available in this context. Try again from the main run.");
+      } else {
+        try {
+          const positionsRaw = await exchange.getPositions(creds);
+          const activePositions = getActivePositions(positionsRaw);
+          if (activePositions.length === 0) {
+            await sendTelegramMessage("ℹ️ No open position found to close.");
+          } else {
+            for (const pos of activePositions) {
+              const contract = pos.pair ?? pos.contract;
+              const rawSize = Number(pos.active_pos ?? pos.size ?? 0);
+              const direction = rawSize > 0 ? "long" : "short";
+              const quantity = Math.abs(rawSize);
+              const leverage = Number(pos.leverage) || 1;
+              await exchange.closePosition(creds, { pair: contract, direction, quantity, leverage });
+
+              // Clean up any resting bracket order for this exact
+              // contract - a manual close doesn't remove these
+              // automatically, and a stale SL/TP sitting on the
+              // exchange with no position behind it is a real hazard
+              // (it would fire against whatever position happens to
+              // exist there next).
+              try {
+                const ordersRaw = await exchange.getActiveOrders(creds);
+                const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
+                const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
+                for (const order of staleOrders) {
+                  await exchange.cancelOrder(creds, order.id);
+                }
+              } catch (cleanupErr) {
+                await sendTelegramMessage(`⚠️ Closed ${contract} but couldn't confirm/cancel any leftover SL/TP orders (${cleanupErr.message}) - please check manually on CoinDCX.`);
+              }
+
+              await sendTelegramMessage(`🛑 Manually closed ${contract} ${direction} (${quantity} qty) per /closeposition.`);
+            }
+          }
+        } catch (err) {
+          await sendTelegramMessage(`❌ /closeposition failed: ${err.message}. Please check and close manually on CoinDCX if needed.`);
+        }
       }
     }
   }
@@ -167,6 +261,11 @@ function applyRuntimeOverrides(baseConfig, runtimeState) {
     // picks this up, no special-casing needed.
     effectiveConfig = { ...effectiveConfig, manualFuturesBalanceUsdt: runtimeState.manualBalanceOverride };
   }
+
+  // Applies regardless of which branch ran above - the pause/resume
+  // toggle is orthogonal to strategy selection. This is what
+  // open_position actually checks before ever placing a real order.
+  effectiveConfig = { ...effectiveConfig, autoTradingPaused: !!runtimeState.autoTradingPaused };
 
   return effectiveConfig;
 }

@@ -104,15 +104,16 @@ async function run() {
     apiSecret: process.env.COINDCX_API_SECRET,
   };
   if (!creds.apiKey || !creds.apiSecret) {
-    throw new Error("COINDCX_API_KEY and COINDCX_API_SECRET must be set (read-only key is sufficient)");
+    throw new Error("COINDCX_API_KEY and COINDCX_API_SECRET must be set. NOTE: a read-only key is NO LONGER sufficient - real order placement is now wired in, and needs a trading-enabled key.");
   }
 
-  // Check for any Telegram command (e.g. "/strategy aggressive") sent
-  // since the last run, and apply it. Always sends a confirmation/
-  // rejection reply itself, so this never fails silently. Cheap - no
-  // Gemini involved, just a Telegram API call.
+  // Check for any Telegram command (e.g. "/strategy aggressive",
+  // "/pauseauto", "/closeposition") sent since the last run, and apply
+  // it. Always sends a confirmation/rejection reply itself, so this
+  // never fails silently. Now needs creds too - /closeposition executes
+  // a REAL close immediately, not just a flag for later.
   let rtState = runtimeConfig.loadRuntimeConfig();
-  rtState = await runtimeConfig.processIncomingCommands(rtState);
+  rtState = await runtimeConfig.processIncomingCommands(rtState, creds);
   const config = runtimeConfig.applyRuntimeOverrides(baseConfig, rtState);
   runtimeConfig.saveRuntimeConfig(rtState);
 

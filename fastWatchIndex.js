@@ -9,7 +9,7 @@ async function run() {
     apiSecret: process.env.COINDCX_API_SECRET,
   };
   if (!creds.apiKey || !creds.apiSecret) {
-    throw new Error("COINDCX_API_KEY and COINDCX_API_SECRET must be set (read-only key is sufficient)");
+    throw new Error("COINDCX_API_KEY and COINDCX_API_SECRET must be set. NOTE: a read-only key is NO LONGER sufficient - fastWatch now needs write access too, to cancel an orphaned bracket order (SL or TP) once the position closes via the other side.");
   }
 
   // Read-only: applies whatever strategy override is CURRENTLY active

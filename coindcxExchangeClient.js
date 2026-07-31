@@ -206,25 +206,67 @@ async function getActiveOrders(creds, page = "1", size = "50") {
   return privatePost("/exchange/v1/derivatives/futures/orders/active", { page, size }, creds);
 }
 
-// ---- WRITE / EXECUTION: intercepted, never touches the exchange ----
-// Each returns a plain descriptor of the intended action. agentTools.js
-// turns this into a Telegram message and a synthetic tool result for the
-// model - it never calls the real exchange.
+// ---- WRITE / EXECUTION: REAL calls to the CoinDCX exchange ----
+// Schema confirmed directly against CoinDCX's own official API
+// documentation (not a third-party guess) before writing any of this.
 
-async function placeOrder(params) {
-  return { intercepted: true, action: "open_position", params };
+async function createOrder(creds, { side, pair, orderType, price, totalQuantity, leverage, timeInForce }) {
+  const body = {
+    side, // "buy" or "sell"
+    pair, // e.g. "B-DOGE_USDT"
+    order_type: orderType, // "market_order" | "limit_order" | "stop_market" | "take_profit_market"
+    total_quantity: totalQuantity,
+    leverage,
+    notification: "no_notification",
+    time_in_force: timeInForce || "good_till_cancel",
+  };
+  if (price !== undefined && price !== null) body.price = price;
+  return privatePost("/exchange/v1/derivatives/futures/orders/create", body, creds);
 }
 
-async function cancelOrder(orderId, contract) {
-  return { intercepted: true, action: "cancel_order", params: { orderId, contract } };
+async function placeOrder(creds, { pair, direction, quantity, leverage, entryPrice, orderType }) {
+  const side = direction === "long" ? "buy" : "sell";
+  return createOrder(creds, {
+    side, pair, orderType: orderType || "market_order",
+    price: orderType === "limit_order" ? entryPrice : undefined,
+    totalQuantity: quantity, leverage,
+  });
 }
 
-async function setPositionStopLoss(contract, stopLoss, takeProfit) {
-  return { intercepted: true, action: "set_position_stop_loss", params: { contract, stopLoss, takeProfit } };
+// Places the stop-loss and take-profit as two SEPARATE, independent
+// orders immediately after the entry - CoinDCX's API does not support
+// bundling SL/TP atomically into the entry order itself (confirmed: TP/SL
+// can only be attached once a position already exists), so "at the same
+// time" means "as the very next step, not waiting for a future cycle."
+//
+// IMPORTANT, real limitation: these are two independent orders, not a
+// native one-cancels-other (OCO) pair. If the stop fills, the take-profit
+// order is NOT automatically cancelled by the exchange, and vice versa -
+// whichever fills first leaves an orphaned opposite-side order still
+// resting on the exchange. The bot's own position-management loop MUST
+// detect this (position closed but a bracket order still open) and
+// cancel the leftover order - this is NOT free/automatic just because
+// both orders were placed.
+async function placeBracketOrders(creds, { pair, direction, quantity, leverage, stopPrice, takeProfitPrice }) {
+  const closingSide = direction === "long" ? "sell" : "buy"; // opposite side closes the position
+  const [stopResult, takeProfitResult] = await Promise.allSettled([
+    createOrder(creds, { side: closingSide, pair, orderType: "stop_market", price: stopPrice, totalQuantity: quantity, leverage }),
+    createOrder(creds, { side: closingSide, pair, orderType: "take_profit_market", price: takeProfitPrice, totalQuantity: quantity, leverage }),
+  ]);
+  return {
+    stop: stopResult.status === "fulfilled" ? stopResult.value : { error: stopResult.reason?.message },
+    takeProfit: takeProfitResult.status === "fulfilled" ? takeProfitResult.value : { error: takeProfitResult.reason?.message },
+  };
 }
 
-async function closePosition(contract, sizePercent) {
-  return { intercepted: true, action: "close_position", params: { contract, sizePercent: sizePercent ?? 100 } };
+async function cancelOrder(creds, orderId) {
+  return privatePost("/exchange/v1/derivatives/futures/orders/cancel", { id: orderId }, creds);
+}
+
+async function closePosition(creds, { pair, direction, quantity, leverage }) {
+  // Closing a position is just an order in the opposite direction.
+  const closingSide = direction === "long" ? "sell" : "buy";
+  return createOrder(creds, { side: closingSide, pair, orderType: "market_order", totalQuantity: quantity, leverage });
 }
 
 module.exports = {
@@ -235,8 +277,9 @@ module.exports = {
   getBalances,
   getPositions,
   getActiveOrders,
+  createOrder,
   placeOrder,
+  placeBracketOrders,
   cancelOrder,
   closePosition,
-  setPositionStopLoss,
 };

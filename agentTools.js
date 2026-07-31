@@ -14,6 +14,7 @@ const takeProfitManagement = require("./takeProfitManagement");
 const { bollingerBands, priceVsBB, atrWilder } = require("./indicators");
 const advisoryStore = require("./advisoryStore");
 const { getEffectiveMinScore } = require("./runtimeConfig");
+const { getActivePositions, computePortfolioRiskAndMargin } = require("./positionUtils");
 const balanceTracker = require("./balanceTracker");
 const tradeOutcomeLog = require("./tradeOutcomeLog");
 const { getStrategyParams } = require("./strategyParams");
@@ -336,12 +337,9 @@ async function checkRealPositionOrOrder(exchange, creds, contract, action) {
   return { verified: true, exists: orderMatch, via: orderMatch ? "pending_order" : null, note };
 }
 
-// This filters down to genuinely active positions only, matching the size
-// check already used correctly elsewhere (calculate_risk, check_total_exposure).
-function getActivePositions(positionsRaw) {
-  const positions = Array.isArray(positionsRaw) ? positionsRaw : (positionsRaw?.data || []);
-  return positions.filter((p) => Math.abs(Number(p.active_pos ?? p.size ?? 0)) > 0);
-}
+// getActivePositions now lives in ./positionUtils.js (imported at the top
+// of this file) - extracted specifically so runtimeConfig.js can use the
+// same function too, without creating a circular require between the two.
 
 // Single source of truth for "what balance should risk/exposure checks use"
 // - used by BOTH open_position's risk-cap AND check_total_exposure, so
@@ -385,6 +383,29 @@ function buildTools(config, creds) {
   let advisoriesDirty = false;
   const runWarnings = [];
 
+  // Fix #9: previously every function that needed real positions/orders
+  // re-fetched them independently, even within the same few seconds of
+  // the same cycle - now more wasteful than before, since up to 3 coins
+  // can each trigger their own open_position/check_open_position/
+  // close_position call in one run. Cached for this run only, and
+  // invalidated immediately after ANY real write (open/close/cancel/
+  // bracket placement) so it never risks serving stale data after a
+  // genuine state change.
+  let cachedPositionsRaw = null;
+  let cachedOrdersRaw = null;
+  async function getCachedPositions() {
+    if (cachedPositionsRaw === null) cachedPositionsRaw = await exchange.getPositions(creds);
+    return cachedPositionsRaw;
+  }
+  async function getCachedActiveOrders() {
+    if (cachedOrdersRaw === null) cachedOrdersRaw = await exchange.getActiveOrders(creds);
+    return cachedOrdersRaw;
+  }
+  function invalidatePositionCache() {
+    cachedPositionsRaw = null;
+    cachedOrdersRaw = null;
+  }
+
   const handlers = {
     async get_account_balance() {
       // Was calling exchange.getBalances(creds) directly - the raw SPOT
@@ -401,7 +422,7 @@ function buildTools(config, creds) {
     },
 
     async get_positions() {
-      const positionsRaw = await exchange.getPositions(creds);
+      const positionsRaw = await getCachedPositions();
       const activePositions = getActivePositions(positionsRaw);
       if (advisoryStore.reconcileWithRealPositions(advisories, activePositions)) {
         advisoriesDirty = true;
@@ -528,18 +549,17 @@ function buildTools(config, creds) {
       reasons.push(stopCheck.reason);
       shouldOpen = shouldOpen && stopCheck.shouldOpen;
 
-
-      try {
-        const positionsRaw = await exchange.getPositions(creds);
-        const openCount = getActivePositions(positionsRaw).length;
-        if (openCount >= config.riskRules.maxPositions) {
-          shouldOpen = false;
-          reasons.push(`already at max positions (${openCount}/${config.riskRules.maxPositions})`);
-        }
-      } catch (err) {
-        reasons.push(`could not verify position count: ${err.message}`);
-        runWarnings.push(`${symbol}: could not verify position count before opening - ${err.message}`);
-      }
+      // One position PER COIN, not one position total - the per-contract
+      // duplicate check above (checkRealPositionOrOrder) already
+      // prevents a second position on THIS SAME coin, which is the real
+      // protection wanted. There used to also be a global count check
+      // here (openCount >= maxPositions across ALL coins combined) - that
+      // was blocking SOL and DOGE from ever being open at the same time,
+      // not just preventing a duplicate on the same coin. Removed:
+      // total dollar-risk exposure across all open positions combined is
+      // still capped separately by check_total_exposure, so this isn't a
+      // loss of protection - it's removing a different rule that
+      // conflicted with the per-coin design.
 
       return {
         shouldOpen, symbol, action, reasons,
@@ -552,7 +572,7 @@ function buildTools(config, creds) {
 
     async calculate_risk() {
       const account = await exchange.getBalances(creds); // array of {currency, balance, ...}
-      const positionsRaw = await exchange.getPositions(creds);
+      const positionsRaw = await getCachedPositions();
       const positions = getActivePositions(positionsRaw);
 
       const usdt = Array.isArray(account) ? account.find((b) => (b.currency || "").toUpperCase() === "USDT") : null;
@@ -590,19 +610,15 @@ function buildTools(config, creds) {
     },
 
     async check_total_exposure({ amountUsdt, leverage }) {
-      const positionsRaw = await exchange.getPositions(creds);
-      const positions = getActivePositions(positionsRaw);
-
       const { totalBalance: availableBalance, balanceSource } = await getEffectiveBalance(config, creds);
 
-      let currentExposure = 0;
-      for (const p of positions) {
-        const size = Math.abs(Number(p.active_pos ?? p.size ?? 0));
-        const entryPrice = Number(p.avg_price ?? p.entryPrice ?? 0);
-        currentExposure += size * entryPrice;
-      }
-
-      const totalBalance = availableBalance + currentExposure / Math.max(1, ...positions.map((p) => Number(p.leverage ?? 1)));
+      // Fix: previously reconstructed "margin already committed" by
+      // dividing the WHOLE portfolio's exposure by a SINGLE (max)
+      // leverage value - only correct if every position shared the same
+      // leverage. Now uses each position's own real leverage individually.
+      const portfolio = await computePortfolioRiskAndMargin(exchange, creds);
+      const currentExposure = portfolio.positions.reduce((sum, p) => sum + p.quantity * p.entryPrice, 0);
+      const totalBalance = availableBalance + portfolio.totalMarginUsdt;
       const newExposure = amountUsdt * leverage;
       const totalExposure = currentExposure + newExposure;
       const maxAllowedExposure = totalBalance * config.riskRules.leverageMax;
@@ -619,6 +635,14 @@ function buildTools(config, creds) {
         newExposure: Number(newExposure.toFixed(2)),
         totalExposure: Number(totalExposure.toFixed(2)),
         maxAllowedExposure: Number(maxAllowedExposure.toFixed(2)),
+        // Fix #8: previously no explicit signal at all about cumulative
+        // risk when deciding whether to open another coin - this is now
+        // visible directly in the same tool result already checked
+        // before every new position, not just an internal enforcement
+        // number invisible to the model's own reasoning.
+        openPositionsCount: portfolio.positions.length,
+        openPositionsRiskUsdt: Number(portfolio.totalRiskUsdt.toFixed(2)),
+        openPositionsRiskPercentOfBalance: totalBalance > 0 ? Number(((portfolio.totalRiskUsdt / totalBalance) * 100).toFixed(1)) : null,
         reason: (withinLimit
           ? "within total exposure limit"
           : `total exposure ${totalExposure.toFixed(2)} USDT would exceed the limit of ${maxAllowedExposure.toFixed(2)} USDT (balance x max leverage)`) + sourceNote,
@@ -879,43 +903,260 @@ function buildTools(config, creds) {
         );
       }
 
-      await exchange.placeOrder({ contract, action, entryPrice, stopPrice, leverage, positionSizeUsdt: finalPositionSizeUsdt });
-      advisoryStore.recordOpen(advisories, contract, action, entryPrice, stopPrice, finalPositionSizeUsdt, leverage);
-      advisoriesDirty = true;
-      const dirEmoji = action === "long" ? "🟢 LONG" : "🔴 SHORT";
+      // Fix: previously no cumulative check existed at all - each trade's
+      // risk was checked in total isolation, so with one position per
+      // coin now the normal case, 3 coins could each pass a 7% check
+      // while collectively risking 21%+ of the account at once. Sums the
+      // REAL dollar risk already committed across every other open
+      // position (via each one's own actual resting stop order, not a
+      // guess) and caps the TOTAL, not just this one trade.
+      const MAX_TOTAL_RISK_PERCENT = config.riskRules.maxTotalRiskPercentOfBalance ?? (MAX_RISK_PERCENT_OF_BALANCE * 2.5);
+      if (totalBalance > 0) {
+        try {
+          const portfolio = await computePortfolioRiskAndMargin(exchange, creds);
+          const stopDistancePercent = Math.abs(entryPrice - stopPrice) / entryPrice * 100;
+          const thisTradeDollarRisk = (finalPositionSizeUsdt * leverage) * (stopDistancePercent / 100);
+          const totalDollarRisk = portfolio.totalRiskUsdt + thisTradeDollarRisk;
+          const totalRiskPercent = (totalDollarRisk / totalBalance) * 100;
 
-      // Show the actual 1R/2R/3R staged take-profit price levels upfront,
-      // not just entry/stop - so there's a concrete target to watch on
-      // CoinDCX yourself, without waiting for a later follow-up message.
+          if (portfolio.hasUnknownRisk) {
+            riskNotes.push(`⚠️ Couldn't confirm the real stop price for one or more other open positions - cumulative risk check below may understate true total risk.`);
+          }
+          if (totalRiskPercent > MAX_TOTAL_RISK_PERCENT) {
+            const scaleFactor = Math.max(0, (MAX_TOTAL_RISK_PERCENT * totalBalance / 100 - portfolio.totalRiskUsdt)) / thisTradeDollarRisk;
+            const cappedSize = Number((finalPositionSizeUsdt * Math.min(1, scaleFactor)).toFixed(2));
+            riskNotes.push(
+              `⚠️ Portfolio-wide risk cap: ${portfolio.positions.length} other position(s) already risk ${((portfolio.totalRiskUsdt / totalBalance) * 100).toFixed(1)}% combined. ` +
+              `Adding this trade at its planned size would bring total risk to ${totalRiskPercent.toFixed(1)}%, above the ${MAX_TOTAL_RISK_PERCENT.toFixed(1)}% portfolio cap - ` +
+              `size further reduced from ${finalPositionSizeUsdt} to ${cappedSize} USDT to fit.`
+            );
+            finalPositionSizeUsdt = cappedSize;
+          }
+        } catch (err) {
+          riskNotes.push(`⚠️ Could not verify total portfolio risk before opening (${err.message}) - proceeding with only this trade's own risk checked, not the combined total.`);
+        }
+      }
+
+      const dirEmoji = action === "long" ? "🟢 LONG" : "🔴 SHORT";
       const r = Math.abs(entryPrice - stopPrice);
       const dir = action === "long" ? 1 : -1;
       const target1 = entryPrice + dir * r * 1;
       const target2 = entryPrice + dir * r * 2;
       const target3 = entryPrice + dir * r * 3;
-      // Use 2 decimals for higher-value assets (BTC/ETH-style prices),
-      // more precision for sub-$1 coins where 2 decimals would round away
-      // all the meaningful movement.
       const decimals = entryPrice >= 1 ? 2 : 6;
       const fmt = (n) => n.toFixed(decimals);
 
+      if (config.autoTradingPaused) {
+        // Advisory-only path, unchanged from before automatic execution
+        // was wired in - nothing real gets placed while paused.
+        advisoryStore.recordOpen(advisories, contract, action, entryPrice, stopPrice, finalPositionSizeUsdt, leverage);
+        advisoriesDirty = true;
+        return {
+          telegramMessage: [
+            `🤖 *AI SUGGESTS OPENING* ${dirEmoji} *${contract}* (auto-trading paused - not executed)`,
+            `Entry: ${fmt(entryPrice)} | Stop: ${fmt(stopPrice)} | Leverage: ${leverage}x`,
+            `Suggested size: ${finalPositionSizeUsdt} USDT margin`,
+            ...riskNotes,
+            `Targets (staged take-profit): 1R ${fmt(target1)} (close ~33%) | 2R ${fmt(target2)} (close ~33%) | 3R ${fmt(target3)} (trail rest)`,
+            `Reasoning: ${reasoning}`,
+            ``,
+            `_Auto-trading is currently paused (/resumeauto to re-enable). No order has been placed. Execute manually on CoinDCX if you agree._`,
+          ].join("\n"),
+          resultForModel: { status: "queued_for_manual_execution", note: "Auto-trading paused - sent to user via Telegram, not executed." },
+        };
+      }
+
+      // REAL execution path. quantity = notional / entryPrice, where
+      // notional = margin x leverage (matches the actual dollar risk
+      // already verified above, not a re-derived number).
+      const notional = finalPositionSizeUsdt * leverage;
+      const quantity = notional / entryPrice;
+
+      let fillPrice = entryPrice;
+      let entryOrderResult;
+      try {
+        entryOrderResult = await exchange.placeOrder(creds, {
+          pair: contract, direction: action, quantity, leverage, entryPrice, orderType: "market_order",
+        });
+      } catch (err) {
+        return {
+          telegramMessage: `🚨 *ENTRY ORDER FAILED* for ${contract} ${action}: ${err.message}. Nothing was opened - please check CoinDCX directly.`,
+          resultForModel: { status: "execution_failed", note: `Real entry order failed: ${err.message}` },
+        };
+      }
+
+      // Confirm the real fill and get the actual price - market orders
+      // can slip from the price used to size/risk this trade, and the
+      // bracket SL/TP needs to be placed against reality, not the
+      // pre-trade estimate. A few short retries since a just-placed
+      // market order may take a brief moment to reflect in /positions.
+      let confirmedPosition = null;
+      for (let attempt = 0; attempt < 5 && !confirmedPosition; attempt++) {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
+        try {
+          const positionsRaw = await getCachedPositions();
+          const activePositions = getActivePositions(positionsRaw);
+          confirmedPosition = activePositions.find((p) => {
+            const posContract = p.pair ?? p.contract;
+            const posDirection = Number(p.active_pos ?? p.size ?? 0) > 0 ? "long" : "short";
+            return posContract === contract && posDirection === action;
+          });
+        } catch (err) {
+          runWarnings.push(`${symbol}: fill-confirmation check failed on attempt ${attempt + 1} - ${err.message}`);
+        }
+      }
+      if (confirmedPosition) {
+        fillPrice = Number(confirmedPosition.avg_price) || entryPrice;
+      }
+
+      // Immediately place the bracket - the very next step after
+      // confirming the fill, not waiting for a future cycle. If the fill
+      // price slipped from the estimate, recompute stop/target around the
+      // REAL entry so the risk (R) is what was actually verified above,
+      // not silently distorted by slippage.
+      const realStopPrice = fillPrice + (stopPrice - entryPrice);
+      const realTarget1 = fillPrice + dir * r * 1;
+      const realTarget2 = fillPrice + dir * r * 2;
+      const realTarget3 = fillPrice + dir * r * 3;
+
+      let bracketResult = null;
+      let bracketWarning = "";
+      try {
+        bracketResult = await exchange.placeBracketOrders(creds, {
+          pair: contract, direction: action, quantity, leverage,
+          stopPrice: realStopPrice, takeProfitPrice: realTarget1, // stage 1 - see notes below on staged TP limitation
+        });
+        if (bracketResult.stop?.error || bracketResult.takeProfit?.error) {
+          bracketWarning = `⚠️ Bracket order issue - stop: ${bracketResult.stop?.error || "ok"}, take-profit: ${bracketResult.takeProfit?.error || "ok"}. Check CoinDCX directly and consider closing manually if unprotected.`;
+        }
+      } catch (err) {
+        bracketWarning = `🚨 Position is OPEN but bracket SL/TP placement failed entirely (${err.message}) - THIS POSITION IS CURRENTLY UNPROTECTED. Close manually or set SL/TP directly on CoinDCX immediately.`;
+      }
+
+      advisoryStore.recordOpen(advisories, contract, action, fillPrice, realStopPrice, finalPositionSizeUsdt, leverage);
+      invalidatePositionCache(); // real state just changed - a new position and bracket orders now exist
+      advisoriesDirty = true;
+
       return {
         telegramMessage: [
-          `🤖 *AI SUGGESTS OPENING* ${dirEmoji} *${contract}*`,
-          `Entry: ${fmt(entryPrice)} | Stop: ${fmt(stopPrice)} | Leverage: ${leverage}x`,
-          `Suggested size: ${finalPositionSizeUsdt} USDT margin`,
+          `✅ *EXECUTED* ${dirEmoji} *${contract}*`,
+          `Fill: ${fmt(fillPrice)}${fillPrice !== entryPrice ? ` (estimated ${fmt(entryPrice)}, real slippage accounted for)` : ""} | Stop: ${fmt(realStopPrice)} | Leverage: ${leverage}x`,
+          `Size: ${finalPositionSizeUsdt} USDT margin (${quantity.toFixed(4)} qty)`,
+          `Stop-loss and stage-1 take-profit (${fmt(realTarget1)}) placed as real resting orders on CoinDCX.`,
+          bracketWarning || `2R (${fmt(realTarget2)}) and 3R (${fmt(realTarget3)}) are managed by this bot's own cycle, not a resting exchange order - it will re-stage as price reaches them.`,
           ...riskNotes,
-          `Targets (staged take-profit): 1R ${fmt(target1)} (close ~33%) | 2R ${fmt(target2)} (close ~33%) | 3R ${fmt(target3)} (trail rest)`,
           `Reasoning: ${reasoning}`,
           ``,
-          `_No order has been placed. Execute manually on CoinDCX if you agree. You'll get a follow-up message when a target is reached, but you can also watch these levels yourself - your live P&L is always visible on CoinDCX's Positions tab, it doesn't wait for this bot._`,
+          `_This was executed automatically. Send /pauseauto to stop future automatic entries, or /closeposition to close this one manually right now._`,
         ].join("\n"),
-        resultForModel: { status: "queued_for_manual_execution", note: "Sent to user via Telegram. Not executed." },
+        resultForModel: {
+          status: bracketWarning ? "executed_with_bracket_issue" : "executed",
+          note: bracketWarning || "Real order executed and bracket SL/TP placed successfully.",
+        },
       };
     },
 
     async close_position({ contract: rawContract, action, sizePercent, currentPrice, closeReason, reasoning }) {
       const contract = normalizeContract(rawContract);
-      await exchange.closePosition(contract, sizePercent);
+      const dirEmoji = action === "long" ? "🟢 LONG" : "🔴 SHORT";
+
+      // Fetch the REAL current position rather than trusting advisory
+      // data for the size to close - avoids any drift between what the
+      // advisory thinks is open and what's actually on the exchange
+      // (e.g. if a bracket order already partially filled it).
+      let realPosition = null;
+      try {
+        const positionsRaw = await getCachedPositions();
+        const activePositions = getActivePositions(positionsRaw);
+        realPosition = activePositions.find((p) => {
+          const posContract = p.pair ?? p.contract;
+          const posDirection = Number(p.active_pos ?? p.size ?? 0) > 0 ? "long" : "short";
+          return posContract === contract && posDirection === action;
+        });
+      } catch (err) {
+        return {
+          telegramMessage: `🚨 Could not verify the real position for ${contract} ${action} before closing (${err.message}) - not attempting a close blind. Please check and close manually on CoinDCX if needed.`,
+          resultForModel: { status: "execution_failed", note: `Could not verify real position: ${err.message}` },
+        };
+      }
+      if (!realPosition) {
+        return {
+          telegramMessage: `ℹ️ No real open position found for ${contract} ${action} - nothing to close (it may have already closed via its own stop-loss or take-profit).`,
+          resultForModel: { status: "nothing_to_close", note: "No matching real position exists." },
+        };
+      }
+
+      const realQuantity = Math.abs(Number(realPosition.active_pos ?? realPosition.size ?? 0));
+      const realLeverage = Number(realPosition.leverage) || 1;
+      const closeQuantity = realQuantity * (sizePercent / 100);
+      const isFullClose = sizePercent >= 100;
+
+      try {
+        await exchange.closePosition(creds, { pair: contract, direction: action, quantity: closeQuantity, leverage: realLeverage });
+      } catch (err) {
+        return {
+          telegramMessage: `🚨 *CLOSE ORDER FAILED* for ${contract} ${action}: ${err.message}. Position may still be open - please check CoinDCX directly.`,
+          resultForModel: { status: "execution_failed", note: `Real close order failed: ${err.message}` },
+        };
+      }
+
+      // Bracket cleanup: full close -> cancel BOTH resting orders (SL and
+      // TP), nothing left to protect. Partial close -> the stop-loss
+      // still protects what's left and stays untouched, but the OLD
+      // take-profit order was sized for the ORIGINAL full quantity - if
+      // left as-is, it would try to close MORE than what's actually
+      // remaining once it triggers. Cancel and replace it sized to the
+      // new remaining quantity.
+      let bracketCleanupNote = "";
+      try {
+        const ordersRaw = await getCachedActiveOrders();
+        const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
+        const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
+        // Fix: capture the OLD stop price BEFORE cancelling anything -
+        // previously, if the advisory record was ever missing, the code
+        // still cancelled the real stop order unconditionally but only
+        // replaced it conditionally on the advisory existing, leaving the
+        // remaining position with NO stop-loss and no warning at all.
+        const oldStopOrder = staleOrders.find((o) => o.order_type === "stop_market");
+        const oldStopPrice = oldStopOrder ? Number(oldStopOrder.price) : null;
+        for (const order of staleOrders) {
+          await exchange.cancelOrder(creds, order.id);
+        }
+        if (!isFullClose) {
+          const remainingQuantity = realQuantity - closeQuantity;
+          const adv = advisoryStore.getAdvisory(advisories, contract, action);
+          if (remainingQuantity > 0) {
+            if (adv) {
+              const dir = action === "long" ? 1 : -1;
+              const r = Math.abs(adv.entryPrice - adv.initialStop);
+              // Re-place the stop (untouched risk level) and a fresh
+              // take-profit at the NEXT stage, both sized to what's
+              // actually left now.
+              await exchange.placeBracketOrders(creds, {
+                pair: contract, direction: action, quantity: remainingQuantity, leverage: realLeverage,
+                stopPrice: adv.lastAdvisedStop ?? adv.initialStop,
+                takeProfitPrice: adv.entryPrice + dir * r * 2, // next stage after a stage-1 partial
+              });
+            } else if (oldStopPrice !== null) {
+              // No advisory to compute a meaningful next-stage target
+              // from - re-place JUST the stop at its same real level
+              // (captured above) rather than leave the position with
+              // nothing at all. Explicitly warn that no take-profit was
+              // restored, instead of silently doing less than expected.
+              const closingSide = action === "long" ? "sell" : "buy";
+              await exchange.createOrder(creds, {
+                side: closingSide, pair: contract, orderType: "stop_market",
+                price: oldStopPrice, totalQuantity: remainingQuantity, leverage: realLeverage,
+              });
+              bracketCleanupNote = `⚠️ No advisory record found - re-placed the stop-loss at its same level (${oldStopPrice}) to keep the remaining position protected, but did NOT re-place a take-profit target (couldn't compute a meaningful one without the original tracked levels).`;
+            } else {
+              bracketCleanupNote = `🚨 No advisory record AND no prior stop order price found - the remaining position may currently have NO stop-loss or take-profit. Check CoinDCX immediately.`;
+            }
+          }
+        }
+      } catch (err) {
+        bracketCleanupNote = `⚠️ Closed the position but couldn't clean up/replace the resting bracket order (${err.message}) - please check CoinDCX for any stale orders.`;
+      }
 
       // Auto-record the outcome based on THIS bot's own advised entry price
       // vs currentPrice - happens regardless of whether the user actually
@@ -939,42 +1180,181 @@ function buildTools(config, creds) {
         }
       }
 
-      if (sizePercent >= 100) {
+      if (isFullClose) {
         advisoryStore.clearAdvisory(advisories, contract, action);
         advisoriesDirty = true;
       }
-      const dirEmoji = action === "long" ? "🟢 LONG" : "🔴 SHORT";
+      invalidatePositionCache(); // real state just changed - position closed (fully or partially), orders cancelled/replaced
       return {
         telegramMessage: [
-          `🤖 *AI SUGGESTS CLOSING* ${dirEmoji} *${contract}* (${sizePercent}%)`,
+          `✅ *CLOSED* ${dirEmoji} *${contract}* (${sizePercent}%)`,
           `Reasoning: ${reasoning}`,
+          bracketCleanupNote,
           ``,
-          `_No order has been placed. Execute manually on CoinDCX if you agree._`,
-        ].join("\n"),
-        resultForModel: { status: "queued_for_manual_execution", note: "Sent to user via Telegram. Not executed." },
+          `_Executed automatically. Send /pauseauto to stop future automatic entries._`,
+        ].filter(Boolean).join("\n"),
+        resultForModel: { status: "executed", note: bracketCleanupNote || "Real close order executed successfully." },
       };
     },
 
     async update_position_stop_loss({ contract: rawContract, action, newStop, reasoning }) {
       const contract = normalizeContract(rawContract);
-      await exchange.setPositionStopLoss(contract, newStop);
+      const dirEmoji = action === "long" ? "🟢 LONG" : "🔴 SHORT";
+
+      // Fetch the real current position - need its actual remaining
+      // quantity/leverage to size the replacement stop order correctly,
+      // not whatever was originally recorded at entry (which may have
+      // shrunk via partial take-profits since).
+      let realPosition = null;
+      try {
+        const positionsRaw = await getCachedPositions();
+        const activePositions = getActivePositions(positionsRaw);
+        realPosition = activePositions.find((p) => {
+          const posContract = p.pair ?? p.contract;
+          const posDirection = Number(p.active_pos ?? p.size ?? 0) > 0 ? "long" : "short";
+          return posContract === contract && posDirection === action;
+        });
+      } catch (err) {
+        return {
+          telegramMessage: `🚨 Could not verify the real position for ${contract} ${action} before moving the stop (${err.message}) - not attempting this blind.`,
+          resultForModel: { status: "execution_failed", note: `Could not verify real position: ${err.message}` },
+        };
+      }
+      if (!realPosition) {
+        return {
+          telegramMessage: `ℹ️ No real open position found for ${contract} ${action} - nothing to update.`,
+          resultForModel: { status: "nothing_to_update", note: "No matching real position exists." },
+        };
+      }
+      const realQuantity = Math.abs(Number(realPosition.active_pos ?? realPosition.size ?? 0));
+      const realLeverage = Number(realPosition.leverage) || 1;
+
+      // CoinDCX has no "modify existing order price" endpoint - moving a
+      // stop means cancelling the old resting stop order and placing a
+      // new one at the updated price. Only touches the STOP order - any
+      // resting take-profit order for this contract is left alone.
+      let cancelNote = "";
+      try {
+        const ordersRaw = await getCachedActiveOrders();
+        const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
+        const oldStopOrders = orders.filter((o) => (o.pair ?? o.contract) === contract && o.order_type === "stop_market");
+        for (const order of oldStopOrders) {
+          await exchange.cancelOrder(creds, order.id);
+        }
+      } catch (err) {
+        cancelNote = `⚠️ Couldn't confirm/cancel the old stop order (${err.message}) - there may now be two resting stop orders. Please check CoinDCX directly.`;
+      }
+
+      const closingSide = action === "long" ? "sell" : "buy";
+      try {
+        await exchange.createOrder(creds, { side: closingSide, pair: contract, orderType: "stop_market", price: newStop, totalQuantity: realQuantity, leverage: realLeverage });
+      } catch (err) {
+        return {
+          telegramMessage: `🚨 *STOP UPDATE FAILED* for ${contract} ${action}: couldn't place the new stop at ${newStop} (${err.message}). ${cancelNote} The position may currently have NO stop-loss protecting it - check CoinDCX immediately.`,
+          resultForModel: { status: "execution_failed", note: `New stop order failed: ${err.message}` },
+        };
+      }
+
       advisoryStore.recordStopUpdate(advisories, contract, action, newStop);
       advisoriesDirty = true;
-      const dirEmoji = action === "long" ? "🟢 LONG" : "🔴 SHORT";
+      invalidatePositionCache(); // real state just changed - old stop cancelled, new one placed
       return {
         telegramMessage: [
-          `🤖 *AI wants to move STOP* ${dirEmoji} *${contract}* → ${newStop}`,
+          `✅ *STOP MOVED* ${dirEmoji} *${contract}* → ${newStop}`,
           `Reasoning: ${reasoning}`,
+          cancelNote,
           ``,
-          `_No order has been modified. Execute manually on CoinDCX if you agree._`,
-        ].join("\n"),
-        resultForModel: { status: "queued_for_manual_execution", note: "Sent to user via Telegram. Not executed." },
+          `_Executed automatically - old stop cancelled, new one placed on CoinDCX._`,
+        ].filter(Boolean).join("\n"),
+        resultForModel: { status: "executed", note: cancelNote || "Stop order replaced successfully." },
       };
     },
 
     async execute_partial_take_profit({ contract: rawContract, action, stage, closePercent, newStop, currentPrice, reasoning }) {
       const contract = normalizeContract(rawContract);
-      await exchange.closePosition(contract, closePercent);
+      const dirEmoji = action === "long" ? "🟢 LONG" : "🔴 SHORT";
+
+      let realPosition = null;
+      try {
+        const positionsRaw = await getCachedPositions();
+        const activePositions = getActivePositions(positionsRaw);
+        realPosition = activePositions.find((p) => {
+          const posContract = p.pair ?? p.contract;
+          const posDirection = Number(p.active_pos ?? p.size ?? 0) > 0 ? "long" : "short";
+          return posContract === contract && posDirection === action;
+        });
+      } catch (err) {
+        return {
+          telegramMessage: `🚨 Could not verify the real position for ${contract} ${action} before taking partial profit (${err.message}) - not attempting blind.`,
+          resultForModel: { status: "execution_failed", note: `Could not verify real position: ${err.message}` },
+        };
+      }
+      if (!realPosition) {
+        return {
+          telegramMessage: `ℹ️ No real open position found for ${contract} ${action} - nothing to take profit on (it may have already closed).`,
+          resultForModel: { status: "nothing_to_close", note: "No matching real position exists." },
+        };
+      }
+      const realQuantity = Math.abs(Number(realPosition.active_pos ?? realPosition.size ?? 0));
+      const realLeverage = Number(realPosition.leverage) || 1;
+      const closeQuantity = realQuantity * (closePercent / 100);
+      const remainingQuantity = realQuantity - closeQuantity;
+
+      try {
+        await exchange.closePosition(creds, { pair: contract, direction: action, quantity: closeQuantity, leverage: realLeverage });
+      } catch (err) {
+        return {
+          telegramMessage: `🚨 *PARTIAL TAKE-PROFIT FAILED* for ${contract} ${action}: ${err.message}. Position unchanged - check CoinDCX directly.`,
+          resultForModel: { status: "execution_failed", note: `Real partial close failed: ${err.message}` },
+        };
+      }
+
+      // Replace resting bracket orders sized to what's left: the stop
+      // moves to newStop (typically breakeven/trailed), and the
+      // take-profit moves to the next stage - both need cancelling and
+      // re-placing, same reasoning as update_position_stop_loss and
+      // close_position's partial-close cleanup.
+      let bracketNote = "";
+      try {
+        // Fix: cancel stale orders UNCONDITIONALLY, not just when
+        // remainingQuantity > 0 - previously a FULL close via this exact
+        // path (closePercent=100, remainingQuantity=0) skipped
+        // cancellation entirely, leaving the old stop/take-profit
+        // orphaned on the exchange with no position left for them to act on.
+        const ordersRaw = await getCachedActiveOrders();
+        const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
+        const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
+        for (const order of staleOrders) {
+          await exchange.cancelOrder(creds, order.id);
+        }
+
+        if (remainingQuantity > 0) {
+          const adv = advisoryStore.getAdvisory(advisories, contract, action);
+          if (adv) {
+            const dir = action === "long" ? 1 : -1;
+            const r = Math.abs(adv.entryPrice - adv.initialStop);
+            const nextStageTarget = adv.entryPrice + dir * r * (stage + 1);
+            await exchange.placeBracketOrders(creds, {
+              pair: contract, direction: action, quantity: remainingQuantity, leverage: realLeverage,
+              stopPrice: newStop, takeProfitPrice: nextStageTarget,
+            });
+          } else {
+            // Fix: previously fell back to `nextStageTarget ?? newStop`,
+            // which placed the take-profit at the SAME price as the
+            // stop when no advisory existed - a meaningless order, not a
+            // real profit target. Place stop-only instead, matching the
+            // same honest fallback used in close_position.
+            const closingSide = action === "long" ? "sell" : "buy";
+            await exchange.createOrder(creds, {
+              side: closingSide, pair: contract, orderType: "stop_market",
+              price: newStop, totalQuantity: remainingQuantity, leverage: realLeverage,
+            });
+            bracketNote = `⚠️ No advisory record found - re-placed only the stop-loss (${newStop}), did NOT place a take-profit (couldn't compute a meaningful next-stage target without the original tracked levels).`;
+          }
+        }
+      } catch (err) {
+        bracketNote = `⚠️ Took partial profit but couldn't replace the resting stop/take-profit orders (${err.message}) - the remaining position may currently be UNPROTECTED. Check CoinDCX immediately.`;
+      }
 
       // Auto-record the partial outcome too, same logic as close_position.
       const adv = advisoryStore.getAdvisory(advisories, contract, action);
@@ -994,25 +1374,34 @@ function buildTools(config, creds) {
       advisoryStore.recordStageAdvised(advisories, contract, action, stage);
       advisoryStore.recordStopUpdate(advisories, contract, action, newStop);
       advisoriesDirty = true;
-      const dirEmoji = action === "long" ? "🟢 LONG" : "🔴 SHORT";
+      invalidatePositionCache(); // real state just changed - partial close executed, bracket orders replaced
       return {
         telegramMessage: [
-          `🎯 *AI wants PARTIAL TAKE-PROFIT* ${dirEmoji} *${contract}* — stage ${stage}`,
-          `Close ~${closePercent}% | New stop: ${newStop}`,
+          `✅ *PARTIAL TAKE-PROFIT TAKEN* ${dirEmoji} *${contract}* — stage ${stage}`,
+          `Closed ~${closePercent}% | New stop: ${newStop}`,
           `Reasoning: ${reasoning}`,
+          bracketNote,
           ``,
-          `_No order has been placed. Execute manually on CoinDCX if you agree._`,
-        ].join("\n"),
-        resultForModel: { status: "queued_for_manual_execution", note: "Sent to user via Telegram. Not executed." },
+          `_Executed automatically._`,
+        ].filter(Boolean).join("\n"),
+        resultForModel: { status: "executed", note: bracketNote || "Real partial close executed, bracket orders replaced." },
       };
     },
 
     async cancel_order({ orderId, contract: rawContract, reasoning }) {
       const contract = normalizeContract(rawContract);
-      await exchange.cancelOrder(orderId, contract);
+      try {
+        await exchange.cancelOrder(creds, orderId);
+      } catch (err) {
+        return {
+          telegramMessage: `🚨 Could not cancel order ${orderId} on ${contract}: ${err.message}. Please check/cancel manually on CoinDCX if needed.`,
+          resultForModel: { status: "execution_failed", note: `Cancel failed: ${err.message}` },
+        };
+      }
+      invalidatePositionCache(); // real state just changed - an order was cancelled
       return {
         telegramMessage: [
-          `🤖 *AI wants to CANCEL an order* on *${contract}*${orderId ? ` (order ${orderId})` : ""}`,
+          `✅ *ORDER CANCELLED* on *${contract}*${orderId ? ` (order ${orderId})` : ""}`,
           `Reasoning: ${reasoning}`,
           ``,
           `_No order has been cancelled. Execute manually on CoinDCX if you agree._`,

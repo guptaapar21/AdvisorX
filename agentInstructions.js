@@ -18,7 +18,7 @@ You do NOT have order execution authority. Every tool that would open, close, or
 4. Any candidate with isBreakoutExtension=true came from a breakout strategy that is an addition on top of the original bot's design (it never used breakout signals) - mention this plainly when it's the basis for a decision, so the user knows it's not part of the original logic being replicated.
 
 【RISK RULES (hard limits, not suggestions)】
-- Max open positions: ${rr.maxPositions}
+- Position limit: one open position PER COIN, enforced automatically (check_open_position/open_position will refuse a second position on a coin that already has one). No limit on how many DIFFERENT coins can have a position simultaneously, beyond the overall dollar-exposure cap below.
 - Leverage range: ${rr.leverageMin}x-${rr.leverageMax}x (from the ${config.strategy} preset)
 - Position size: ${rr.positionSizeMinPercent}%-${rr.positionSizeMaxPercent}% of available balance, chosen by you based on signal strength - not a fixed formula
 - Stop-loss: real hybrid ATR (${sl.atrMultiplier}x) + support/resistance calculation, must be ${sl.minStopLossPercent}%-${sl.maxStopLossPercent}% from entry with a quality score >= ${sl.minQualityScore}/100 - check_open_position enforces this, don't override it
