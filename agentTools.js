@@ -959,7 +959,7 @@ function buildTools(config, creds) {
         advisoriesDirty = true;
         return {
           telegramMessage: [
-            `🤖 *AI SUGGESTS OPENING* ${dirEmoji} *${contract}* (auto-trading paused - not executed)`,
+            `🤖 *AI SUGGESTS OPENING* ${dirEmoji} \`${contract}\` (auto-trading paused - not executed)`,
             `Entry: ${fmt(entryPrice)} | Stop: ${fmt(stopPrice)} | Leverage: ${leverage}x`,
             `Suggested size: ${finalPositionSizeUsdt} USDT margin`,
             ...riskNotes,
@@ -993,7 +993,7 @@ function buildTools(config, creds) {
         });
       } catch (err) {
         return {
-          telegramMessage: `🚨 *ENTRY ORDER FAILED* for ${contract} ${action}: ${err.message}. Nothing was opened - please check CoinDCX directly.`,
+          telegramMessage: `🚨 *ENTRY ORDER FAILED* for \`${contract}\` ${action}: ${err.message}. Nothing was opened - please check CoinDCX directly.`,
           resultForModel: { status: "execution_failed", note: `Real entry order failed: ${err.message}` },
         };
       }
@@ -1052,7 +1052,7 @@ function buildTools(config, creds) {
 
       return {
         telegramMessage: [
-          `✅ *EXECUTED* ${dirEmoji} *${contract}*`,
+          `✅ *EXECUTED* ${dirEmoji} \`${contract}\``,
           `Fill: ${fmt(fillPrice)}${fillPrice !== entryPrice ? ` (estimated ${fmt(entryPrice)}, real slippage accounted for)` : ""} | Stop: ${fmt(realStopPrice)} | Leverage: ${leverage}x`,
           `Size: ${finalPositionSizeUsdt} USDT margin (${quantity.toFixed(4)} qty)`,
           `Stop-loss and stage-1 take-profit (${fmt(realTarget1)}) placed as real resting orders on CoinDCX.`,
@@ -1088,13 +1088,13 @@ function buildTools(config, creds) {
         });
       } catch (err) {
         return {
-          telegramMessage: `🚨 Could not verify the real position for ${contract} ${action} before closing (${err.message}) - not attempting a close blind. Please check and close manually on CoinDCX if needed.`,
+          telegramMessage: `🚨 Could not verify the real position for \`${contract}\` ${action} before closing (${err.message}) - not attempting a close blind. Please check and close manually on CoinDCX if needed.`,
           resultForModel: { status: "execution_failed", note: `Could not verify real position: ${err.message}` },
         };
       }
       if (!realPosition) {
         return {
-          telegramMessage: `ℹ️ No real open position found for ${contract} ${action} - nothing to close (it may have already closed via its own stop-loss or take-profit).`,
+          telegramMessage: `ℹ️ No real open position found for \`${contract}\` ${action} - nothing to close (it may have already closed via its own stop-loss or take-profit).`,
           resultForModel: { status: "nothing_to_close", note: "No matching real position exists." },
         };
       }
@@ -1108,7 +1108,7 @@ function buildTools(config, creds) {
         await exchange.closePosition(creds, { pair: contract, direction: action, quantity: closeQuantity, leverage: realLeverage });
       } catch (err) {
         return {
-          telegramMessage: `🚨 *CLOSE ORDER FAILED* for ${contract} ${action}: ${err.message}. Position may still be open - please check CoinDCX directly.`,
+          telegramMessage: `🚨 *CLOSE ORDER FAILED* for \`${contract}\` ${action}: ${err.message}. Position may still be open - please check CoinDCX directly.`,
           resultForModel: { status: "execution_failed", note: `Real close order failed: ${err.message}` },
         };
       }
@@ -1200,7 +1200,7 @@ function buildTools(config, creds) {
       invalidatePositionCache(); // real state just changed - position closed (fully or partially), orders cancelled/replaced
       return {
         telegramMessage: [
-          `✅ *CLOSED* ${dirEmoji} *${contract}* (${sizePercent}%)`,
+          `✅ *CLOSED* ${dirEmoji} \`${contract}\` (${sizePercent}%)`,
           `Reasoning: ${reasoning}`,
           bracketCleanupNote,
           ``,
@@ -1229,13 +1229,13 @@ function buildTools(config, creds) {
         });
       } catch (err) {
         return {
-          telegramMessage: `🚨 Could not verify the real position for ${contract} ${action} before moving the stop (${err.message}) - not attempting this blind.`,
+          telegramMessage: `🚨 Could not verify the real position for \`${contract}\` ${action} before moving the stop (${err.message}) - not attempting this blind.`,
           resultForModel: { status: "execution_failed", note: `Could not verify real position: ${err.message}` },
         };
       }
       if (!realPosition) {
         return {
-          telegramMessage: `ℹ️ No real open position found for ${contract} ${action} - nothing to update.`,
+          telegramMessage: `ℹ️ No real open position found for \`${contract}\` ${action} - nothing to update.`,
           resultForModel: { status: "nothing_to_update", note: "No matching real position exists." },
         };
       }
@@ -1263,7 +1263,7 @@ function buildTools(config, creds) {
         await exchange.createOrder(creds, { side: closingSide, pair: contract, orderType: "stop_market", price: newStop, totalQuantity: realQuantity, leverage: realLeverage });
       } catch (err) {
         return {
-          telegramMessage: `🚨 *STOP UPDATE FAILED* for ${contract} ${action}: couldn't place the new stop at ${newStop} (${err.message}). ${cancelNote} The position may currently have NO stop-loss protecting it - check CoinDCX immediately.`,
+          telegramMessage: `🚨 *STOP UPDATE FAILED* for \`${contract}\` ${action}: couldn't place the new stop at ${newStop} (${err.message}). ${cancelNote} The position may currently have NO stop-loss protecting it - check CoinDCX immediately.`,
           resultForModel: { status: "execution_failed", note: `New stop order failed: ${err.message}` },
         };
       }
@@ -1273,7 +1273,7 @@ function buildTools(config, creds) {
       invalidatePositionCache(); // real state just changed - old stop cancelled, new one placed
       return {
         telegramMessage: [
-          `✅ *STOP MOVED* ${dirEmoji} *${contract}* → ${newStop}`,
+          `✅ *STOP MOVED* ${dirEmoji} \`${contract}\` → ${newStop}`,
           `Reasoning: ${reasoning}`,
           cancelNote,
           ``,
@@ -1298,13 +1298,13 @@ function buildTools(config, creds) {
         });
       } catch (err) {
         return {
-          telegramMessage: `🚨 Could not verify the real position for ${contract} ${action} before taking partial profit (${err.message}) - not attempting blind.`,
+          telegramMessage: `🚨 Could not verify the real position for \`${contract}\` ${action} before taking partial profit (${err.message}) - not attempting blind.`,
           resultForModel: { status: "execution_failed", note: `Could not verify real position: ${err.message}` },
         };
       }
       if (!realPosition) {
         return {
-          telegramMessage: `ℹ️ No real open position found for ${contract} ${action} - nothing to take profit on (it may have already closed).`,
+          telegramMessage: `ℹ️ No real open position found for \`${contract}\` ${action} - nothing to take profit on (it may have already closed).`,
           resultForModel: { status: "nothing_to_close", note: "No matching real position exists." },
         };
       }
@@ -1317,7 +1317,7 @@ function buildTools(config, creds) {
         await exchange.closePosition(creds, { pair: contract, direction: action, quantity: closeQuantity, leverage: realLeverage });
       } catch (err) {
         return {
-          telegramMessage: `🚨 *PARTIAL TAKE-PROFIT FAILED* for ${contract} ${action}: ${err.message}. Position unchanged - check CoinDCX directly.`,
+          telegramMessage: `🚨 *PARTIAL TAKE-PROFIT FAILED* for \`${contract}\` ${action}: ${err.message}. Position unchanged - check CoinDCX directly.`,
           resultForModel: { status: "execution_failed", note: `Real partial close failed: ${err.message}` },
         };
       }
@@ -1390,7 +1390,7 @@ function buildTools(config, creds) {
       invalidatePositionCache(); // real state just changed - partial close executed, bracket orders replaced
       return {
         telegramMessage: [
-          `✅ *PARTIAL TAKE-PROFIT TAKEN* ${dirEmoji} *${contract}* — stage ${stage}`,
+          `✅ *PARTIAL TAKE-PROFIT TAKEN* ${dirEmoji} \`${contract}\` — stage ${stage}`,
           `Closed ~${closePercent}% | New stop: ${newStop}`,
           `Reasoning: ${reasoning}`,
           bracketNote,
@@ -1407,14 +1407,14 @@ function buildTools(config, creds) {
         await exchange.cancelOrder(creds, orderId);
       } catch (err) {
         return {
-          telegramMessage: `🚨 Could not cancel order ${orderId} on ${contract}: ${err.message}. Please check/cancel manually on CoinDCX if needed.`,
+          telegramMessage: `🚨 Could not cancel order ${orderId} on \`${contract}\`: ${err.message}. Please check/cancel manually on CoinDCX if needed.`,
           resultForModel: { status: "execution_failed", note: `Cancel failed: ${err.message}` },
         };
       }
       invalidatePositionCache(); // real state just changed - an order was cancelled
       return {
         telegramMessage: [
-          `✅ *ORDER CANCELLED* on *${contract}*${orderId ? ` (order ${orderId})` : ""}`,
+          `✅ *ORDER CANCELLED* on \`${contract}\`${orderId ? ` (order ${orderId})` : ""}`,
           `Reasoning: ${reasoning}`,
           ``,
           `_No order has been cancelled. Execute manually on CoinDCX if you agree._`,

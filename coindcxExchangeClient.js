@@ -54,8 +54,14 @@ async function privatePost(path, bodyExtra, creds) {
     const errText = await res.text();
     // CoinDCX's response body is sometimes empty/unhelpful on a 400 -
     // including the actual request we sent (which we know completely)
-    // makes this diagnosable even when their response isn't.
-    throw new Error(`CoinDCX private call failed (${path}): ${res.status} ${errText || "(empty response body)"} | Request sent: ${jsonBody}`);
+    // makes this diagnosable even when their response isn't. Wrapped in
+    // a code block (backticks) so Telegram's Markdown renderer shows it
+    // literally - without this, an even number of underscores in the
+    // JSON gets silently parsed as italic markers and eaten, making a
+    // perfectly well-formed request (e.g. "B-DOGE_USDT") display as if
+    // it were malformed ("B-DOGEUSDT") - exactly the kind of thing that
+    // makes a real bug undiagnosable from the Telegram message alone.
+    throw new Error(`CoinDCX private call failed (${path}): ${res.status} ${errText || "(empty response body)"} | Request sent: \`${jsonBody}\``);
   }
   return res.json();
 }
