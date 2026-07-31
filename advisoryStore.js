@@ -30,7 +30,13 @@ function keyFor(contract, action) {
 
 // Called when the agent decides to open a position - records its own
 // entry/stop recommendation as the reference point for later stage/R math.
-function recordOpen(advisories, contract, action, entryPrice, stopPrice, positionSizeUsdt, leverage) {
+//
+// stopOrderId/takeProfitOrderId (optional): the real order IDs CoinDCX
+// returned when the bracket was placed. Storing these lets later cleanup
+// cancel the exact orders directly (POST .../orders/cancel with a known
+// id - a confirmed, documented endpoint) instead of depending on the
+// unverified "list active orders" endpoint just to find them again.
+function recordOpen(advisories, contract, action, entryPrice, stopPrice, positionSizeUsdt, leverage, stopOrderId = null, takeProfitOrderId = null) {
   advisories[keyFor(contract, action)] = {
     entryPrice,
     initialStop: stopPrice,
@@ -44,7 +50,30 @@ function recordOpen(advisories, contract, action, entryPrice, stopPrice, positio
     positionSizeUsdt,
     leverage,
     remainingSizeUsdt: positionSizeUsdt,
+    stopOrderId,
+    takeProfitOrderId,
   };
+  return advisories;
+}
+
+// Call after a partial close replaces the take-profit order with a new
+// one sized to the remaining quantity, so future cleanup cancels the
+// CURRENT resting order, not the stale one that's already gone.
+function recordTakeProfitOrderId(advisories, contract, action, takeProfitOrderId) {
+  const rec = advisories[keyFor(contract, action)];
+  if (rec) rec.takeProfitOrderId = takeProfitOrderId;
+  return advisories;
+}
+
+// Call after re-placing SOME/ALL of the bracket (e.g. the resize that
+// follows a partial close) so future cleanup targets the CURRENT resting
+// order IDs, not the ones just cancelled. Pass null for a side that
+// wasn't re-placed to leave it unchanged.
+function recordOrderIds(advisories, contract, action, { stopOrderId, takeProfitOrderId } = {}) {
+  const rec = advisories[keyFor(contract, action)];
+  if (!rec) return advisories;
+  if (stopOrderId !== undefined && stopOrderId !== null) rec.stopOrderId = stopOrderId;
+  if (takeProfitOrderId !== undefined && takeProfitOrderId !== null) rec.takeProfitOrderId = takeProfitOrderId;
   return advisories;
 }
 
@@ -122,6 +151,8 @@ module.exports = {
   loadAdvisories,
   saveAdvisories,
   recordOpen,
+  recordTakeProfitOrderId,
+  recordOrderIds,
   recordPartialClose,
   recordStopUpdate,
   recordStageAdvised,

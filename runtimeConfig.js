@@ -10,6 +10,7 @@ const { STRATEGY_SCORE_WEIGHTS } = require("./opportunityScorer");
 const { BACKTESTED_COINS, buildScanThresholdMap, getTierLabel } = require("./backtestedStrategy");
 const exchange = require("./coindcxExchangeClient");
 const { getActivePositions } = require("./positionUtils");
+const advisoryStore = require("./advisoryStore");
 
 const RUNTIME_FILE = path.join(__dirname, "runtimeConfig.json");
 const VALID_STRATEGIES = ["ultra-short", "swing-trend", "conservative", "balanced", "aggressive", "backtested"];
@@ -169,11 +170,24 @@ async function processIncomingCommands(runtimeState, creds) {
               // (it would fire against whatever position happens to
               // exist there next).
               try {
-                const ordersRaw = await exchange.getActiveOrders(creds);
-                const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
-                const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
-                for (const order of staleOrders) {
-                  await exchange.cancelOrder(creds, order.id);
+                const advisories = advisoryStore.loadAdvisories();
+                const adv = advisoryStore.getAdvisory(advisories, contract, direction);
+                const knownOrderIds = [adv?.stopOrderId, adv?.takeProfitOrderId].filter(Boolean);
+                if (knownOrderIds.length > 0) {
+                  for (const orderId of knownOrderIds) {
+                    try { await exchange.cancelOrder(creds, orderId); } catch { /* likely already filled/cancelled - expected for one side */ }
+                  }
+                } else {
+                  const ordersRaw = await exchange.getActiveOrders(creds);
+                  const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
+                  const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
+                  for (const order of staleOrders) {
+                    await exchange.cancelOrder(creds, order.id);
+                  }
+                }
+                if (adv) {
+                  advisoryStore.clearAdvisory(advisories, contract, direction);
+                  advisoryStore.saveAdvisories(advisories);
                 }
               } catch (cleanupErr) {
                 await sendTelegramMessage(`⚠️ Closed ${contract} but couldn't confirm/cancel any leftover SL/TP orders (${cleanupErr.message}) - please check manually on CoinDCX.`);

@@ -75,16 +75,38 @@ async function run(config, creds) {
     // position for it to act on anymore.
     let cancelledCount = 0;
     let cancelError = null;
-    try {
-      const ordersRaw = await exchange.getActiveOrders(creds);
-      const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
-      const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
-      for (const order of staleOrders) {
-        await exchange.cancelOrder(creds, order.id);
-        cancelledCount++;
+    const knownOrderIds = [adv.stopOrderId, adv.takeProfitOrderId].filter(Boolean);
+    if (knownOrderIds.length > 0) {
+      // Preferred path: cancel the exact orders placed for this advisory,
+      // by ID, via the confirmed /orders/cancel endpoint. Exactly one of
+      // these already triggered (that's why we're here) and will come
+      // back as "not found"/already-filled - that's expected, not an
+      // error, so we don't let one failed cancel stop the other.
+      for (const orderId of knownOrderIds) {
+        try {
+          await exchange.cancelOrder(creds, orderId);
+          cancelledCount++;
+        } catch (err) {
+          // Expected for whichever side already triggered. Only surface
+          // this as a real problem if BOTH cancels fail below.
+          cancelError = err.message;
+        }
       }
-    } catch (err) {
-      cancelError = err.message;
+      if (cancelledCount > 0) cancelError = null;
+    } else {
+      // Legacy advisory recorded before order-ID tracking was added -
+      // fall back to the best-effort list+filter approach.
+      try {
+        const ordersRaw = await exchange.getActiveOrders(creds);
+        const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
+        const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
+        for (const order of staleOrders) {
+          await exchange.cancelOrder(creds, order.id);
+          cancelledCount++;
+        }
+      } catch (err) {
+        cancelError = err.message;
+      }
     }
 
     // Record the real outcome using the last known price (close enough -
