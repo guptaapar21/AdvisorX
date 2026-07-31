@@ -25,6 +25,7 @@
 
 const exchange = require("./coindcxExchangeClient");
 const advisoryStore = require("./advisoryStore");
+const recentCloseTracker = require("./recentCloseTracker");
 const { sendTelegramMessage } = require("./telegram");
 const { getActivePositions } = require("./positionUtils");
 const scorecard = require("./scorecard");
@@ -69,71 +70,49 @@ async function run(config, creds) {
     });
     if (stillOpen) continue;
 
-    // This advisory's position is gone - it closed since we last
-    // checked (via one side of its bracket, or some other real close).
-    // Cancel whatever's left over for this contract, since there's no
-    // position for it to act on anymore.
-    let cancelledCount = 0;
-    let cancelError = null;
-    let cancelErrorSource = null; // "confirmed_cancel_failed" | "legacy_endpoint_unverifiable"
-    const knownOrderIds = [adv.stopOrderId, adv.takeProfitOrderId].filter(Boolean);
-    if (knownOrderIds.length > 0) {
-      // Preferred path: cancel the exact orders placed for this advisory,
-      // by ID, via the confirmed /orders/cancel endpoint. Exactly one of
-      // these already triggered (that's why we're here) and will come
-      // back as "not found"/already-filled - that's expected, not an
-      // error, so we don't let one failed cancel stop the other.
-      for (const orderId of knownOrderIds) {
-        try {
-          await exchange.cancelOrder(creds, orderId);
-          cancelledCount++;
-        } catch (err) {
-          // Expected for whichever side already triggered. Only surface
-          // this as a real problem if BOTH cancels fail below.
-          cancelError = err.message;
-        }
-      }
-      if (cancelledCount > 0) {
-        cancelError = null;
-      } else {
-        // Both known-ID cancels failed on the CONFIRMED /orders/cancel
-        // endpoint - this is a genuine signal something's wrong, not an
-        // endpoint-availability artifact.
-        cancelErrorSource = "confirmed_cancel_failed";
-      }
-    } else {
-      // Legacy advisory recorded before order-ID tracking was added -
-      // fall back to the best-effort list+filter approach, which depends
-      // on an endpoint known to 404 (see coindcxExchangeClient.js). A
-      // failure here means "couldn't check," not "confirmed a stale order."
-      try {
-        const ordersRaw = await exchange.getActiveOrders(creds);
-        const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
-        const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
-        for (const order of staleOrders) {
-          await exchange.cancelOrder(creds, order.id);
-          cancelledCount++;
-        }
-      } catch (err) {
-        cancelError = err.message;
-        cancelErrorSource = "legacy_endpoint_unverifiable";
-      }
-    }
-
-    // Fix: only treat this as a real, order-backed position that
-    // genuinely closed if we have actual evidence of that (a known order
-    // ID recorded when it was opened). Without that, this advisory is
+    // Only treat this as a real, order-backed position that genuinely
+    // closed if we have actual evidence of that (a known order ID
+    // recorded when it was opened). Without that, this advisory is
     // either an advisory-only suggestion that was never executed, or
     // predates real execution entirely - reporting a fabricated P&L
     // percentage and feeding it into the real balance tracker / trade
     // outcome log would corrupt both with fictional trades that never
-    // happened. Previously this ran unconditionally for every advisory
-    // with no matching position, regardless of whether it was ever real.
+    // happened. This is the exact root cause of the earlier 117-message
+    // corruption incident - re-added here after being found missing.
+    const knownOrderIds = [adv.stopOrderId, adv.takeProfitOrderId].filter(Boolean);
     if (knownOrderIds.length === 0) {
       console.log(`Fast watch: clearing stale advisory for ${contract} ${action} - no real order IDs on record, so no real outcome to report (likely a never-executed suggestion or pre-dates order tracking).`);
       advisoryStore.clearAdvisory(advisories, contract, action);
       advisoriesDirty = true;
       continue;
+    }
+
+    // This advisory's position is gone - it closed since we last
+    // checked (via one side of its bracket, or some other real close).
+    // Cancel whatever's left over for this contract. Prefers the known
+    // order IDs directly (the reliable /orders/cancel endpoint) over
+    // depending entirely on the order-listing endpoint, which has been
+    // confirmed unreliable (404) in this exact codebase before.
+    let cancelledCount = 0;
+    let cancelError = null;
+    for (const orderId of knownOrderIds) {
+      try {
+        await exchange.cancelOrder(creds, orderId);
+        cancelledCount++;
+      } catch (err) {
+        cancelError = err.message;
+      }
+    }
+    try {
+      const ordersRaw = await exchange.getActiveOrders(creds);
+      const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
+      const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
+      for (const order of staleOrders) {
+        await exchange.cancelOrder(creds, order.id);
+        cancelledCount++;
+      }
+    } catch (err) {
+      cancelError = err.message;
     }
 
     // Record the real outcome using the last known price (close enough -
@@ -156,16 +135,15 @@ async function run(config, creds) {
     await sendTelegramMessage(
       `🔔 *${contract} ${action}* closed via its bracket order (stop or take-profit triggered).\n` +
       `Outcome: ${outcomeNote}\n` +
-      (cancelErrorSource === "confirmed_cancel_failed"
-        ? `⚠️ Tried to cancel the other resting order but the cancel itself failed (${cancelError}) - please check CoinDCX for a stale order on this contract.`
-        : cancelErrorSource === "legacy_endpoint_unverifiable"
-          ? `ℹ️ Couldn't verify the other resting order was cancelled (CoinDCX's order-listing API returned an error for this legacy position, a known limitation - not a confirmed stale order). Worth a quick manual check on CoinDCX, but likely nothing to do.`
-          : cancelledCount > 0
-            ? `Cancelled ${cancelledCount} leftover order(s) for this contract.`
-            : `No leftover order found to cancel.`)
+      (cancelError
+        ? `⚠️ Could not confirm/cancel the other resting order (${cancelError}) - please check CoinDCX for any stale order on this contract.`
+        : cancelledCount > 0
+          ? `Cancelled ${cancelledCount} leftover order(s) for this contract.`
+          : `No leftover order found to cancel.`)
     );
 
     advisoryStore.clearAdvisory(advisories, contract, action);
+    recentCloseTracker.recordClose(contract, action);
     advisoriesDirty = true;
   }
   if (advisoriesDirty) {
@@ -213,6 +191,46 @@ async function run(config, creds) {
     const r = Math.abs(adv.entryPrice - adv.initialStop);
     const currentStop = adv.lastAdvisedStop;
     const stopCrossed = action === "long" ? currentPrice <= currentStop : currentPrice >= currentStop;
+
+    // Fallback safety monitor - ONLY for positions missing a REAL resting
+    // bracket order (stopOrderId/takeProfitOrderId), meaning there is
+    // currently nothing on the exchange itself protecting this position
+    // at all. Uses the trade's own already-known stop/1R-target levels,
+    // just enforced here in software with a 0.9x safety margin (not a
+    // new arbitrary number) - accounts for this only checking once every
+    // 1-2 minutes, not tick-by-tick like a real resting order would.
+    // A working real bracket is unaffected by any of this.
+    const hasRealBracket = adv.stopOrderId && adv.takeProfitOrderId;
+    if (!hasRealBracket) {
+      const fallbackStopLevel = adv.entryPrice - dir * r * 0.9; // 0.9x the way to the real stop
+      const fallbackTargetLevel = adv.entryPrice + dir * r * 0.9; // 0.9R
+      const stopFallbackCrossed = action === "long" ? currentPrice <= fallbackStopLevel : currentPrice >= fallbackStopLevel;
+      const targetFallbackCrossed = action === "long" ? currentPrice >= fallbackTargetLevel : currentPrice <= fallbackTargetLevel;
+
+      if (stopFallbackCrossed || targetFallbackCrossed) {
+        const reasonLabel = stopFallbackCrossed ? "fallback stop (0.9x)" : "fallback target (0.9R)";
+        let closeNote = "";
+        try {
+          const quantity = Math.abs(Number(pos.active_pos ?? pos.size ?? 0));
+          const leverage = Number(pos.leverage) || adv.leverage || 1;
+          await exchange.closePosition(creds, { pair: contract, direction: action, quantity, leverage, currentPrice });
+
+          const pnlPercentReal = ((currentPrice - adv.entryPrice) * dir / adv.entryPrice) * 100;
+          tradeOutcomeLog.recordOutcome(symbol, Number(pnlPercentReal.toFixed(2)), "fallback_no_bracket");
+          const dollarPnl = adv.positionSizeUsdt * adv.leverage * (pnlPercentReal / 100);
+          balanceTracker.applyPnl(dollarPnl);
+
+          advisoryStore.clearAdvisory(advisories, contract, action);
+          recentCloseTracker.recordClose(contract, action);
+          advisoriesDirty = true;
+          closeNote = `Closed via ${reasonLabel} - no real bracket order was ever confirmed on this position, so this software fallback closed it directly. Outcome: ~${pnlPercentReal >= 0 ? "+" : ""}${pnlPercentReal.toFixed(2)}%.`;
+        } catch (err) {
+          closeNote = `🚨 Tried to close via ${reasonLabel} (no real bracket was ever placed) but the close order itself FAILED (${err.message}). This position may still be open and UNPROTECTED - check CoinDCX immediately.`;
+        }
+        await sendTelegramMessage(`⚠️ *${contract} ${action}*\n${closeNote}`);
+        continue;
+      }
+    }
 
     // CoinDCX shows ROE (return on margin, i.e. leveraged) - multiply by
     // leverage to match CoinDCX's own convention on-screen.

@@ -9,9 +9,9 @@ const { getStrategyParams } = require("./strategyParams");
 const { STRATEGY_SCORE_WEIGHTS } = require("./opportunityScorer");
 const { BACKTESTED_COINS, buildScanThresholdMap, getTierLabel } = require("./backtestedStrategy");
 const exchange = require("./coindcxExchangeClient");
-const { getActivePositions } = require("./positionUtils");
-const advisoryStore = require("./advisoryStore");
+const recentCloseTracker = require("./recentCloseTracker");
 const tradeOutcomeLog = require("./tradeOutcomeLog");
+const { getActivePositions } = require("./positionUtils");
 
 const RUNTIME_FILE = path.join(__dirname, "runtimeConfig.json");
 const VALID_STRATEGIES = ["ultra-short", "swing-trend", "conservative", "balanced", "aggressive", "backtested"];
@@ -163,6 +163,7 @@ async function processIncomingCommands(runtimeState, creds) {
               const quantity = Math.abs(rawSize);
               const leverage = Number(pos.leverage) || 1;
               await exchange.closePosition(creds, { pair: contract, direction, quantity, leverage });
+              recentCloseTracker.recordClose(contract, direction);
 
               // Clean up any resting bracket order for this exact
               // contract - a manual close doesn't remove these
@@ -171,32 +172,11 @@ async function processIncomingCommands(runtimeState, creds) {
               // (it would fire against whatever position happens to
               // exist there next).
               try {
-                const advisories = advisoryStore.loadAdvisories();
-                const adv = advisoryStore.getAdvisory(advisories, contract, direction);
-                const knownOrderIds = [adv?.stopOrderId, adv?.takeProfitOrderId].filter(Boolean);
-                let legacyEndpointUnverifiable = false;
-                if (knownOrderIds.length > 0) {
-                  for (const orderId of knownOrderIds) {
-                    try { await exchange.cancelOrder(creds, orderId); } catch { /* likely already filled/cancelled - expected for one side */ }
-                  }
-                } else {
-                  try {
-                    const ordersRaw = await exchange.getActiveOrders(creds);
-                    const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
-                    const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
-                    for (const order of staleOrders) {
-                      await exchange.cancelOrder(creds, order.id);
-                    }
-                  } catch {
-                    legacyEndpointUnverifiable = true;
-                  }
-                }
-                if (adv) {
-                  advisoryStore.clearAdvisory(advisories, contract, direction);
-                  advisoryStore.saveAdvisories(advisories);
-                }
-                if (legacyEndpointUnverifiable) {
-                  await sendTelegramMessage(`ℹ️ Closed ${contract} but couldn't verify any leftover SL/TP order via CoinDCX's order-listing API (a known limitation for legacy positions, not a confirmed stale order) - worth a quick manual check, but likely nothing to do.`);
+                const ordersRaw = await exchange.getActiveOrders(creds);
+                const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
+                const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
+                for (const order of staleOrders) {
+                  await exchange.cancelOrder(creds, order.id);
                 }
               } catch (cleanupErr) {
                 await sendTelegramMessage(`⚠️ Closed ${contract} but couldn't confirm/cancel any leftover SL/TP orders (${cleanupErr.message}) - please check manually on CoinDCX.`);

@@ -96,6 +96,12 @@ module.exports = {
   // exists in the source).
   riskRules: {
     maxPositions: 3,
+    // Re-entry cooldown after ANY close (manual, stop-loss, take-profit,
+    // or /closeposition) - avoids immediately re-suggesting/re-opening
+    // the same symbol+direction the moment it re-qualifies. Set to 65
+    // min (slightly over 60) so a full 1-hour candle forms before
+    // re-evaluation, not just an arbitrary time window.
+    reentryCooldownMinutes: 65,
     leverageMin: strategyParams.leverageMin,
     leverageMax: strategyParams.leverageMax,
     positionSizeMinPercent: strategyParams.positionSizeMin,

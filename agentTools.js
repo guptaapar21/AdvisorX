@@ -13,6 +13,7 @@ const stopLossCalculator = require("./stopLossCalculator");
 const takeProfitManagement = require("./takeProfitManagement");
 const { bollingerBands, priceVsBB, atrWilder } = require("./indicators");
 const advisoryStore = require("./advisoryStore");
+const recentCloseTracker = require("./recentCloseTracker");
 const { getEffectiveMinScore } = require("./runtimeConfig");
 const { getActivePositions, computePortfolioRiskAndMargin } = require("./positionUtils");
 const balanceTracker = require("./balanceTracker");
@@ -533,6 +534,19 @@ function buildTools(config, creds) {
       // a stale advisory is open_position's job now, since that's the
       // tool actually allowed to write.
       const contract = `B-${symbol}_USDT`; // matches this bot's futures pair convention
+
+      // Re-entry cooldown - per explicit request: after ANY close (manual,
+      // stop-loss, take-profit, or /closeposition), don't immediately
+      // re-suggest the same symbol+direction just because it re-qualifies
+      // moments later. Checked unconditionally, not nested under the
+      // existingAdvisory check below - closing a position clears its
+      // advisory, which is exactly the moment this needs to still apply.
+      const cooldown = recentCloseTracker.checkCooldown(contract, action, (config.riskRules.reentryCooldownMinutes ?? 45) * 60000);
+      if (cooldown.onCooldown) {
+        shouldOpen = false;
+        reasons.push(`${contract} ${action} was closed recently - re-entry cooldown active (${cooldown.minutesRemaining} min remaining) to avoid immediately re-opening the same setup you just closed.`);
+      }
+
       const existingAdvisory = advisoryStore.getAdvisory(advisories, contract, action);
       if (existingAdvisory) {
         const check = await checkRealPositionOrOrder(exchange, creds, contract, action);
@@ -847,6 +861,20 @@ function buildTools(config, creds) {
       // logic as check_open_position, not a second independent copy),
       // and fails CLOSED on error rather than silently allowing a
       // possible duplicate through.
+      // Re-entry cooldown - same check as check_open_position, enforced
+      // here too so it can't be bypassed if open_position gets called
+      // directly without check_open_position running first this cycle.
+      const cooldownForOpen = recentCloseTracker.checkCooldown(contract, action, (config.riskRules.reentryCooldownMinutes ?? 45) * 60000);
+      if (cooldownForOpen.onCooldown) {
+        return {
+          telegramMessage: null,
+          resultForModel: {
+            status: "blocked_cooldown",
+            note: `${contract} ${action} was closed recently - re-entry cooldown active (${cooldownForOpen.minutesRemaining} min remaining). Do not open this symbol+direction again until the cooldown expires.`,
+          },
+        };
+      }
+
       const existingAdvisoryForOpen = advisoryStore.getAdvisory(advisories, contract, action);
       if (existingAdvisoryForOpen) {
         const check = await checkRealPositionOrOrder(exchange, creds, contract, action);
@@ -1015,9 +1043,17 @@ function buildTools(config, creds) {
       // pre-trade estimate. A few short retries since a just-placed
       // market order may take a brief moment to reflect in /positions.
       let confirmedPosition = null;
+      const fillDiagnostics = [];
       for (let attempt = 0; attempt < 5 && !confirmedPosition; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
         try {
+          // Fix: without this, every retry after the first just
+          // re-examines the SAME cached snapshot from attempt 1 - the
+          // waits between retries were accomplishing nothing, since no
+          // fresh data was ever actually being fetched. This is very
+          // likely the real root cause of the persistent bracket
+          // failures, not the position ID specifically.
+          invalidatePositionCache();
           const positionsRaw = await getCachedPositions();
           const activePositions = getActivePositions(positionsRaw);
           confirmedPosition = activePositions.find((p) => {
@@ -1025,8 +1061,13 @@ function buildTools(config, creds) {
             const posDirection = Number(p.active_pos ?? p.size ?? 0) > 0 ? "long" : "short";
             return posContract === contract && posDirection === action;
           });
+          if (!confirmedPosition) {
+            fillDiagnostics.push(`attempt ${attempt + 1}: no matching position found yet (${activePositions.length} total position(s) currently visible)`);
+          }
         } catch (err) {
-          runWarnings.push(`${symbol}: fill-confirmation check failed on attempt ${attempt + 1} - ${err.message}`);
+          const note = `${symbol}: fill-confirmation check failed on attempt ${attempt + 1} - ${err.message}`;
+          runWarnings.push(note);
+          fillDiagnostics.push(note);
         }
       }
       if (confirmedPosition) {
@@ -1090,9 +1131,10 @@ function buildTools(config, creds) {
       let bracketResult = null;
       let bracketWarning = "";
       if (!confirmedPosition || !confirmedPosition.id) {
+        const allDiagnostics = [...fillDiagnostics, ...idDiagnostics];
         bracketWarning = [
           `🚨 Position is OPEN but its real position ID could not be confirmed - could not place bracket SL/TP. THIS POSITION IS CURRENTLY UNPROTECTED. Set SL/TP directly on CoinDCX immediately.`,
-          idDiagnostics.length > 0 ? `Diagnostic detail:\n${idDiagnostics.map((d) => `  - ${d}`).join("\n")}` : "",
+          allDiagnostics.length > 0 ? `Diagnostic detail:\n${allDiagnostics.map((d) => `  - ${d}`).join("\n")}` : "(no diagnostic detail captured - this itself is worth reporting)",
         ].filter(Boolean).join("\n");
       } else {
         try {
@@ -1258,6 +1300,7 @@ function buildTools(config, creds) {
       if (isFullClose) {
         advisoryStore.clearAdvisory(advisories, contract, action);
         advisoriesDirty = true;
+        recentCloseTracker.recordClose(contract, action);
       }
       invalidatePositionCache(); // real state just changed - position closed (fully or partially), orders cancelled/replaced
       return {

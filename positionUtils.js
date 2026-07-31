@@ -24,16 +24,8 @@ async function computePortfolioRiskAndMargin(exchange, creds) {
   const activePositions = getActivePositions(positionsRaw);
   if (activePositions.length === 0) return { totalRiskUsdt: 0, totalMarginUsdt: 0, positions: [], hasUnknownRisk: false };
 
-  // getActiveOrders' endpoint is best-effort (see coindcxExchangeClient.js)
-  // - a failure here should degrade to "risk unknown for these positions,"
-  // not blow up check_total_exposure/calculate_risk entirely.
-  let orders = [];
-  try {
-    const ordersRaw = await exchange.getActiveOrders(creds);
-    orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
-  } catch {
-    orders = [];
-  }
+  const ordersRaw = await exchange.getActiveOrders(creds);
+  const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
 
   const details = activePositions.map((p) => {
     const contract = p.pair ?? p.contract;
