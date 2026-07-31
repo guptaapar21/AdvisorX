@@ -52,7 +52,10 @@ async function privatePost(path, bodyExtra, creds) {
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`CoinDCX private call failed (${path}): ${res.status} ${errText}`);
+    // CoinDCX's response body is sometimes empty/unhelpful on a 400 -
+    // including the actual request we sent (which we know completely)
+    // makes this diagnosable even when their response isn't.
+    throw new Error(`CoinDCX private call failed (${path}): ${res.status} ${errText || "(empty response body)"} | Request sent: ${jsonBody}`);
   }
   return res.json();
 }

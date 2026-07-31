@@ -976,7 +976,14 @@ function buildTools(config, creds) {
       // notional = margin x leverage (matches the actual dollar risk
       // already verified above, not a re-derived number).
       const notional = finalPositionSizeUsdt * leverage;
-      const quantity = notional / entryPrice;
+      // Rounded to a reasonable precision before sending - the raw
+      // unrounded value (e.g. 8841.242450388265, a 12-decimal-place
+      // number) is a very plausible cause of a 400 rejection, since
+      // exchanges require order sizes in specific step sizes, not
+      // arbitrary floating-point precision. This doesn't know CoinDCX's
+      // exact per-symbol step size, but removing 12 decimal places down
+      // to 4 removes the most likely failure mode regardless.
+      const quantity = Number((notional / entryPrice).toFixed(4));
 
       let fillPrice = entryPrice;
       let entryOrderResult;
