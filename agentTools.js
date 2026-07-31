@@ -1033,6 +1033,50 @@ function buildTools(config, creds) {
         fillPrice = Number(confirmedPosition.avg_price) || entryPrice;
       }
 
+      // If the fill was confirmed but the position ID specifically wasn't
+      // present, this is the single most safety-critical field - worth a
+      // few extra dedicated attempts before giving up, since it may
+      // simply take a moment longer to populate than avg_price does.
+      //
+      // Fix: also captured locally (idDiagnostics), not just pushed to
+      // the general runWarnings array - runWarnings only ever reaches a
+      // LATER, separate summary message, never the immediate EXECUTED
+      // message below. That routing gap meant this diagnostic detail
+      // was invisible exactly when it mattered most, even if the retry
+      // logic ran and failed.
+      const idDiagnostics = [];
+      if (confirmedPosition && !confirmedPosition.id) {
+        const note = `${symbol}: fill confirmed (avg_price ${confirmedPosition.avg_price}) but position ID was missing on this read - raw keys present: ${Object.keys(confirmedPosition).join(", ")}`;
+        runWarnings.push(note);
+        idDiagnostics.push(note);
+        for (let attempt = 0; attempt < 3 && !confirmedPosition.id; attempt++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          try {
+            invalidatePositionCache();
+            const positionsRaw = await getCachedPositions();
+            const activePositions = getActivePositions(positionsRaw);
+            const refetched = activePositions.find((p) => {
+              const posContract = p.pair ?? p.contract;
+              const posDirection = Number(p.active_pos ?? p.size ?? 0) > 0 ? "long" : "short";
+              return posContract === contract && posDirection === action;
+            });
+            if (refetched && refetched.id) {
+              confirmedPosition = refetched;
+              const recoveredNote = `${symbol}: position ID recovered on retry ${attempt + 1} - raw keys: ${Object.keys(refetched).join(", ")}`;
+              runWarnings.push(recoveredNote);
+              idDiagnostics.push(recoveredNote);
+            } else {
+              const failedNote = `${symbol}: retry ${attempt + 1} still no ID - raw keys: ${refetched ? Object.keys(refetched).join(", ") : "(position not found in this read at all)"}`;
+              idDiagnostics.push(failedNote);
+            }
+          } catch (err) {
+            const errNote = `${symbol}: extra ID-recovery attempt ${attempt + 1} failed - ${err.message}`;
+            runWarnings.push(errNote);
+            idDiagnostics.push(errNote);
+          }
+        }
+      }
+
       // Immediately place the bracket - the very next step after
       // confirming the fill, not waiting for a future cycle. If the fill
       // price slipped from the estimate, recompute stop/target around the
@@ -1046,7 +1090,10 @@ function buildTools(config, creds) {
       let bracketResult = null;
       let bracketWarning = "";
       if (!confirmedPosition || !confirmedPosition.id) {
-        bracketWarning = `🚨 Position is OPEN but its real position ID could not be confirmed - could not place bracket SL/TP. THIS POSITION IS CURRENTLY UNPROTECTED. Set SL/TP directly on CoinDCX immediately.`;
+        bracketWarning = [
+          `🚨 Position is OPEN but its real position ID could not be confirmed - could not place bracket SL/TP. THIS POSITION IS CURRENTLY UNPROTECTED. Set SL/TP directly on CoinDCX immediately.`,
+          idDiagnostics.length > 0 ? `Diagnostic detail:\n${idDiagnostics.map((d) => `  - ${d}`).join("\n")}` : "",
+        ].filter(Boolean).join("\n");
       } else {
         try {
           bracketResult = await exchange.placeBracketOrders(creds, {
