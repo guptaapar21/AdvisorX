@@ -62,7 +62,8 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                   full_close_at_stage1=False, atr_multiplier_override=None,
                   reversal_exit_threshold=70, raw_reversal_threshold=None,
                   skip_filter_timeframe=False, confirm_minutes=15, filter_minutes=60,
-                  primary_minutes=5):
+                  primary_minutes=5, asymmetric_free_ride=False,
+                  stage1_close_fraction=0.65, trailing_atr_multiplier=1.5):
     """
     strategy: one of "ultra-short"/"aggressive"/"balanced"/"conservative"/
     "swing-trend". Resolves that preset's real min_score, ATR stop
@@ -74,6 +75,18 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
     33.33%/33.33%/0% staged exit across 1R/2R/3R. A genuinely different
     exit policy, not a variant of "fewer fee legs" - it changes which R
     the position books, not just how many fills it takes to book it.
+
+    asymmetric_free_ride: a THIRD, distinct exit policy (mutually
+    exclusive with full_close_at_stage1) - closes stage1_close_fraction
+    (default 65%) of the position at the volatility-adjusted 1R target
+    and moves the stop to breakeven (same as the normal staged exit's
+    stage 1), but the REMAINING fraction has no fixed 2R/3R target at
+    all - instead it rides on a trailing stop, recalculated from the
+    CURRENT price each bar using trailing_atr_multiplier x the CURRENT
+    ATR (not the entry-time ATR), only ever moving in the favorable
+    direction. Tests whether "secure most of the win immediately, let a
+    small remainder ride with zero fixed ceiling" beats the existing
+    proven staged exit, rather than assuming it does.
 
     atr_multiplier_override: if set, overrides the preset's own default
     ATR stop-loss multiplier (e.g. testing conservative/swing-trend at a
@@ -125,6 +138,9 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
     weights = STRATEGY_SCORE_WEIGHTS[strategy]
     stop_cfg = STRATEGY_STOP_LOSS[strategy]
     atr_multiplier = atr_multiplier_override if atr_multiplier_override is not None else stop_cfg["atr_multiplier"]
+
+    if full_close_at_stage1 and asymmetric_free_ride:
+        raise ValueError("full_close_at_stage1 and asymmetric_free_ride are mutually exclusive exit policies - only one can be active per run.")
     lev_bounds = STRATEGY_LEVERAGE_BOUNDS[strategy]
     resolved_leverage = (lev_bounds["min"] + lev_bounds["max"]) / 2
     effective_min_score = min_score if min_score is not None else weights["min_score"]
@@ -258,6 +274,35 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                     # remaining_fraction math below correctly treats this
                     # as a 100%-of-position exit at this R level.
                     exit_reason = "target_1r_full_close"
+                elif asymmetric_free_ride:
+                    if pos["stages_done"] == 0 and current_r >= adj_r["1"]:
+                        # Realize the LARGER stage1 fraction (not the
+                        # normal 33.33%), move stop to breakeven exactly
+                        # like the standard staged exit's stage 1 does,
+                        # and switch the rest into trailing mode - no
+                        # fixed 2R/3R target for the remainder at all.
+                        pos["stages_done"] = 1
+                        pos["realized_r"] += adj_r["1"] * stage1_close_fraction
+                        pos["last_staged_r"] = adj_r["1"]
+                        pos["stop"] = pos["entry"]
+                        pos["trailing_active"] = True
+                    elif pos.get("trailing_active"):
+                        # Recompute the trailing stop from the CURRENT
+                        # price using the CURRENT ATR (not the entry-time
+                        # ATR) - only ever moves in the favorable
+                        # direction, exactly like a real trailing stop.
+                        # The actual exit still happens through the same
+                        # hit_stop check already run earlier this bar
+                        # against pos["stop"] - no separate exit path
+                        # needed, this just updates where that stop sits.
+                        fresh_atr = atr_wilder(confirm_slice, 14)
+                        trail_distance = fresh_atr * trailing_atr_multiplier
+                        dir_sign = 1 if direction == "long" else -1
+                        candidate_stop = current_price - dir_sign * trail_distance
+                        if direction == "long":
+                            pos["stop"] = max(pos["stop"], candidate_stop)
+                        else:
+                            pos["stop"] = min(pos["stop"], candidate_stop)
                 elif current_r >= adj_r["3"] and pos["stages_done"] == 2:
                     pos["stages_done"] = 3
                     pos["stop"] = calculate_target_price(pos["entry"], pos["stop"], s2, direction)
@@ -274,7 +319,13 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
 
             if exit_reason:
                 final_r = calculate_r_multiple(pos["entry"], exit_price, pos["initial_stop"], direction)
-                remaining_fraction = 1.0 - (0.3333 * pos["stages_done"] if pos["stages_done"] < 3 else 0.6667)
+                if asymmetric_free_ride:
+                    # stages_done is 0 (never reached 1R - full position
+                    # still open at exit) or 1 (stage1 fraction already
+                    # realized, this is the remaining runner closing).
+                    remaining_fraction = 1.0 if pos["stages_done"] == 0 else (1.0 - stage1_close_fraction)
+                else:
+                    remaining_fraction = 1.0 - (0.3333 * pos["stages_done"] if pos["stages_done"] < 3 else 0.6667)
                 total_r = pos["realized_r"] + final_r * remaining_fraction
                 trades.append({
                     "symbol": symbol, "strategy": strategy, "direction": direction,

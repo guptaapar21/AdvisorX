@@ -99,6 +99,9 @@ def main():
     confirm_minutes = int(os.environ.get("BT_CONFIRM_MINUTES", "15").strip() or "15")
     filter_minutes = int(os.environ.get("BT_FILTER_MINUTES", "60").strip() or "60")
     full_close_at_1r = os.environ.get("BT_FULL_CLOSE_AT_1R", "").strip().lower() in ("1", "true", "yes")
+    asymmetric_free_ride = os.environ.get("BT_ASYMMETRIC_FREE_RIDE", "").strip().lower() in ("1", "true", "yes")
+    stage1_close_fraction = float(os.environ.get("BT_STAGE1_CLOSE_FRACTION", "0.65"))
+    trailing_atr_multiplier = float(os.environ.get("BT_TRAILING_ATR_MULTIPLIER", "1.5"))
 
     print(f"Backtest window: {start_date} to {end_date} ({days} days)")
     print(f"Coins: {coins}")
@@ -111,6 +114,7 @@ def main():
     print(f"Skip filter (1h) timeframe: {skip_filter_timeframe}")
     print(f"Timeframe combination: primary {primary_minutes}m / confirm {confirm_minutes}m / filter {filter_minutes}m (live default: 5m/15m/60m)")
     print(f"Full close at stage-1 R: {full_close_at_1r}")
+    print(f"Asymmetric free-ride: {asymmetric_free_ride} (stage1 close fraction {stage1_close_fraction}, trailing ATR x{trailing_atr_multiplier})")
 
     os.makedirs("results", exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -122,6 +126,8 @@ def main():
         variant_tag += f"_score{min_score_override}"
     if full_close_at_1r:
         variant_tag += "_fullclose1R"
+    if asymmetric_free_ride:
+        variant_tag += f"_asymfr{stage1_close_fraction*100:.0f}pct_trail{trailing_atr_multiplier:.1f}x"
     if reversal_threshold != 70:
         variant_tag += f"_rev{reversal_threshold:.0f}"
     if raw_reversal_threshold is not None:
@@ -158,6 +164,8 @@ def main():
                 trades, equity = run_backtest(
                     coin, candles_5m, strategy=strategy, max_hold_bars=max_hold_bars,
                     atr_multiplier_override=atr_override, full_close_at_stage1=full_close_at_1r,
+                    asymmetric_free_ride=asymmetric_free_ride, stage1_close_fraction=stage1_close_fraction,
+                    trailing_atr_multiplier=trailing_atr_multiplier,
                     min_score=min_score_override, reversal_exit_threshold=reversal_threshold,
                     raw_reversal_threshold=raw_reversal_threshold,
                     skip_filter_timeframe=skip_filter_timeframe,
@@ -192,7 +200,10 @@ def main():
             row = {"coin": coin, "strategy": strategy, "days": days,
                    "atr_override": atr_override if atr_override is not None else "",
                    "min_score_override": min_score_override if min_score_override is not None else "",
-                   "full_close_at_1r": full_close_at_1r, "reversal_exit_threshold": reversal_threshold,
+                   "full_close_at_1r": full_close_at_1r, "asymmetric_free_ride": asymmetric_free_ride,
+                   "stage1_close_fraction": stage1_close_fraction if asymmetric_free_ride else "",
+                   "trailing_atr_multiplier": trailing_atr_multiplier if asymmetric_free_ride else "",
+                   "reversal_exit_threshold": reversal_threshold,
                    # Bug 7 fix: previously only present in the filename tag,
                    # not as real columns - meaning concatenating multiple
                    # results CSVs together (which is how every sweep in
@@ -225,6 +236,8 @@ def main():
         variant_desc.append(f"min_score {min_score_override:.0f}")
     if full_close_at_1r:
         variant_desc.append("full-close@1R")
+    if asymmetric_free_ride:
+        variant_desc.append(f"asym-free-ride({stage1_close_fraction*100:.0f}%@1R, trail{trailing_atr_multiplier:.1f}x)")
     if reversal_threshold != 70:
         variant_desc.append(f"reversal@{reversal_threshold:.0f}")
     if raw_reversal_threshold is not None:
