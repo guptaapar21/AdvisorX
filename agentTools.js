@@ -808,11 +808,12 @@ function buildTools(config, creds) {
     },
 
     // Real, evidence-based safety net: the original engine force-closes any
-    // position after 36 hours regardless of P&L - this was missing
-    // entirely until backtested across 5 coins confirmed 36h as the best
-    // or near-best hold length (see config.js's maxHoldHours comment).
-    // Without this, a position with no clear stop/target/reversal signal
-    // could otherwise sit open indefinitely.
+    // position after a max hold time regardless of P&L - this was missing
+    // entirely until backtested across 5 coins confirmed 36h as reasonable
+    // generally. A LATER, dedicated sweep on the actual proven setup found
+    // SOL and DOGE each have their own genuine peak-and-decline shape at
+    // very different hold times (SOL: 18h, DOGE: 48h) - see config.js's
+    // maxHoldHoursBySymbol comment for the full reasoning.
     async check_max_hold_time({ symbol, action }) {
       const contract = `B-${symbol}_USDT`;
       const adv = advisoryStore.getAdvisory(advisories, contract, action);
@@ -820,10 +821,11 @@ function buildTools(config, creds) {
         return { exceededMaxHold: false, note: "no advisory on record for this position - can't verify open time" };
       }
       const hoursOpen = (Date.now() - adv.openedAt) / (60 * 60 * 1000);
+      const maxHoldHours = config.maxHoldHoursBySymbol?.[symbol] ?? config.maxHoldHours;
       return {
         hoursOpen: Math.round(hoursOpen * 10) / 10,
-        maxHoldHours: config.maxHoldHours,
-        exceededMaxHold: hoursOpen >= config.maxHoldHours,
+        maxHoldHours,
+        exceededMaxHold: hoursOpen >= maxHoldHours,
       };
     },
 

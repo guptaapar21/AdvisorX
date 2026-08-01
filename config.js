@@ -23,14 +23,24 @@ module.exports = {
   strategy: STRATEGY,
   maxLeverage: MAX_LEVERAGE,
 
-  // The original engine force-closed any position after 36 hours
-  // regardless of P&L - this was never ported here initially (a real gap
-  // found mid-project). Backtested across BTC/ETH/SOL/XRP/DOGE on real
-  // 2025-26 data before implementing: 36h was the best or near-best hold
-  // cap for 4 of 5 coins (avg R +0.10 to +0.17 vs +0.05-0.09 at the
-  // previously-untested 8h/24h alternatives) - this value is evidence-based,
-  // not a guess.
-  maxHoldHours: 36,
+  // UPDATED: this was originally a single 36h value from an early,
+  // general study across BTC/ETH/SOL/XRP/DOGE. Dedicated later sweeps on
+  // the actual proven conservative setup found each coin has its own
+  // genuine peak shape at very different hold times, not one shared
+  // number - SOL peaks sharply at 18h (degrading on both sides: 6h/9h
+  // nearly break-even, 48h back down to near-zero), DOGE peaks around
+  // 48-60h (9h weak, 72h already declining from its 60h peak), ETH peaks
+  // at 60h too (a bumpier curve than SOL/DOGE - a real dip around
+  // 18h-30h before rising again - but 60h is still ~$90/year better than
+  // the old 36h at the same win rate). All 3 backtested-tier coins now
+  // have their own dedicated, tested value - the 36h fallback below is
+  // no longer actually used by any currently-active coin.
+  maxHoldHoursBySymbol: {
+    SOL: 18,
+    DOGE: 48,
+    ETH: 60,
+  },
+  maxHoldHours: 36, // fallback for any coin not listed above (none currently - all 3 backtested-tier coins now have their own dedicated value)
 
   // The original uses 3 timeframes per cycle: primary (trend direction),
   // confirm (momentum/RSI, also where breakout/mean-reversion look for
