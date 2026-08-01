@@ -28,25 +28,25 @@ on:
         required: false
         default: '[70]'
       raw_reversal_threshold:
-        description: "NEW - bypasses the bucketed reversal score entirely and checks the raw continuous primary-timeframe trend number directly. Each result reports what fraction of raw-reversal exits actually beat the stop-loss (a genuine save) vs just coincided with it."
+        description: "Already tested and settled - the bucketed reversal check won every comparison against the raw continuous version. Disabled for this run, not re-testing."
         required: false
-        default: '[10, 15, 20, 25, 30]'
+        default: '[]'
       skip_filter_timeframe:
         description: "Already confirmed the 1h filter timeframe earns its cost - fixed to false, not re-testing."
         required: false
         default: '[false]'
       timeframe_combos:
-        description: "JSON array of [primary_minutes, confirm_minutes, filter_minutes] triples. Already tested (3,15,30), (1,5,15), and (3,10,30) - all clearly worse than the current (5,15,60). Fixed to baseline only for this run."
+        description: "JSON array of [primary_minutes, confirm_minutes, filter_minutes] triples. (5,15,60) is the current live default - already confirmed the winner against (3,15,30) and (1,5,15), both clearly worse. (3,10,30) was proposed once but never actually run - testing it for real now against baseline."
         required: false
-        default: '[[5,15,60]]'
+        default: '[[5,15,60],[3,10,30]]'
       days:
         description: "Lookback window in days (365 = 1 year, the agreed compute-budget cap)"
         required: false
         default: "365"
       max_hold_hours:
-        description: "Max hold time in hours (36 matches the live bot's deployed default)"
+        description: "JSON array of max-hold-time values in hours to test. 36 is the live bot's current deployed default, inherited from an old, more general BTC study - never re-verified specifically on the proven SOL/DOGE/ETH conservative setup. Testing 18/24/30/36/48h against each other for real."
         required: false
-        default: "36"
+        default: '[18, 24, 30, 36, 48]'
 
 jobs:
   # Builds the full cross-product (coin x strategy x min_score x atr x
@@ -75,6 +75,7 @@ jobs:
           IN_RAW_REVERSAL_THRESHOLD: ${{ inputs.raw_reversal_threshold }}
           IN_SKIP_FILTER_TIMEFRAME: ${{ inputs.skip_filter_timeframe }}
           IN_TIMEFRAME_COMBOS: ${{ inputs.timeframe_combos }}
+          IN_MAX_HOLD_HOURS: ${{ inputs.max_hold_hours }}
         run: |
           cat > /tmp/generate_matrix.py << 'PYEOF'
           import json, os
@@ -88,6 +89,7 @@ jobs:
           raw_reversal_thresholds = json.loads(os.environ["IN_RAW_REVERSAL_THRESHOLD"]) or [None]
           skip_filter_modes = json.loads(os.environ["IN_SKIP_FILTER_TIMEFRAME"])
           timeframe_combos = json.loads(os.environ["IN_TIMEFRAME_COMBOS"])
+          max_hold_hours_values = json.loads(os.environ["IN_MAX_HOLD_HOURS"])
 
           combos = []
           for coin in coins:
@@ -99,15 +101,17 @@ jobs:
                                   for raw_reversal in raw_reversal_thresholds:
                                       for skip_filter in skip_filter_modes:
                                           for tf in timeframe_combos:
-                                              combos.append({
-                                                  "coin": coin, "strategy": strategy,
-                                                  "min_score": str(min_score),
-                                                  "atr": str(atr), "full_close": str(full_close).lower(),
-                                                  "reversal": str(reversal),
-                                                  "raw_reversal": "" if raw_reversal is None else str(raw_reversal),
-                                                  "skip_filter": str(skip_filter).lower(),
-                                                  "primary_min": str(tf[0]), "confirm_min": str(tf[1]), "filter_min": str(tf[2]),
-                                              })
+                                              for max_hold in max_hold_hours_values:
+                                                  combos.append({
+                                                      "coin": coin, "strategy": strategy,
+                                                      "min_score": str(min_score),
+                                                      "atr": str(atr), "full_close": str(full_close).lower(),
+                                                      "reversal": str(reversal),
+                                                      "raw_reversal": "" if raw_reversal is None else str(raw_reversal),
+                                                      "skip_filter": str(skip_filter).lower(),
+                                                      "primary_min": str(tf[0]), "confirm_min": str(tf[1]), "filter_min": str(tf[2]),
+                                                      "max_hold_hours": str(max_hold),
+                                                  })
 
           matrix = {"include": combos}
           print(f"Generated {len(combos)} combinations")
@@ -144,13 +148,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
 
-      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / score ${{ matrix.min_score }} / ATR ${{ matrix.atr }} / full_close=${{ matrix.full_close }} / reversal=${{ matrix.reversal }} / raw_reversal=${{ matrix.raw_reversal }} / skip_filter=${{ matrix.skip_filter }} / tf=${{ matrix.primary_min }}-${{ matrix.confirm_min }}-${{ matrix.filter_min }})
+      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / score ${{ matrix.min_score }} / ATR ${{ matrix.atr }} / full_close=${{ matrix.full_close }} / reversal=${{ matrix.reversal }} / raw_reversal=${{ matrix.raw_reversal }} / skip_filter=${{ matrix.skip_filter }} / tf=${{ matrix.primary_min }}-${{ matrix.confirm_min }}-${{ matrix.filter_min }} / hold=${{ matrix.max_hold_hours }}h)
         working-directory: cloud-backtest
         env:
           BT_COINS: ${{ matrix.coin }}
           BT_STRATEGIES: ${{ matrix.strategy }}
           BT_DAYS: ${{ inputs.days }}
-          BT_MAX_HOLD_HOURS: ${{ inputs.max_hold_hours }}
+          BT_MAX_HOLD_HOURS: ${{ matrix.max_hold_hours }}
           BT_ATR_OVERRIDE: ${{ matrix.atr }}
           BT_MIN_SCORE_OVERRIDE: ${{ matrix.min_score }}
           BT_REVERSAL_THRESHOLD: ${{ matrix.reversal }}
