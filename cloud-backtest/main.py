@@ -130,6 +130,8 @@ def main():
         variant_tag += "_2tf"
     if (primary_minutes, confirm_minutes, filter_minutes) != (5, 15, 60):
         variant_tag += f"_tf{primary_minutes}-{confirm_minutes}-{filter_minutes}"
+    if max_hold_hours != 36:
+        variant_tag += f"_hold{max_hold_hours:.0f}h"
     results_path = f"results/backtest_{coins_tag}{variant_tag}_{timestamp}.csv"
     trades_path = f"results/trades_{coins_tag}{variant_tag}_{timestamp}.csv"
 
@@ -198,6 +200,7 @@ def main():
                    # track of which row came from which timeframe combo.
                    "primary_minutes": primary_minutes, "confirm_minutes": confirm_minutes,
                    "filter_minutes": filter_minutes, "skip_filter_timeframe": skip_filter_timeframe,
+                   "max_hold_hours": max_hold_hours,
                    **summary}
             row.pop("exit_reason_breakdown", None)  # dict - not CSV-friendly, kept in trades log instead
             all_rows.append(row)
@@ -230,6 +233,8 @@ def main():
         variant_desc.append("2tf-no-filter")
     if (primary_minutes, confirm_minutes, filter_minutes) != (5, 15, 60):
         variant_desc.append(f"tf{primary_minutes}m-{confirm_minutes}m-{filter_minutes}m")
+    if max_hold_hours != 36:
+        variant_desc.append(f"hold{max_hold_hours:.0f}h")
     variant_str = f" [{', '.join(variant_desc)}]" if variant_desc else ""
     lines = [f"📊 *Cloud backtest complete{variant_str}* ({start_date} to {end_date}, {days}d)"]
     if not results_df.empty:
