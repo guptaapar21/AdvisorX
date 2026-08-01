@@ -4,17 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       coins:
-        description: 'Focused on SOL only for this sweep - DOGE already found its best result at 48h, no need to extend further. SOL showed a monotonic "shorter is better" trend down to 18h, the shortest tested - checking whether it keeps improving below that.'
+        description: 'Both coins - SOL tested shorter (below 18h, since it showed a monotonic "shorter is better" trend), DOGE tested longer (above 48h, since it was STILL improving at the longest hold time tested and never found its peak).'
         required: false
-        default: '["SOL"]'
+        default: '["SOL","DOGE"]'
       strategies:
         description: 'JSON array of presets to sweep. Locked to conservative only - the proven winner, not re-exploring.'
         required: false
         default: '["conservative"]'
       min_scores:
-        description: 'SOL 80 only - 79 has now been re-confirmed losing across every hold time tested (24h/36h/48h), consistent with it never being SOLs real threshold.'
+        description: 'Each coin at its own proven cutoff (SOL 80, DOGE 79).'
         required: false
-        default: '[80]'
+        default: '[79, 80]'
       atr_values:
         description: "Fixed to conservative's real default (2.5x) - already confirmed the right setting, not re-sweeping it."
         required: false
@@ -44,9 +44,9 @@ on:
         required: false
         default: "365"
       max_hold_hours:
-        description: "Testing BELOW 18h for SOL specifically - it showed a genuine monotonic 'shorter is better' trend all the way down to 18h (the shortest previously tested: 18h > 24h > 30h > 36h > 48h in performance), so the real optimum may be even shorter. 18h itself included again as a direct anchor/sanity check against the already-confirmed result."
+        description: "Combined range testing both directions: below 18h (SOL showed a genuine monotonic 'shorter is better' trend all the way down to 18h, the shortest previously tested) and above 48h (DOGE was STILL improving at 48h, the longest previously tested, and never found its actual peak). 18h and 48h kept as anchors against the already-confirmed results."
         required: false
-        default: '[6, 9, 12, 15, 18]'
+        default: '[6, 9, 12, 15, 18, 48, 60, 72]'
 
 jobs:
   # Builds the full cross-product (coin x strategy x min_score x atr x
