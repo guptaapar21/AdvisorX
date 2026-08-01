@@ -4,17 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       coins:
-        description: 'JSON array of coins - testing the reversal-exit-threshold change on the two proven coins.'
+        description: 'Focused on SOL only for this sweep - DOGE already found its best result at 48h, no need to extend further. SOL showed a monotonic "shorter is better" trend down to 18h, the shortest tested - checking whether it keeps improving below that.'
         required: false
-        default: '["SOL","DOGE"]'
+        default: '["SOL"]'
       strategies:
         description: 'JSON array of presets to sweep. Locked to conservative only - the proven winner, not re-exploring.'
         required: false
         default: '["conservative"]'
       min_scores:
-        description: 'JSON array of min_score thresholds - each coin at its own proven cutoff (SOL 80, DOGE 79).'
+        description: 'SOL 80 only - 79 has now been re-confirmed losing across every hold time tested (24h/36h/48h), consistent with it never being SOLs real threshold.'
         required: false
-        default: '[79, 80]'
+        default: '[80]'
       atr_values:
         description: "Fixed to conservative's real default (2.5x) - already confirmed the right setting, not re-sweeping it."
         required: false
@@ -36,17 +36,17 @@ on:
         required: false
         default: '[false]'
       timeframe_combos:
-        description: "JSON array of [primary_minutes, confirm_minutes, filter_minutes] triples. (5,15,60) is the current live default - already confirmed the winner against (3,15,30) and (1,5,15), both clearly worse. (3,10,30) was proposed once but never actually run - testing it for real now against baseline."
+        description: "(3,10,30) is now conclusively rejected - 10 for 10 losing results across every coin/score/hold-time combination tested. Fixed to the real deployed baseline only for this run."
         required: false
-        default: '[[5,15,60],[3,10,30]]'
+        default: '[[5,15,60]]'
       days:
         description: "Lookback window in days (365 = 1 year, the agreed compute-budget cap)"
         required: false
         default: "365"
       max_hold_hours:
-        description: "JSON array of max-hold-time values in hours to test. 36 is the live bot's current deployed default, inherited from an old, more general BTC study - never re-verified specifically on the proven SOL/DOGE/ETH conservative setup. Testing 18/24/30/36/48h against each other for real."
+        description: "Testing BELOW 18h for SOL specifically - it showed a genuine monotonic 'shorter is better' trend all the way down to 18h (the shortest previously tested: 18h > 24h > 30h > 36h > 48h in performance), so the real optimum may be even shorter. 18h itself included again as a direct anchor/sanity check against the already-confirmed result."
         required: false
-        default: '[18, 24, 30, 36, 48]'
+        default: '[6, 9, 12, 15, 18]'
 
 jobs:
   # Builds the full cross-product (coin x strategy x min_score x atr x
