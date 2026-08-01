@@ -24,9 +24,6 @@ async function computePortfolioRiskAndMargin(exchange, creds) {
   const activePositions = getActivePositions(positionsRaw);
   if (activePositions.length === 0) return { totalRiskUsdt: 0, totalMarginUsdt: 0, positions: [], hasUnknownRisk: false };
 
-  const ordersRaw = await exchange.getActiveOrders(creds);
-  const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
-
   const details = activePositions.map((p) => {
     const contract = p.pair ?? p.contract;
     const rawSize = Number(p.active_pos ?? p.size ?? 0);
@@ -35,18 +32,25 @@ async function computePortfolioRiskAndMargin(exchange, creds) {
     const leverage = Number(p.leverage) || 1;
     const marginUsdt = (quantity * entryPrice) / leverage; // THIS position's own margin, own leverage
 
-    const stopOrder = orders.find((o) => (o.pair ?? o.contract) === contract && o.order_type === "stop_market");
-    const stopPrice = stopOrder ? Number(stopOrder.price) : null;
+    // Fix: read the stop directly from the position's own real field -
+    // confirmed directly from CoinDCX's own documentation that TP/SL is
+    // native to the position (stop_loss_trigger), not a separate order.
+    // Previously depended on the broken getActiveOrders endpoint to find
+    // a "stop_market order" that was never a real, separate concept in
+    // CoinDCX's actual model - same root cause found and fixed elsewhere,
+    // just missed in this one function during the earlier audit.
+    const isSetField = (v) => v !== undefined && v !== null && v !== "None" && Number(v) !== 0;
+    const stopPrice = isSetField(p.stop_loss_trigger) ? Number(p.stop_loss_trigger) : null;
     const riskUsdt = stopPrice !== null ? quantity * Math.abs(entryPrice - stopPrice) : null;
 
     return { contract, quantity, entryPrice, leverage, marginUsdt, stopPrice, riskUsdt };
   });
 
   const totalMarginUsdt = details.reduce((sum, d) => sum + d.marginUsdt, 0);
-  // Positions with no resolvable stop order (e.g. the getActiveOrders
-  // best-effort check failed) can't have their risk computed - counted
-  // as null, not silently as zero, so callers can tell "no risk" from
-  // "unknown risk" and choose to be cautious rather than assume safety.
+  // Positions with no real stop set on them at all can't have their risk
+  // computed - counted as null, not silently as zero, so callers can
+  // tell "no risk" from "unknown risk" and choose to be cautious rather
+  // than assume safety.
   const knownRisks = details.filter((d) => d.riskUsdt !== null);
   const hasUnknownRisk = knownRisks.length < details.length;
   const totalRiskUsdt = knownRisks.reduce((sum, d) => sum + d.riskUsdt, 0);

@@ -109,7 +109,7 @@ async function run(config, creds) {
     }
 
     await sendTelegramMessage(
-      `🔔 *${contract} ${action}* closed via its bracket order (stop or take-profit triggered).\n` +
+      `🔔 *${contract} ${action}* closed (position no longer open - either its bracket triggered, or it was closed manually outside /closeposition; this can't be told apart from here).\n` +
       `Outcome: ${outcomeNote}`
     );
 

@@ -165,22 +165,11 @@ async function processIncomingCommands(runtimeState, creds) {
               await exchange.closePosition(creds, { pair: contract, direction, quantity, leverage });
               recentCloseTracker.recordClose(contract, direction);
 
-              // Clean up any resting bracket order for this exact
-              // contract - a manual close doesn't remove these
-              // automatically, and a stale SL/TP sitting on the
-              // exchange with no position behind it is a real hazard
-              // (it would fire against whatever position happens to
-              // exist there next).
-              try {
-                const ordersRaw = await exchange.getActiveOrders(creds);
-                const orders = Array.isArray(ordersRaw) ? ordersRaw : (ordersRaw?.data || []);
-                const staleOrders = orders.filter((o) => (o.pair ?? o.contract) === contract);
-                for (const order of staleOrders) {
-                  await exchange.cancelOrder(creds, order.id);
-                }
-              } catch (cleanupErr) {
-                await sendTelegramMessage(`⚠️ Closed ${contract} but couldn't confirm/cancel any leftover SL/TP orders (${cleanupErr.message}) - please check manually on CoinDCX.`);
-              }
+              // Nothing separate to clean up here: TP/SL is native to the
+              // position itself (confirmed directly from CoinDCX's own
+              // docs), so it's cleared automatically the moment the
+              // position closes - there's no separate resting order left
+              // behind that needs cancelling.
 
               await sendTelegramMessage(`🛑 Manually closed ${contract} ${direction} (${quantity} qty) per /closeposition.`);
             }
