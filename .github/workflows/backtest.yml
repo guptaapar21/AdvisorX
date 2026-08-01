@@ -4,17 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       coins:
-        description: 'Both coins - SOL tested shorter (below 18h, since it showed a monotonic "shorter is better" trend), DOGE tested longer (above 48h, since it was STILL improving at the longest hold time tested and never found its peak).'
+        description: 'ETH only - SOL (18h) and DOGE (48h) both already have real, dedicated hold-time optima confirmed. ETH is still running on the old 36h from an earlier, more general 5-coin study - never tested the same dedicated way.'
         required: false
-        default: '["SOL","DOGE"]'
+        default: '["ETH"]'
       strategies:
         description: 'JSON array of presets to sweep. Locked to conservative only - the proven winner, not re-exploring.'
         required: false
         default: '["conservative"]'
       min_scores:
-        description: 'Each coin at its own proven cutoff (SOL 80, DOGE 79).'
+        description: 'ETH real proven cutoff under the conservative formula (81) - confirmed earlier from the /backtested tier work.'
         required: false
-        default: '[79, 80]'
+        default: '[81]'
       atr_values:
         description: "Fixed to conservative's real default (2.5x) - already confirmed the right setting, not re-sweeping it."
         required: false
@@ -44,9 +44,9 @@ on:
         required: false
         default: "365"
       max_hold_hours:
-        description: "Combined range testing both directions: below 18h (SOL showed a genuine monotonic 'shorter is better' trend all the way down to 18h, the shortest previously tested) and above 48h (DOGE was STILL improving at 48h, the longest previously tested, and never found its actual peak). 18h and 48h kept as anchors against the already-confirmed results."
+        description: "Full range 6h-72h - ETH has zero prior dedicated hold-time data at all (unlike SOL/DOGE, which only needed untested extremes added to an already-known middle from an earlier run). Testing everything at once here."
         required: false
-        default: '[6, 9, 12, 15, 18, 48, 60, 72]'
+        default: '[6, 9, 12, 15, 18, 24, 30, 36, 48, 60, 72]'
 
 jobs:
   # Builds the full cross-product (coin x strategy x min_score x atr x
