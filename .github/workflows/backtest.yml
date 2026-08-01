@@ -24,9 +24,9 @@ on:
         required: false
         default: '[false]'
       asymmetric_free_ride_modes:
-        description: "NEW - tests a third exit policy: close a LARGER fraction (default 65%) at 1R and move stop to breakeven (same as normal), but the remainder rides a genuine ATR-based trailing stop instead of a fixed 2R/3R target. [false] = current proven staged exit only. [true] = asymmetric mode only. [false, true] = direct comparison."
+        description: "Fixed to false only - conclusively rejected in direct testing (SOL@80/18h: +$238 staged exit vs +$37 asymmetric, same win rate). Not re-testing; this run needs clean current-strategy trades."
         required: false
-        default: '[false, true]'
+        default: '[false]'
       stage1_close_fraction:
         description: "Only used when asymmetric_free_ride_modes includes true - fraction of the position closed at 1R (0.65 = 65%)."
         required: false
