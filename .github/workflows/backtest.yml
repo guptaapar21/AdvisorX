@@ -4,17 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       coins:
-        description: 'ETH only - SOL (18h) and DOGE (48h) both already have real, dedicated hold-time optima confirmed. ETH is still running on the old 36h from an earlier, more general 5-coin study - never tested the same dedicated way.'
+        description: 'SOL first, at its own real proven values (score 80, 18h hold) - testing the NEW asymmetric free-ride exit specifically, not re-testing hold time. Run separately for DOGE (score 79, 48h) and ETH (score 81, 60h) using their own real values, since each now has a different proven optimum.'
         required: false
-        default: '["ETH"]'
+        default: '["SOL"]'
       strategies:
         description: 'JSON array of presets to sweep. Locked to conservative only - the proven winner, not re-exploring.'
         required: false
         default: '["conservative"]'
       min_scores:
-        description: 'ETH real proven cutoff under the conservative formula (81) - confirmed earlier from the /backtested tier work.'
+        description: 'SOL real proven cutoff (80).'
         required: false
-        default: '[81]'
+        default: '[80]'
       atr_values:
         description: "Fixed to conservative's real default (2.5x) - already confirmed the right setting, not re-sweeping it."
         required: false
@@ -23,6 +23,18 @@ on:
         description: 'Fixed to staged (false) only - already confirmed the winner in every comparison, not re-testing full-close.'
         required: false
         default: '[false]'
+      asymmetric_free_ride_modes:
+        description: "NEW - tests a third exit policy: close a LARGER fraction (default 65%) at 1R and move stop to breakeven (same as normal), but the remainder rides a genuine ATR-based trailing stop instead of a fixed 2R/3R target. [false] = current proven staged exit only. [true] = asymmetric mode only. [false, true] = direct comparison."
+        required: false
+        default: '[false, true]'
+      stage1_close_fraction:
+        description: "Only used when asymmetric_free_ride_modes includes true - fraction of the position closed at 1R (0.65 = 65%)."
+        required: false
+        default: "0.65"
+      trailing_atr_multiplier:
+        description: "Only used when asymmetric_free_ride_modes includes true - how many ATRs behind price the trailing stop sits."
+        required: false
+        default: "1.5"
       reversal_threshold:
         description: "Reversal score that triggers an exit. Sweeping 55-70: at 70 (current), reversal NEVER fires for SOL/DOGE (0 of 80 trades) - stop-loss always wins the race first. At 50, results were worse. Checking if there's a middle point where reversal starts actually mattering."
         required: false
@@ -44,9 +56,9 @@ on:
         required: false
         default: "365"
       max_hold_hours:
-        description: "Full range 6h-72h - ETH has zero prior dedicated hold-time data at all (unlike SOL/DOGE, which only needed untested extremes added to an already-known middle from an earlier run). Testing everything at once here."
+        description: "Fixed to SOL's own real proven value (18h) - not re-testing hold time here, this run is specifically about the new exit style."
         required: false
-        default: '[6, 9, 12, 15, 18, 24, 30, 36, 48, 60, 72]'
+        default: '[18]'
 
 jobs:
   # Builds the full cross-product (coin x strategy x min_score x atr x
@@ -71,6 +83,9 @@ jobs:
           IN_MIN_SCORES: ${{ inputs.min_scores }}
           IN_ATR_VALUES: ${{ inputs.atr_values }}
           IN_FULL_CLOSE_MODES: ${{ inputs.full_close_modes }}
+          IN_ASYMMETRIC_FREE_RIDE_MODES: ${{ inputs.asymmetric_free_ride_modes }}
+          IN_STAGE1_CLOSE_FRACTION: ${{ inputs.stage1_close_fraction }}
+          IN_TRAILING_ATR_MULTIPLIER: ${{ inputs.trailing_atr_multiplier }}
           IN_REVERSAL_THRESHOLD: ${{ inputs.reversal_threshold }}
           IN_RAW_REVERSAL_THRESHOLD: ${{ inputs.raw_reversal_threshold }}
           IN_SKIP_FILTER_TIMEFRAME: ${{ inputs.skip_filter_timeframe }}
@@ -85,6 +100,9 @@ jobs:
           min_scores = json.loads(os.environ["IN_MIN_SCORES"])
           atr_values = json.loads(os.environ["IN_ATR_VALUES"])
           full_close_modes = json.loads(os.environ["IN_FULL_CLOSE_MODES"])
+          asymmetric_free_ride_modes = json.loads(os.environ["IN_ASYMMETRIC_FREE_RIDE_MODES"])
+          stage1_close_fraction = os.environ["IN_STAGE1_CLOSE_FRACTION"]
+          trailing_atr_multiplier = os.environ["IN_TRAILING_ATR_MULTIPLIER"]
           reversal_thresholds = json.loads(os.environ["IN_REVERSAL_THRESHOLD"])
           raw_reversal_thresholds = json.loads(os.environ["IN_RAW_REVERSAL_THRESHOLD"]) or [None]
           skip_filter_modes = json.loads(os.environ["IN_SKIP_FILTER_TIMEFRAME"])
@@ -97,21 +115,25 @@ jobs:
                   for min_score in min_scores:
                       for atr in atr_values:
                           for full_close in full_close_modes:
-                              for reversal in reversal_thresholds:
-                                  for raw_reversal in raw_reversal_thresholds:
-                                      for skip_filter in skip_filter_modes:
-                                          for tf in timeframe_combos:
-                                              for max_hold in max_hold_hours_values:
-                                                  combos.append({
-                                                      "coin": coin, "strategy": strategy,
-                                                      "min_score": str(min_score),
-                                                      "atr": str(atr), "full_close": str(full_close).lower(),
-                                                      "reversal": str(reversal),
-                                                      "raw_reversal": "" if raw_reversal is None else str(raw_reversal),
-                                                      "skip_filter": str(skip_filter).lower(),
-                                                      "primary_min": str(tf[0]), "confirm_min": str(tf[1]), "filter_min": str(tf[2]),
-                                                      "max_hold_hours": str(max_hold),
-                                                  })
+                              for asym_mode in asymmetric_free_ride_modes:
+                                  for reversal in reversal_thresholds:
+                                      for raw_reversal in raw_reversal_thresholds:
+                                          for skip_filter in skip_filter_modes:
+                                              for tf in timeframe_combos:
+                                                  for max_hold in max_hold_hours_values:
+                                                      combos.append({
+                                                          "coin": coin, "strategy": strategy,
+                                                          "min_score": str(min_score),
+                                                          "atr": str(atr), "full_close": str(full_close).lower(),
+                                                          "asym_free_ride": str(asym_mode).lower(),
+                                                          "stage1_frac": stage1_close_fraction,
+                                                          "trail_atr": trailing_atr_multiplier,
+                                                          "reversal": str(reversal),
+                                                          "raw_reversal": "" if raw_reversal is None else str(raw_reversal),
+                                                          "skip_filter": str(skip_filter).lower(),
+                                                          "primary_min": str(tf[0]), "confirm_min": str(tf[1]), "filter_min": str(tf[2]),
+                                                          "max_hold_hours": str(max_hold),
+                                                      })
 
           matrix = {"include": combos}
           print(f"Generated {len(combos)} combinations")
@@ -148,7 +170,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
 
-      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / score ${{ matrix.min_score }} / ATR ${{ matrix.atr }} / full_close=${{ matrix.full_close }} / reversal=${{ matrix.reversal }} / raw_reversal=${{ matrix.raw_reversal }} / skip_filter=${{ matrix.skip_filter }} / tf=${{ matrix.primary_min }}-${{ matrix.confirm_min }}-${{ matrix.filter_min }} / hold=${{ matrix.max_hold_hours }}h)
+      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / score ${{ matrix.min_score }} / ATR ${{ matrix.atr }} / full_close=${{ matrix.full_close }} / asym_free_ride=${{ matrix.asym_free_ride }} / reversal=${{ matrix.reversal }} / raw_reversal=${{ matrix.raw_reversal }} / skip_filter=${{ matrix.skip_filter }} / tf=${{ matrix.primary_min }}-${{ matrix.confirm_min }}-${{ matrix.filter_min }} / hold=${{ matrix.max_hold_hours }}h)
         working-directory: cloud-backtest
         env:
           BT_COINS: ${{ matrix.coin }}
@@ -164,6 +186,9 @@ jobs:
           BT_CONFIRM_MINUTES: ${{ matrix.confirm_min }}
           BT_FILTER_MINUTES: ${{ matrix.filter_min }}
           BT_FULL_CLOSE_AT_1R: ${{ matrix.full_close }}
+          BT_ASYMMETRIC_FREE_RIDE: ${{ matrix.asym_free_ride }}
+          BT_STAGE1_CLOSE_FRACTION: ${{ matrix.stage1_frac }}
+          BT_TRAILING_ATR_MULTIPLIER: ${{ matrix.trail_atr }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python main.py
