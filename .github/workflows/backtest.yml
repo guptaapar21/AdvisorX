@@ -40,9 +40,9 @@ on:
         required: false
         default: "1.5"
       reversal_threshold:
-        description: "Reversal score that triggers an exit. Sweeping 55-70: at 70 (current), reversal NEVER fires for SOL/DOGE (0 of 80 trades) - stop-loss always wins the race first. At 50, results were worse. Checking if there's a middle point where reversal starts actually mattering."
+        description: "Reversal score that triggers an exit. Default swept to [30,40,50,70] for the adverse-drift test: drift adds at most +36 to the score (18+11+7 across 3 timeframes) - at threshold=70 that swing can never cross the gate, which is why the first drift test showed zero difference. Lower thresholds let the added points actually flip an exit decision."
         required: false
-        default: '[70]'
+        default: '[30, 40, 50, 70]'
       raw_reversal_threshold:
         description: "Already tested and settled - the bucketed reversal check won every comparison against the raw continuous version. Disabled for this run, not re-testing."
         required: false
