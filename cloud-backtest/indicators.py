@@ -171,3 +171,52 @@ def detect_volume_spike(current_volume, average_volume, threshold=1.5):
     else:
         level = "normal"
     return {"is_spike": is_spike, "ratio": round(ratio, 2), "level": level}
+
+
+def obv(candles):
+    """On-Balance Volume, full series. NOT real CVD/order-flow: CoinDCX's
+    public /market_data/candles endpoint returns only open/high/low/close/
+    volume, with no taker-buy-vs-sell split. True CVD needs the aggressor
+    side of each trade, which this data source does not expose. OBV is the
+    closest available proxy USING ONLY OHLCV: it signs each candle's total
+    volume by the candle's own close-vs-prior-close direction (up candle =
+    +volume, down candle = -volume, flat = 0), then cumulates. This is a
+    real, honestly-weaker signal than true CVD - it can't distinguish
+    "many small aggressive buys lifting price a little" from "one large
+    passive buy absorbing a lot of selling at a flat price", which is
+    exactly the absorption pattern idea #4 was meant to catch. Flagged
+    here, not hidden.
+    """
+    closes = candles["close"].values
+    vols = candles["volume"].values
+    direction = np.sign(np.diff(closes, prepend=closes[0]))
+    signed_vol = direction * vols
+    return np.cumsum(signed_vol)
+
+
+def detect_obv_price_divergence(candles, direction, lookback=10):
+    """direction: \"long\" or \"short\" (the OPEN POSITION's direction, not
+    the market's). Checks whether OBV over the last `lookback` primary
+    candles is trending in the ADVERSE direction relative to the position,
+    while price has moved comparatively little - i.e. more (proxy-)volume
+    is flowing against the position than the price move alone would
+    suggest, matching idea #4's "buyers/sellers absorbing the move"
+    framing. Returns a dict with obv_slope_adverse (bool) and the raw
+    normalized OBV slope, for use as an optional extra confidence flag -
+    NOT wired into calculate_reversal_score by default (use
+    obv_confirmation_bonus in run_backtest to opt in)."""
+    if len(candles) < lookback + 1:
+        return {"obv_slope_adverse": False, "obv_slope_norm": 0.0}
+    obv_series = obv(candles.tail(lookback + 1))
+    obv_slope = obv_series[-1] - obv_series[0]
+    price_slope = candles["close"].values[-1] - candles["close"].values[-(lookback + 1)]
+    avg_vol = candles["volume"].tail(lookback).mean()
+    obv_slope_norm = obv_slope / avg_vol if avg_vol else 0.0
+
+    # target_sign: which OBV direction counts as "adverse" for this
+    # position. A long position is hurt by net selling pressure (OBV
+    # falling); a short position is hurt by net buying pressure (OBV
+    # rising) - same convention as calculate_reversal_score's target_sign.
+    target_sign = -1 if direction == "long" else 1
+    obv_slope_adverse = np.sign(obv_slope) == target_sign and abs(obv_slope_norm) >= 0.3
+    return {"obv_slope_adverse": bool(obv_slope_adverse), "obv_slope_norm": round(float(obv_slope_norm), 3)}

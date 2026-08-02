@@ -104,6 +104,24 @@ def main():
     trailing_atr_multiplier = float(os.environ.get("BT_TRAILING_ATR_MULTIPLIER", "1.5"))
     use_adverse_drift = os.environ.get("BT_USE_ADVERSE_DRIFT", "").strip().lower() in ("1", "true", "yes")
     drift_net_threshold = float(os.environ.get("BT_DRIFT_NET_THRESHOLD", "10"))
+    # --- Idea #2: time-decay dynamic reversal threshold ---
+    dynamic_threshold_enabled = os.environ.get("BT_DYNAMIC_THRESHOLD_ENABLED", "").strip().lower() in ("1", "true", "yes")
+    dynamic_threshold_after_minutes = float(os.environ.get("BT_DYNAMIC_THRESHOLD_AFTER_MINUTES", "45"))
+    dynamic_threshold_drawdown_r = float(os.environ.get("BT_DYNAMIC_THRESHOLD_DRAWDOWN_R", "-0.4"))
+    dynamic_threshold_tightened = float(os.environ.get("BT_DYNAMIC_THRESHOLD_TIGHTENED", "35"))
+    # --- Idea #3: ATR stop compression on adverse drift ---
+    drift_stop_tighten_enabled = os.environ.get("BT_DRIFT_STOP_TIGHTEN_ENABLED", "").strip().lower() in ("1", "true", "yes")
+    drift_stop_tighten_atr_multiplier = float(os.environ.get("BT_DRIFT_STOP_TIGHTEN_ATR_MULTIPLIER", "1.2"))
+    # --- Idea #4: OBV/price-divergence confirmation bonus (proxy for CVD - see indicators.py) ---
+    obv_confirmation_bonus = float(os.environ.get("BT_OBV_CONFIRMATION_BONUS", "0"))
+    obv_lookback_bars = int(os.environ.get("BT_OBV_LOOKBACK_BARS", "10"))
+    # --- Idea #5: mechanical soft-exit proxy (TRIM/TIGHTEN/FREEZE) - NOT real Gemini judgment ---
+    soft_exit_enabled = os.environ.get("BT_SOFT_EXIT_ENABLED", "").strip().lower() in ("1", "true", "yes")
+    soft_exit_trim_threshold = float(os.environ.get("BT_SOFT_EXIT_TRIM_THRESHOLD", "45"))
+    soft_exit_trim_fraction = float(os.environ.get("BT_SOFT_EXIT_TRIM_FRACTION", "0.5"))
+    soft_exit_tighten_threshold = float(os.environ.get("BT_SOFT_EXIT_TIGHTEN_THRESHOLD", "35"))
+    soft_exit_tighten_atr_multiplier = float(os.environ.get("BT_SOFT_EXIT_TIGHTEN_ATR_MULTIPLIER", "1.5"))
+    soft_exit_freeze_minutes = float(os.environ.get("BT_SOFT_EXIT_FREEZE_MINUTES", "60"))
 
     print(f"Backtest window: {start_date} to {end_date} ({days} days)")
     print(f"Coins: {coins}")
@@ -177,6 +195,19 @@ def main():
                     confirm_minutes=confirm_minutes, filter_minutes=filter_minutes,
                     primary_minutes=primary_minutes,
                     use_adverse_drift=use_adverse_drift, drift_net_threshold=drift_net_threshold,
+                    dynamic_threshold_enabled=dynamic_threshold_enabled,
+                    dynamic_threshold_after_minutes=dynamic_threshold_after_minutes,
+                    dynamic_threshold_drawdown_r=dynamic_threshold_drawdown_r,
+                    dynamic_threshold_tightened=dynamic_threshold_tightened,
+                    drift_stop_tighten_enabled=drift_stop_tighten_enabled,
+                    drift_stop_tighten_atr_multiplier=drift_stop_tighten_atr_multiplier,
+                    obv_confirmation_bonus=obv_confirmation_bonus, obv_lookback_bars=obv_lookback_bars,
+                    soft_exit_enabled=soft_exit_enabled,
+                    soft_exit_trim_threshold=soft_exit_trim_threshold,
+                    soft_exit_trim_fraction=soft_exit_trim_fraction,
+                    soft_exit_tighten_threshold=soft_exit_tighten_threshold,
+                    soft_exit_tighten_atr_multiplier=soft_exit_tighten_atr_multiplier,
+                    soft_exit_freeze_minutes=soft_exit_freeze_minutes,
                 )
             except Exception as e:
                 print(f"    FAILED: {e}")
@@ -193,6 +224,10 @@ def main():
             trades = apply_dollar_pnl(trades)  # standing $500/5%-fixed convention, see fee_model.py
             trades["coin"] = coin  # already has 'strategy' from the engine itself
             trades["use_adverse_drift"] = use_adverse_drift
+            trades["dynamic_threshold_enabled"] = dynamic_threshold_enabled
+            trades["drift_stop_tighten_enabled"] = drift_stop_tighten_enabled
+            trades["obv_confirmation_bonus"] = obv_confirmation_bonus
+            trades["soft_exit_enabled"] = soft_exit_enabled
             all_trades.append(trades)
 
             summary = summarize_results(trades)
@@ -213,6 +248,10 @@ def main():
                    "reversal_exit_threshold": reversal_threshold,
                    "use_adverse_drift": use_adverse_drift,
                    "drift_net_threshold": drift_net_threshold if use_adverse_drift else "",
+                   "dynamic_threshold_enabled": dynamic_threshold_enabled,
+                   "drift_stop_tighten_enabled": drift_stop_tighten_enabled,
+                   "obv_confirmation_bonus": obv_confirmation_bonus,
+                   "soft_exit_enabled": soft_exit_enabled,
                    # Bug 7 fix: previously only present in the filename tag,
                    # not as real columns - meaning concatenating multiple
                    # results CSVs together (which is how every sweep in

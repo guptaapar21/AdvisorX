@@ -18,7 +18,7 @@ this core simulation loop.
 import pandas as pd
 import numpy as np
 
-from indicators import ema, rsi, macd, macd_histogram_turn, atr_ratio, atr_wilder
+from indicators import ema, rsi, macd, macd_histogram_turn, atr_ratio, atr_wilder, detect_obv_price_divergence
 from market_state_analyzer import (
     build_timeframe_indicators, determine_trend_strength, determine_momentum_state,
     determine_market_state, calculate_triple_timeframe_consistency, calculate_trend_score,
@@ -64,7 +64,18 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                   skip_filter_timeframe=False, confirm_minutes=15, filter_minutes=60,
                   primary_minutes=5, asymmetric_free_ride=False,
                   stage1_close_fraction=0.65, trailing_atr_multiplier=1.5,
-                  use_adverse_drift=False, drift_net_threshold=10):
+                  use_adverse_drift=False, drift_net_threshold=10,
+                  # --- Idea #2: time-decay dynamic reversal threshold ---
+                  dynamic_threshold_enabled=False, dynamic_threshold_after_minutes=45,
+                  dynamic_threshold_drawdown_r=-0.4, dynamic_threshold_tightened=35,
+                  # --- Idea #3: ATR stop compression on adverse drift ---
+                  drift_stop_tighten_enabled=False, drift_stop_tighten_atr_multiplier=1.2,
+                  # --- Idea #4: OBV/price-divergence confirmation bonus (proxy for CVD, see indicators.py) ---
+                  obv_confirmation_bonus=0, obv_lookback_bars=10,
+                  # --- Idea #5: mechanical soft-exit proxy (TRIM/TIGHTEN/FREEZE) - NOT real Gemini judgment ---
+                  soft_exit_enabled=False, soft_exit_trim_threshold=45, soft_exit_trim_fraction=0.5,
+                  soft_exit_tighten_threshold=35, soft_exit_tighten_atr_multiplier=1.5,
+                  soft_exit_freeze_minutes=60):
     """
     strategy: one of "ultra-short"/"aggressive"/"balanced"/"conservative"/
     "swing-trend". Resolves that preset's real min_score, ATR stop
@@ -174,6 +185,12 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
     trend_history = {"primary": [], "confirm": [], "filter": []}
     equity = 1.0
     equity_curve = []
+    # Idea #5 (FREEZE_REENTRY proxy): index (bar count, not wall time) up
+    # to which new entries in a given direction are blocked, set after a
+    # basket/drift-related early exit. -1 = no freeze active. Keyed by
+    # direction since a stopped-out short shouldn't necessarily block a
+    # fresh long signal.
+    freeze_until_index = {"long": -1, "short": -1}
 
     n = len(candles_5m)
     # Confirm(15m)/filter(1h) only actually change once every 3 / 12
@@ -229,7 +246,60 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
 
             reversal = calculate_reversal_score(tf_primary, tf_confirm, tf_filter, direction, trend_history,
                                                  use_adverse_drift=use_adverse_drift, drift_net_threshold=drift_net_threshold)
+
+            # Idea #4: OBV/price-divergence confirmation bonus - proxy for
+            # CVD absorption (see indicators.py detect_obv_price_divergence
+            # for the honest caveat: this is signed-total-volume, not real
+            # taker buy/sell split). obv_confirmation_bonus=0 (default)
+            # means this never changes anything vs the existing score.
+            if obv_confirmation_bonus:
+                obv_signal = detect_obv_price_divergence(primary_slice, direction, lookback=obv_lookback_bars)
+                if obv_signal["obv_slope_adverse"]:
+                    reversal["reversal_score"] += obv_confirmation_bonus
+                    reversal["details"].append(f"OBV confirms adverse flow (slope_norm {obv_signal['obv_slope_norm']})")
+
+            # Idea #3: ATR stop compression on adverse drift. Fires
+            # independently of the reversal_score exit gate below - a
+            # drift-only signal (max +36 points, never reaches the
+            # default 70 exit threshold on its own, see the Aug 2
+            # investigation) still tightens the stop instead of doing
+            # nothing, WITHOUT forcing an exit. Only ever tightens
+            # (moves the stop toward current price), never loosens -
+            # same one-directional guarantee as the existing trailing-
+            # stop logic elsewhere in this function.
+            if drift_stop_tighten_enabled and use_adverse_drift:
+                drift_fired = any("drift" in f for f in reversal["reversed_frames"])
+                if drift_fired:
+                    fresh_atr = atr_wilder(confirm_slice, 14)
+                    tighten_distance = fresh_atr * drift_stop_tighten_atr_multiplier
+                    dir_sign = 1 if direction == "long" else -1
+                    candidate_stop = current_price - dir_sign * tighten_distance
+                    if direction == "long":
+                        new_stop = max(pos["stop"], candidate_stop)
+                    else:
+                        new_stop = min(pos["stop"], candidate_stop)
+                    if new_stop != pos["stop"]:
+                        pos["stop"] = new_stop
+                        pos["drift_stop_tightened"] = True
+
             hit_stop = current_price <= pos["stop"] if direction == "long" else current_price >= pos["stop"]
+
+            # Idea #2: time-decay dynamic reversal threshold. Keep the
+            # proven default (70) for fresh trades - only tighten the
+            # gate once a trade is BOTH old enough AND already
+            # underwater, so normal entry noise on a fresh position never
+            # gets cut. current_r_for_gate uses the position's CURRENT
+            # stop (not initial_stop) deliberately - matches what the
+            # trade is actually risking right now, same convention
+            # calculate_r_multiple uses elsewhere in this function.
+            effective_reversal_threshold = reversal_exit_threshold
+            dynamic_threshold_active = False
+            if dynamic_threshold_enabled:
+                time_in_trade_minutes = (i - pos["entry_index"]) * primary_minutes
+                current_r_for_gate = calculate_r_multiple(pos["entry"], current_price, pos["stop"], direction)
+                if time_in_trade_minutes > dynamic_threshold_after_minutes and current_r_for_gate < dynamic_threshold_drawdown_r:
+                    effective_reversal_threshold = dynamic_threshold_tightened
+                    dynamic_threshold_active = True
 
             # Raw-continuous check: uses the underlying primary trend
             # number directly (e.g. -8, -23, -41) instead of the bucketed
@@ -250,8 +320,46 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
 
             exit_reason = None
             exit_price = current_price
-            if reversal["reversal_score"] >= reversal_exit_threshold:
-                exit_reason = "reversal"
+
+            # Idea #5: mechanical soft-exit proxy (TRIM_50%/TIGHTEN_STOP).
+            # EXPLICITLY a rule-based STAND-IN for what Gemini's live
+            # judgment might choose - not a simulation of the LLM itself
+            # (that reasoning step doesn't exist in this backtest, same
+            # limitation documented for the original drift fix). Trims a
+            # fixed fraction the FIRST time score crosses
+            # soft_exit_trim_threshold (below the hard exit gate), and
+            # tightens the stop the first time it crosses
+            # soft_exit_tighten_threshold - both independent of, and
+            # evaluated BEFORE, the hard reversal/raw-reversal/stop exit
+            # checks below, matching "give it a middle option before the
+            # binary HOLD/CLOSE decision" from the idea.
+            if soft_exit_enabled and not hit_stop:
+                if (not pos.get("soft_tighten_done") and
+                        reversal["reversal_score"] >= soft_exit_tighten_threshold and
+                        reversal["reversal_score"] < effective_reversal_threshold):
+                    fresh_atr = atr_wilder(confirm_slice, 14)
+                    tighten_distance = fresh_atr * soft_exit_tighten_atr_multiplier
+                    dir_sign = 1 if direction == "long" else -1
+                    candidate_stop = current_price - dir_sign * tighten_distance
+                    new_stop = max(pos["stop"], candidate_stop) if direction == "long" else min(pos["stop"], candidate_stop)
+                    if new_stop != pos["stop"]:
+                        pos["stop"] = new_stop
+                    pos["soft_tighten_done"] = True
+
+                if (not pos.get("soft_trim_done") and
+                        reversal["reversal_score"] >= soft_exit_trim_threshold and
+                        reversal["reversal_score"] < effective_reversal_threshold):
+                    # Realize soft_exit_trim_fraction of the position NOW
+                    # at current_price, exactly like the existing staged-
+                    # exit bookkeeping (adds to realized_r, reduces what
+                    # remaining_fraction will book at final exit).
+                    trim_r = calculate_r_multiple(pos["entry"], current_price, pos["initial_stop"], direction)
+                    pos["realized_r"] += trim_r * soft_exit_trim_fraction
+                    pos["soft_trim_fraction_taken"] = pos.get("soft_trim_fraction_taken", 0.0) + soft_exit_trim_fraction
+                    pos["soft_trim_done"] = True
+
+            if reversal["reversal_score"] >= effective_reversal_threshold:
+                exit_reason = "reversal_dynamic_threshold" if dynamic_threshold_active else "reversal"
             elif raw_reversal_triggered:
                 # This is the exit we're actually testing: did it fire
                 # BEFORE the stop would have, i.e. did it genuinely save
@@ -328,6 +436,13 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                     remaining_fraction = 1.0 if pos["stages_done"] == 0 else (1.0 - stage1_close_fraction)
                 else:
                     remaining_fraction = 1.0 - (0.3333 * pos["stages_done"] if pos["stages_done"] < 3 else 0.6667)
+                # Idea #5: subtract whatever fraction the soft-exit TRIM
+                # already realized early, so it isn't double-counted at
+                # final exit (that fraction's R was already banked into
+                # realized_r at trim time, using the entry-time
+                # initial_stop convention - same convention every other
+                # realized_r addition in this function uses).
+                remaining_fraction = max(0.0, remaining_fraction - pos.get("soft_trim_fraction_taken", 0.0))
                 total_r = pos["realized_r"] + final_r * remaining_fraction
                 trades.append({
                     "symbol": symbol, "strategy": strategy, "direction": direction,
@@ -340,8 +455,21 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                     "stages_done": pos["stages_done"],
                     "leverage": pos["leverage"],
                     "stop_distance_pct": pos["stop_distance_pct"],
+                    # ---- idea #2/#3/#5 diagnostic fields, all default-inert ----
+                    "dynamic_threshold_active": dynamic_threshold_active,
+                    "drift_stop_tightened": pos.get("drift_stop_tightened", False),
+                    "soft_trim_done": pos.get("soft_trim_done", False),
+                    "soft_tighten_done": pos.get("soft_tighten_done", False),
                 })
                 equity *= (1 + total_r * 0.01)  # 1% risk per trade convention (unchanged)
+                # Idea #5 (FREEZE_REENTRY proxy): only freeze re-entry in
+                # the SAME direction after a reversal-driven exit (a plain
+                # stop-out or clean target hit isn't the "trend actually
+                # turned against me" signal this is meant to guard
+                # against).
+                if soft_exit_enabled and exit_reason in ("reversal", "reversal_dynamic_threshold"):
+                    freeze_bars = max(1, round(soft_exit_freeze_minutes / primary_minutes))
+                    freeze_until_index[direction] = i + freeze_bars
                 open_position = None
 
         elif open_position is None:
@@ -358,7 +486,14 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
             if strategy_result["action"] != "wait" and opp["total_score"] >= effective_min_score:
                 direction = strategy_result["action"]
                 setup_type = strategy_result["strategy_type"]
-                if direction_filter is not None and direction != direction_filter:
+                # Idea #5 (FREEZE_REENTRY proxy): block a fresh entry in a
+                # direction still under cooldown from a recent reversal-
+                # driven exit. soft_exit_enabled=False (default) means
+                # freeze_until_index never gets set above 0, so this
+                # never blocks anything unless explicitly opted in.
+                if soft_exit_enabled and i < freeze_until_index.get(direction, -1):
+                    pass
+                elif direction_filter is not None and direction != direction_filter:
                     pass
                 elif setup_filter is not None and setup_type != setup_filter:
                     pass
@@ -378,7 +513,11 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                             "is_breakout_extension": strategy_result.get("is_breakout_extension", False),
                             "leverage": resolved_leverage,
                             "stop_distance_pct": stop_distance_pct,
+                            # ---- idea #3/#5 per-position state, all inert unless opted in ----
+                            "drift_stop_tightened": False, "soft_trim_done": False,
+                            "soft_tighten_done": False, "soft_trim_fraction_taken": 0.0,
                         }
+
 
         for key, tf in (("primary", tf_primary), ("confirm", tf_confirm), ("filter", tf_filter)):
             trend_history[key].append(calculate_trend_score(tf))
