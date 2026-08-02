@@ -102,6 +102,8 @@ def main():
     asymmetric_free_ride = os.environ.get("BT_ASYMMETRIC_FREE_RIDE", "").strip().lower() in ("1", "true", "yes")
     stage1_close_fraction = float(os.environ.get("BT_STAGE1_CLOSE_FRACTION", "0.65"))
     trailing_atr_multiplier = float(os.environ.get("BT_TRAILING_ATR_MULTIPLIER", "1.5"))
+    use_adverse_drift = os.environ.get("BT_USE_ADVERSE_DRIFT", "").strip().lower() in ("1", "true", "yes")
+    drift_net_threshold = float(os.environ.get("BT_DRIFT_NET_THRESHOLD", "10"))
 
     print(f"Backtest window: {start_date} to {end_date} ({days} days)")
     print(f"Coins: {coins}")
@@ -115,6 +117,7 @@ def main():
     print(f"Timeframe combination: primary {primary_minutes}m / confirm {confirm_minutes}m / filter {filter_minutes}m (live default: 5m/15m/60m)")
     print(f"Full close at stage-1 R: {full_close_at_1r}")
     print(f"Asymmetric free-ride: {asymmetric_free_ride} (stage1 close fraction {stage1_close_fraction}, trailing ATR x{trailing_atr_multiplier})")
+    print(f"Adverse drift detector (Aug 2 fix): {use_adverse_drift} (net threshold {drift_net_threshold})")
 
     os.makedirs("results", exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -132,6 +135,8 @@ def main():
         variant_tag += f"_rev{reversal_threshold:.0f}"
     if raw_reversal_threshold is not None:
         variant_tag += f"_rawrev{raw_reversal_threshold:.0f}"
+    if use_adverse_drift:
+        variant_tag += f"_adversedrift{drift_net_threshold:.0f}"
     if skip_filter_timeframe:
         variant_tag += "_2tf"
     if (primary_minutes, confirm_minutes, filter_minutes) != (5, 15, 60):
@@ -171,6 +176,7 @@ def main():
                     skip_filter_timeframe=skip_filter_timeframe,
                     confirm_minutes=confirm_minutes, filter_minutes=filter_minutes,
                     primary_minutes=primary_minutes,
+                    use_adverse_drift=use_adverse_drift, drift_net_threshold=drift_net_threshold,
                 )
             except Exception as e:
                 print(f"    FAILED: {e}")
@@ -186,6 +192,7 @@ def main():
             trades = apply_fees_and_interest(trades, bar_minutes=primary_minutes)
             trades = apply_dollar_pnl(trades)  # standing $500/5%-fixed convention, see fee_model.py
             trades["coin"] = coin  # already has 'strategy' from the engine itself
+            trades["use_adverse_drift"] = use_adverse_drift
             all_trades.append(trades)
 
             summary = summarize_results(trades)
@@ -204,6 +211,8 @@ def main():
                    "stage1_close_fraction": stage1_close_fraction if asymmetric_free_ride else "",
                    "trailing_atr_multiplier": trailing_atr_multiplier if asymmetric_free_ride else "",
                    "reversal_exit_threshold": reversal_threshold,
+                   "use_adverse_drift": use_adverse_drift,
+                   "drift_net_threshold": drift_net_threshold if use_adverse_drift else "",
                    # Bug 7 fix: previously only present in the filename tag,
                    # not as real columns - meaning concatenating multiple
                    # results CSVs together (which is how every sweep in

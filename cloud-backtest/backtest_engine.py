@@ -63,7 +63,8 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                   reversal_exit_threshold=70, raw_reversal_threshold=None,
                   skip_filter_timeframe=False, confirm_minutes=15, filter_minutes=60,
                   primary_minutes=5, asymmetric_free_ride=False,
-                  stage1_close_fraction=0.65, trailing_atr_multiplier=1.5):
+                  stage1_close_fraction=0.65, trailing_atr_multiplier=1.5,
+                  use_adverse_drift=False, drift_net_threshold=10):
     """
     strategy: one of "ultra-short"/"aggressive"/"balanced"/"conservative"/
     "swing-trend". Resolves that preset's real min_score, ATR stop
@@ -226,7 +227,8 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
             pos = open_position
             direction = pos["direction"]
 
-            reversal = calculate_reversal_score(tf_primary, tf_confirm, tf_filter, direction, trend_history)
+            reversal = calculate_reversal_score(tf_primary, tf_confirm, tf_filter, direction, trend_history,
+                                                 use_adverse_drift=use_adverse_drift, drift_net_threshold=drift_net_threshold)
             hit_stop = current_price <= pos["stop"] if direction == "long" else current_price >= pos["stop"]
 
             # Raw-continuous check: uses the underlying primary trend

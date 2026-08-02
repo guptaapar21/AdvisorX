@@ -155,10 +155,54 @@ def detect_trend_weakening(current_score, score_history):
             "weakening_severity": weakening_severity}
 
 
-def calculate_reversal_score(tf_primary, tf_confirm, tf_filter, position_direction, history):
+def detect_adverse_drift(current_score, score_history, target_sign, net_threshold=10):
+    """Faithful port of the JS fix (marketStateAnalyzer.js, added Aug 2 after
+    the ETH/DOGE reversal-blind-spot incident). detect_trend_weakening above
+    only fires on a single-step MAGNITUDE DROP - it's direction-blind, so a
+    score climbing steadily toward the adverse side (14 -> 20 -> 22 -> 27,
+    each step real, none of them a "drop") never registers. This looks at
+    the last few cycles instead and asks a direction-based question: has the
+    score moved toward the target (adverse) side on nearly every recent
+    step, covering real cumulative distance - regardless of whether any
+    single step was a big enough drop to trip the old check.
+
+    net_threshold=10 was tuned against the real ETH short that triggered
+    this fix (primary score 14/20/22/27, net +13 over 3 cycles) - NOT
+    independently validated against 2 years of history yet. Treat this
+    default as a hypothesis to backtest, not a settled number - see
+    compare_adverse_drift.py.
+    """
+    sequence = list(score_history) + [current_score]
+    if len(sequence) < 3:
+        return {"is_drifting": False, "net_movement": 0, "adverse_steps": 0, "total_steps": 0}
+
+    window = sequence[-4:]
+    steps = [window[i] - window[i - 1] for i in range(1, len(window))]
+    adverse_steps = sum(1 for s in steps if np.sign(s) == target_sign)
+    net_movement = (window[-1] - window[0]) * target_sign
+
+    is_drifting = (
+        len(steps) >= 2
+        and adverse_steps >= len(steps) - 1
+        and net_movement >= net_threshold
+        and np.sign(current_score) == target_sign
+    )
+    return {"is_drifting": bool(is_drifting), "net_movement": round(net_movement),
+            "adverse_steps": adverse_steps, "total_steps": len(steps)}
+
+
+def calculate_reversal_score(tf_primary, tf_confirm, tf_filter, position_direction, history,
+                              use_adverse_drift=False, drift_net_threshold=10):
     """Weighted 40/25/15 across primary/confirm/filter timeframes (the
     trend-weakening portion of the source's reversal score - MACD/RSI
-    divergence NOT included, see module docstring)."""
+    divergence NOT included, see module docstring).
+
+    use_adverse_drift: NEW, default False so every existing sweep/backtest
+    call reproduces its old results unchanged unless explicitly opted in.
+    When True, adds the drift branch (see detect_adverse_drift) to each
+    timeframe's scoring ladder - this is the thing compare_adverse_drift.py
+    is for: run the SAME data with this False vs True and compare.
+    """
     score = 0
     details = []
     reversed_frames = []
@@ -169,6 +213,7 @@ def calculate_reversal_score(tf_primary, tf_confirm, tf_filter, position_directi
     score_filter = calculate_trend_score(tf_filter)
 
     primary_change = detect_trend_weakening(score_primary, history.get("primary", []))
+    primary_drift = detect_adverse_drift(score_primary, history.get("primary", []), target_sign, drift_net_threshold) if use_adverse_drift else None
     if np.sign(score_primary) == target_sign and abs(score_primary) > 30:
         score += 40
         details.append(f"primary strongly reversed ({score_primary})")
@@ -176,22 +221,36 @@ def calculate_reversal_score(tf_primary, tf_confirm, tf_filter, position_directi
     elif primary_change["is_weakening"] and primary_change["weakening_severity"] > 40:
         score += 20
         details.append(f"primary weakening ({primary_change['weakening_severity']}%)")
+    elif use_adverse_drift and primary_drift["is_drifting"]:
+        score += 18
+        details.append(f"primary drifting adverse (net {primary_drift['net_movement']})")
+        reversed_frames.append("primary_drift")
     elif abs(score_primary) < 20:
         score += 12
 
     confirm_change = detect_trend_weakening(score_confirm, history.get("confirm", []))
+    confirm_drift = detect_adverse_drift(score_confirm, history.get("confirm", []), target_sign, drift_net_threshold) if use_adverse_drift else None
     if np.sign(score_confirm) == target_sign and abs(score_confirm) > 30:
         score += 25
         details.append(f"confirm strongly reversed ({score_confirm})")
         reversed_frames.append("confirm")
     elif confirm_change["is_weakening"] and confirm_change["weakening_severity"] > 40:
         score += 12
+    elif use_adverse_drift and confirm_drift["is_drifting"]:
+        score += 11
+        details.append(f"confirm drifting adverse (net {confirm_drift['net_movement']})")
+        reversed_frames.append("confirm_drift")
 
     filter_change = detect_trend_weakening(score_filter, history.get("filter", []))
+    filter_drift = detect_adverse_drift(score_filter, history.get("filter", []), target_sign, drift_net_threshold) if use_adverse_drift else None
     if np.sign(score_filter) == target_sign and abs(score_filter) > 30:
         score += 15
         details.append(f"filter reversed ({score_filter})")
         reversed_frames.append("filter")
+    elif use_adverse_drift and filter_drift["is_drifting"]:
+        score += 7
+        details.append(f"filter drifting adverse (net {filter_drift['net_movement']})")
+        reversed_frames.append("filter_drift")
 
     return {
         "reversal_score": score,
