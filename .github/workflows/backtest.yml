@@ -75,18 +75,10 @@ on:
         description: "Idea #2: keep reversal_threshold=70 for fresh trades, but drop it to dynamic_threshold_tightened once a trade is BOTH older than dynamic_threshold_after_minutes AND already at/below dynamic_threshold_drawdown_r. Default OFF only - set to '[false, true]' via the Actions UI to actually test this one feature in isolation (crossing all 5 new toggles at once by default would explode job count and conflate results)."
         required: false
         default: '[false]'
-      dynamic_threshold_after_minutes:
-        description: "Idea #2 param: minutes a trade must be open before the tightened threshold can apply."
+      dynamic_threshold_params:
+        description: "Idea #2 tuning params, merged into one JSON object to stay under GitHub's 25-input cap for workflow_dispatch (was 3 separate inputs). Keys: after_minutes (trade age before gate can apply), drawdown_r (current R must be at/below this, negative), tightened (the tightened reversal_score threshold once both conditions hold)."
         required: false
-        default: "45"
-      dynamic_threshold_drawdown_r:
-        description: "Idea #2 param: current R must be at or below this (negative) before the tightened threshold can apply."
-        required: false
-        default: "-0.4"
-      dynamic_threshold_tightened:
-        description: "Idea #2 param: the tightened reversal_score exit threshold once both gate conditions are met."
-        required: false
-        default: "35"
+        default: '{"after_minutes": 45, "drawdown_r": -0.4, "tightened": 35}'
       drift_stop_tighten_modes:
         description: "Idea #3: when an adverse-drift branch fires, compress the stop toward drift_stop_tighten_atr_multiplier x ATR instead of contributing only to the exit score. Only takes effect when adverse_drift_modes includes true for that job. Default OFF only - set to '[false, true]' via the Actions UI to test this feature in isolation."
         required: false
@@ -289,9 +281,9 @@ jobs:
           BT_DRIFT_STOP_TIGHTEN_ENABLED: ${{ matrix.drift_stop_tighten }}
           BT_DRIFT_STOP_TIGHTEN_ATR_MULTIPLIER: ${{ inputs.drift_stop_tighten_atr_multiplier }}
           BT_DYNAMIC_THRESHOLD_ENABLED: ${{ matrix.dynamic_threshold }}
-          BT_DYNAMIC_THRESHOLD_AFTER_MINUTES: ${{ inputs.dynamic_threshold_after_minutes }}
-          BT_DYNAMIC_THRESHOLD_DRAWDOWN_R: ${{ inputs.dynamic_threshold_drawdown_r }}
-          BT_DYNAMIC_THRESHOLD_TIGHTENED: ${{ inputs.dynamic_threshold_tightened }}
+          BT_DYNAMIC_THRESHOLD_AFTER_MINUTES: ${{ fromJson(inputs.dynamic_threshold_params).after_minutes }}
+          BT_DYNAMIC_THRESHOLD_DRAWDOWN_R: ${{ fromJson(inputs.dynamic_threshold_params).drawdown_r }}
+          BT_DYNAMIC_THRESHOLD_TIGHTENED: ${{ fromJson(inputs.dynamic_threshold_params).tightened }}
           BT_OBV_CONFIRMATION_BONUS: ${{ matrix.obv_bonus }}
           BT_SOFT_EXIT_ENABLED: ${{ matrix.soft_exit }}
           BT_SOFT_EXIT_TRIM_THRESHOLD: ${{ inputs.soft_exit_trim_threshold }}
