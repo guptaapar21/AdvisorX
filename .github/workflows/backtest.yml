@@ -40,9 +40,9 @@ on:
         required: false
         default: "1.5"
       reversal_threshold:
-        description: "Reversal score that triggers an exit. Default swept to [30,40,50,70] for the adverse-drift test: drift adds at most +36 to the score (18+11+7 across 3 timeframes) - at threshold=70 that swing can never cross the gate, which is why the first drift test showed zero difference. Lower thresholds let the added points actually flip an exit decision."
+        description: "Reversal score that triggers an exit. Investigation closed: 70 is the best-performing setting found (confirmed live default) and lowering it (tested down to 30) is a net negative on every coin. Reset to [70] only - re-add lower values here explicitly if you want to re-open that question."
         required: false
-        default: '[30, 40, 50, 70]'
+        default: '[70]'
       raw_reversal_threshold:
         description: "Already tested and settled - the bucketed reversal check won every comparison against the raw continuous version. Disabled for this run, not re-testing."
         required: false
@@ -71,6 +71,46 @@ on:
         description: "Only matters when adverse_drift_modes includes true. Tuned against exactly one real trade (the ETH short that motivated this fix) - treat 10 as a hypothesis, not settled. List multiple values to sweep sensitivity in the same run, e.g. '[8, 10, 15]'."
         required: false
         default: '[10]'
+      dynamic_threshold_modes:
+        description: "Idea #2: keep reversal_threshold=70 for fresh trades, but drop it to dynamic_threshold_tightened once a trade is BOTH older than dynamic_threshold_after_minutes AND already at/below dynamic_threshold_drawdown_r. Default OFF only - set to '[false, true]' via the Actions UI to actually test this one feature in isolation (crossing all 5 new toggles at once by default would explode job count and conflate results)."
+        required: false
+        default: '[false]'
+      dynamic_threshold_after_minutes:
+        description: "Idea #2 param: minutes a trade must be open before the tightened threshold can apply."
+        required: false
+        default: "45"
+      dynamic_threshold_drawdown_r:
+        description: "Idea #2 param: current R must be at or below this (negative) before the tightened threshold can apply."
+        required: false
+        default: "-0.4"
+      dynamic_threshold_tightened:
+        description: "Idea #2 param: the tightened reversal_score exit threshold once both gate conditions are met."
+        required: false
+        default: "35"
+      drift_stop_tighten_modes:
+        description: "Idea #3: when an adverse-drift branch fires, compress the stop toward drift_stop_tighten_atr_multiplier x ATR instead of contributing only to the exit score. Only takes effect when adverse_drift_modes includes true for that job. Default OFF only - set to '[false, true]' via the Actions UI to test this feature in isolation."
+        required: false
+        default: '[false]'
+      drift_stop_tighten_atr_multiplier:
+        description: "Idea #3 param: ATR multiplier for the compressed stop (default preset uses 2.5x normally - this tightens it)."
+        required: false
+        default: "1.2"
+      obv_confirmation_bonus:
+        description: "Idea #4: extra reversal-score points added when OBV (NOT real CVD - CoinDCX's public candles have no taker buy/sell split, see indicators.py) confirms the adverse price move. 0 = disabled (default, matches current live behavior). List multiple values to sweep, e.g. '[0, 8, 15]'."
+        required: false
+        default: '[0]'
+      soft_exit_modes:
+        description: "Idea #5: mechanical TRIM/TIGHTEN/FREEZE proxy - a RULE-BASED stand-in for what Gemini might decide, not a simulation of the LLM itself. Default OFF only - set to '[false, true]' via the Actions UI to test this feature in isolation."
+        required: false
+        default: '[false]'
+      soft_exit_trim_threshold:
+        description: "Idea #5 param: reversal_score at which 50% (soft_exit_trim_fraction) of the position is realized early."
+        required: false
+        default: "45"
+      soft_exit_tighten_threshold:
+        description: "Idea #5 param: reversal_score at which the stop is tightened to soft_exit_tighten_atr_multiplier x ATR."
+        required: false
+        default: "35"
 
 jobs:
   # Builds the full cross-product (coin x strategy x min_score x atr x
@@ -106,6 +146,10 @@ jobs:
           IN_MAX_HOLD_HOURS: ${{ inputs.max_hold_hours }}
           IN_ADVERSE_DRIFT_MODES: ${{ inputs.adverse_drift_modes }}
           IN_DRIFT_NET_THRESHOLD: ${{ inputs.drift_net_threshold }}
+          IN_DYNAMIC_THRESHOLD_MODES: ${{ inputs.dynamic_threshold_modes }}
+          IN_DRIFT_STOP_TIGHTEN_MODES: ${{ inputs.drift_stop_tighten_modes }}
+          IN_OBV_CONFIRMATION_BONUS: ${{ inputs.obv_confirmation_bonus }}
+          IN_SOFT_EXIT_MODES: ${{ inputs.soft_exit_modes }}
         run: |
           cat > /tmp/generate_matrix.py << 'PYEOF'
           import json, os
@@ -126,6 +170,10 @@ jobs:
           coin_configs = json.loads(os.environ["IN_COIN_CONFIGS"])
           adverse_drift_modes = json.loads(os.environ["IN_ADVERSE_DRIFT_MODES"])
           drift_net_thresholds = json.loads(os.environ["IN_DRIFT_NET_THRESHOLD"])
+          dynamic_threshold_modes = json.loads(os.environ["IN_DYNAMIC_THRESHOLD_MODES"])
+          drift_stop_tighten_modes = json.loads(os.environ["IN_DRIFT_STOP_TIGHTEN_MODES"])
+          obv_confirmation_bonuses = json.loads(os.environ["IN_OBV_CONFIRMATION_BONUS"])
+          soft_exit_modes = json.loads(os.environ["IN_SOFT_EXIT_MODES"])
 
           # If coin_configs is provided, use it as PAIRED (coin, min_score,
           # max_hold_hours) triples - e.g. SOL only at 80/18h, DOGE only at
@@ -151,29 +199,36 @@ jobs:
                                       for skip_filter in skip_filter_modes:
                                           for tf in timeframe_combos:
                                               for drift_mode in adverse_drift_modes:
-                                                  # Threshold only matters when drift_mode is True - a
-                                                  # False run behaves identically no matter which
-                                                  # threshold is listed, so don't spend extra matrix
-                                                  # jobs re-running an identical "before" case once per
-                                                  # threshold value. One False run total per otherwise-
-                                                  # identical combo; True gets one run per threshold.
                                                   thresholds_to_use = drift_net_thresholds if drift_mode else [drift_net_thresholds[0]]
                                                   for drift_threshold in thresholds_to_use:
-                                                      combos.append({
-                                                          "coin": coin, "strategy": strategy,
-                                                          "min_score": str(min_score),
-                                                          "atr": str(atr), "full_close": str(full_close).lower(),
-                                                          "asym_free_ride": str(asym_mode).lower(),
-                                                          "stage1_frac": stage1_close_fraction,
-                                                          "trail_atr": trailing_atr_multiplier,
-                                                          "reversal": str(reversal),
-                                                          "raw_reversal": "" if raw_reversal is None else str(raw_reversal),
-                                                          "skip_filter": str(skip_filter).lower(),
-                                                          "primary_min": str(tf[0]), "confirm_min": str(tf[1]), "filter_min": str(tf[2]),
-                                                          "max_hold_hours": str(max_hold),
-                                                          "adverse_drift": str(drift_mode).lower(),
-                                                          "drift_threshold": str(drift_threshold),
-                                                      })
+                                                      # Idea #3 only means anything when adverse_drift is
+                                                      # actually on for this job - same dedup logic as
+                                                      # drift_net_threshold above (don't multiply an
+                                                      # irrelevant toggle against a False drift_mode).
+                                                      tighten_modes_to_use = drift_stop_tighten_modes if drift_mode else [False]
+                                                      for tighten_mode in tighten_modes_to_use:
+                                                          for dyn_mode in dynamic_threshold_modes:
+                                                              for obv_bonus in obv_confirmation_bonuses:
+                                                                  for soft_mode in soft_exit_modes:
+                                                                      combos.append({
+                                                                          "coin": coin, "strategy": strategy,
+                                                                          "min_score": str(min_score),
+                                                                          "atr": str(atr), "full_close": str(full_close).lower(),
+                                                                          "asym_free_ride": str(asym_mode).lower(),
+                                                                          "stage1_frac": stage1_close_fraction,
+                                                                          "trail_atr": trailing_atr_multiplier,
+                                                                          "reversal": str(reversal),
+                                                                          "raw_reversal": "" if raw_reversal is None else str(raw_reversal),
+                                                                          "skip_filter": str(skip_filter).lower(),
+                                                                          "primary_min": str(tf[0]), "confirm_min": str(tf[1]), "filter_min": str(tf[2]),
+                                                                          "max_hold_hours": str(max_hold),
+                                                                          "adverse_drift": str(drift_mode).lower(),
+                                                                          "drift_threshold": str(drift_threshold),
+                                                                          "drift_stop_tighten": str(tighten_mode).lower(),
+                                                                          "dynamic_threshold": str(dyn_mode).lower(),
+                                                                          "obv_bonus": str(obv_bonus),
+                                                                          "soft_exit": str(soft_mode).lower(),
+                                                                      })
 
           matrix = {"include": combos}
           print(f"Generated {len(combos)} combinations")
@@ -210,7 +265,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
 
-      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / score ${{ matrix.min_score }} / ATR ${{ matrix.atr }} / full_close=${{ matrix.full_close }} / asym_free_ride=${{ matrix.asym_free_ride }} / reversal=${{ matrix.reversal }} / raw_reversal=${{ matrix.raw_reversal }} / skip_filter=${{ matrix.skip_filter }} / tf=${{ matrix.primary_min }}-${{ matrix.confirm_min }}-${{ matrix.filter_min }} / hold=${{ matrix.max_hold_hours }}h / drift=${{ matrix.adverse_drift }}-${{ matrix.drift_threshold }})
+      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / score ${{ matrix.min_score }} / hold=${{ matrix.max_hold_hours }}h / drift=${{ matrix.adverse_drift }}-${{ matrix.drift_threshold }} / dtighten=${{ matrix.drift_stop_tighten }} / dynthresh=${{ matrix.dynamic_threshold }} / obv=${{ matrix.obv_bonus }} / softexit=${{ matrix.soft_exit }})
         working-directory: cloud-backtest
         env:
           BT_COINS: ${{ matrix.coin }}
@@ -231,6 +286,16 @@ jobs:
           BT_TRAILING_ATR_MULTIPLIER: ${{ matrix.trail_atr }}
           BT_USE_ADVERSE_DRIFT: ${{ matrix.adverse_drift }}
           BT_DRIFT_NET_THRESHOLD: ${{ matrix.drift_threshold }}
+          BT_DRIFT_STOP_TIGHTEN_ENABLED: ${{ matrix.drift_stop_tighten }}
+          BT_DRIFT_STOP_TIGHTEN_ATR_MULTIPLIER: ${{ inputs.drift_stop_tighten_atr_multiplier }}
+          BT_DYNAMIC_THRESHOLD_ENABLED: ${{ matrix.dynamic_threshold }}
+          BT_DYNAMIC_THRESHOLD_AFTER_MINUTES: ${{ inputs.dynamic_threshold_after_minutes }}
+          BT_DYNAMIC_THRESHOLD_DRAWDOWN_R: ${{ inputs.dynamic_threshold_drawdown_r }}
+          BT_DYNAMIC_THRESHOLD_TIGHTENED: ${{ inputs.dynamic_threshold_tightened }}
+          BT_OBV_CONFIRMATION_BONUS: ${{ matrix.obv_bonus }}
+          BT_SOFT_EXIT_ENABLED: ${{ matrix.soft_exit }}
+          BT_SOFT_EXIT_TRIM_THRESHOLD: ${{ inputs.soft_exit_trim_threshold }}
+          BT_SOFT_EXIT_TIGHTEN_THRESHOLD: ${{ inputs.soft_exit_tighten_threshold }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python main.py
@@ -242,7 +307,7 @@ jobs:
           git config user.email "actions@github.com"
           git add results/
           git diff --staged --quiet && exit 0
-          git commit -m "Add backtest results: ${{ matrix.coin }}/${{ matrix.strategy }} score${{ matrix.min_score }} ATR${{ matrix.atr }} fullclose=${{ matrix.full_close }} drift=${{ matrix.adverse_drift }}-${{ matrix.drift_threshold }} [skip ci]"
+          git commit -m "Add backtest results: ${{ matrix.coin }}/${{ matrix.strategy }} score${{ matrix.min_score }} drift=${{ matrix.adverse_drift }}-${{ matrix.drift_threshold }} dtighten=${{ matrix.drift_stop_tighten }} dynthresh=${{ matrix.dynamic_threshold }} obv=${{ matrix.obv_bonus }} softexit=${{ matrix.soft_exit }} [skip ci]"
           for i in 1 2 3 4 5; do
             if git push; then
               exit 0
@@ -255,7 +320,7 @@ jobs:
             git fetch origin main
             git reset --soft origin/main
             git add results/
-            git commit -m "Add backtest results: ${{ matrix.coin }}/${{ matrix.strategy }} score${{ matrix.min_score }} ATR${{ matrix.atr }} fullclose=${{ matrix.full_close }} drift=${{ matrix.adverse_drift }}-${{ matrix.drift_threshold }} [skip ci]" --allow-empty
+            git commit -m "Add backtest results: ${{ matrix.coin }}/${{ matrix.strategy }} score${{ matrix.min_score }} drift=${{ matrix.adverse_drift }}-${{ matrix.drift_threshold }} dtighten=${{ matrix.drift_stop_tighten }} dynthresh=${{ matrix.dynamic_threshold }} obv=${{ matrix.obv_bonus }} softexit=${{ matrix.soft_exit }} [skip ci]" --allow-empty
           done
           echo "Failed to push results after 5 attempts."
           exit 1
@@ -263,6 +328,6 @@ jobs:
       - name: Upload results as workflow artifact too
         uses: actions/upload-artifact@v4
         with:
-          name: backtest-results-${{ matrix.coin }}-${{ matrix.strategy }}-score${{ matrix.min_score }}-atr${{ matrix.atr }}-fc${{ matrix.full_close }}-drift${{ matrix.adverse_drift }}-${{ matrix.drift_threshold }}
+          name: backtest-results-${{ matrix.coin }}-${{ matrix.strategy }}-score${{ matrix.min_score }}-drift${{ matrix.adverse_drift }}-${{ matrix.drift_threshold }}-dtighten${{ matrix.drift_stop_tighten }}-dyn${{ matrix.dynamic_threshold }}-obv${{ matrix.obv_bonus }}-soft${{ matrix.soft_exit }}
           path: cloud-backtest/results/
           retention-days: 90
