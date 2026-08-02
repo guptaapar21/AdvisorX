@@ -1,0 +1,71 @@
+name: Idea 5 - Soft Exit Proxy
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Lookback window in days"
+        required: false
+        default: "365"
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # off (baseline) / on, for each real coin setting. Soft-exit here
+          # is a MECHANICAL RULE proxy (fixed score thresholds trigger
+          # trim/tighten/freeze) - NOT a simulation of Gemini's actual live
+          # judgment, which this backtest engine cannot reproduce.
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, soft_exit: "false" }
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, soft_exit: "true" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, soft_exit: "false" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, soft_exit: "true" }
+          - { coin: "ETH", min_score: 81, max_hold_hours: 60, soft_exit: "false" }
+          - { coin: "ETH", min_score: 81, max_hold_hours: 60, soft_exit: "true" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+      - name: Run backtest (${{ matrix.coin }} / soft_exit=${{ matrix.soft_exit }})
+        working-directory: cloud-backtest
+        env:
+          BT_COINS: ${{ matrix.coin }}
+          BT_STRATEGIES: conservative
+          BT_DAYS: ${{ inputs.days }}
+          BT_MIN_SCORE_OVERRIDE: ${{ matrix.min_score }}
+          BT_MAX_HOLD_HOURS: ${{ matrix.max_hold_hours }}
+          BT_ATR_OVERRIDE: "2.5"
+          BT_SOFT_EXIT_ENABLED: ${{ matrix.soft_exit }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py
+      - name: Commit results
+        working-directory: cloud-backtest
+        run: |
+          git config user.name "coindcx-backtest-bot"
+          git config user.email "actions@github.com"
+          git add results/
+          git diff --staged --quiet && exit 0
+          git commit -m "Idea 5 soft exit: ${{ matrix.coin }} soft=${{ matrix.soft_exit }} [skip ci]"
+          for i in 1 2 3 4 5; do
+            if git push; then exit 0; fi
+            if git pull --rebase; then continue; fi
+            git rebase --abort
+            git fetch origin main
+            git reset --soft origin/main
+            git add results/
+            git commit -m "Idea 5 soft exit: ${{ matrix.coin }} soft=${{ matrix.soft_exit }} [skip ci]" --allow-empty
+          done
+          exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: idea5-soft-exit-${{ matrix.coin }}-${{ matrix.soft_exit }}
+          path: cloud-backtest/results/
+          retention-days: 90
