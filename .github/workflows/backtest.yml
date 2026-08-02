@@ -63,6 +63,14 @@ on:
         description: "General-purpose sweep input - IGNORED if coin_configs is non-empty."
         required: false
         default: '[18, 48, 60]'
+      adverse_drift_modes:
+        description: "NEW (Aug 2 fix): the direction-aware multi-cycle drift detector added to calculate_reversal_score, on top of the existing bucketed reversal check. Default runs BOTH false and true as separate matrix jobs, so results/ ends up with a real before/after pair per coin - not a guess, an actual paired comparison over the same 2-year window. false = current live behavior exactly (untouched)."
+        required: false
+        default: '[false, true]'
+      drift_net_threshold:
+        description: "Only matters when adverse_drift_modes includes true. Tuned against exactly one real trade (the ETH short that motivated this fix) - treat 10 as a hypothesis, not settled. List multiple values to sweep sensitivity in the same run, e.g. '[8, 10, 15]'."
+        required: false
+        default: '[10]'
 
 jobs:
   # Builds the full cross-product (coin x strategy x min_score x atr x
@@ -96,6 +104,8 @@ jobs:
           IN_SKIP_FILTER_TIMEFRAME: ${{ inputs.skip_filter_timeframe }}
           IN_TIMEFRAME_COMBOS: ${{ inputs.timeframe_combos }}
           IN_MAX_HOLD_HOURS: ${{ inputs.max_hold_hours }}
+          IN_ADVERSE_DRIFT_MODES: ${{ inputs.adverse_drift_modes }}
+          IN_DRIFT_NET_THRESHOLD: ${{ inputs.drift_net_threshold }}
         run: |
           cat > /tmp/generate_matrix.py << 'PYEOF'
           import json, os
@@ -114,6 +124,8 @@ jobs:
           timeframe_combos = json.loads(os.environ["IN_TIMEFRAME_COMBOS"])
           max_hold_hours_values = json.loads(os.environ["IN_MAX_HOLD_HOURS"])
           coin_configs = json.loads(os.environ["IN_COIN_CONFIGS"])
+          adverse_drift_modes = json.loads(os.environ["IN_ADVERSE_DRIFT_MODES"])
+          drift_net_thresholds = json.loads(os.environ["IN_DRIFT_NET_THRESHOLD"])
 
           # If coin_configs is provided, use it as PAIRED (coin, min_score,
           # max_hold_hours) triples - e.g. SOL only at 80/18h, DOGE only at
@@ -138,19 +150,30 @@ jobs:
                                   for raw_reversal in raw_reversal_thresholds:
                                       for skip_filter in skip_filter_modes:
                                           for tf in timeframe_combos:
-                                              combos.append({
-                                                  "coin": coin, "strategy": strategy,
-                                                  "min_score": str(min_score),
-                                                  "atr": str(atr), "full_close": str(full_close).lower(),
-                                                  "asym_free_ride": str(asym_mode).lower(),
-                                                  "stage1_frac": stage1_close_fraction,
-                                                  "trail_atr": trailing_atr_multiplier,
-                                                  "reversal": str(reversal),
-                                                  "raw_reversal": "" if raw_reversal is None else str(raw_reversal),
-                                                  "skip_filter": str(skip_filter).lower(),
-                                                  "primary_min": str(tf[0]), "confirm_min": str(tf[1]), "filter_min": str(tf[2]),
-                                                  "max_hold_hours": str(max_hold),
-                                              })
+                                              for drift_mode in adverse_drift_modes:
+                                                  # Threshold only matters when drift_mode is True - a
+                                                  # False run behaves identically no matter which
+                                                  # threshold is listed, so don't spend extra matrix
+                                                  # jobs re-running an identical "before" case once per
+                                                  # threshold value. One False run total per otherwise-
+                                                  # identical combo; True gets one run per threshold.
+                                                  thresholds_to_use = drift_net_thresholds if drift_mode else [drift_net_thresholds[0]]
+                                                  for drift_threshold in thresholds_to_use:
+                                                      combos.append({
+                                                          "coin": coin, "strategy": strategy,
+                                                          "min_score": str(min_score),
+                                                          "atr": str(atr), "full_close": str(full_close).lower(),
+                                                          "asym_free_ride": str(asym_mode).lower(),
+                                                          "stage1_frac": stage1_close_fraction,
+                                                          "trail_atr": trailing_atr_multiplier,
+                                                          "reversal": str(reversal),
+                                                          "raw_reversal": "" if raw_reversal is None else str(raw_reversal),
+                                                          "skip_filter": str(skip_filter).lower(),
+                                                          "primary_min": str(tf[0]), "confirm_min": str(tf[1]), "filter_min": str(tf[2]),
+                                                          "max_hold_hours": str(max_hold),
+                                                          "adverse_drift": str(drift_mode).lower(),
+                                                          "drift_threshold": str(drift_threshold),
+                                                      })
 
           matrix = {"include": combos}
           print(f"Generated {len(combos)} combinations")
@@ -187,7 +210,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
 
-      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / score ${{ matrix.min_score }} / ATR ${{ matrix.atr }} / full_close=${{ matrix.full_close }} / asym_free_ride=${{ matrix.asym_free_ride }} / reversal=${{ matrix.reversal }} / raw_reversal=${{ matrix.raw_reversal }} / skip_filter=${{ matrix.skip_filter }} / tf=${{ matrix.primary_min }}-${{ matrix.confirm_min }}-${{ matrix.filter_min }} / hold=${{ matrix.max_hold_hours }}h)
+      - name: Run backtest (${{ matrix.coin }} / ${{ matrix.strategy }} / score ${{ matrix.min_score }} / ATR ${{ matrix.atr }} / full_close=${{ matrix.full_close }} / asym_free_ride=${{ matrix.asym_free_ride }} / reversal=${{ matrix.reversal }} / raw_reversal=${{ matrix.raw_reversal }} / skip_filter=${{ matrix.skip_filter }} / tf=${{ matrix.primary_min }}-${{ matrix.confirm_min }}-${{ matrix.filter_min }} / hold=${{ matrix.max_hold_hours }}h / drift=${{ matrix.adverse_drift }}-${{ matrix.drift_threshold }})
         working-directory: cloud-backtest
         env:
           BT_COINS: ${{ matrix.coin }}
@@ -206,6 +229,8 @@ jobs:
           BT_ASYMMETRIC_FREE_RIDE: ${{ matrix.asym_free_ride }}
           BT_STAGE1_CLOSE_FRACTION: ${{ matrix.stage1_frac }}
           BT_TRAILING_ATR_MULTIPLIER: ${{ matrix.trail_atr }}
+          BT_USE_ADVERSE_DRIFT: ${{ matrix.adverse_drift }}
+          BT_DRIFT_NET_THRESHOLD: ${{ matrix.drift_threshold }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python main.py
@@ -217,7 +242,7 @@ jobs:
           git config user.email "actions@github.com"
           git add results/
           git diff --staged --quiet && exit 0
-          git commit -m "Add backtest results: ${{ matrix.coin }}/${{ matrix.strategy }} score${{ matrix.min_score }} ATR${{ matrix.atr }} fullclose=${{ matrix.full_close }} [skip ci]"
+          git commit -m "Add backtest results: ${{ matrix.coin }}/${{ matrix.strategy }} score${{ matrix.min_score }} ATR${{ matrix.atr }} fullclose=${{ matrix.full_close }} drift=${{ matrix.adverse_drift }}-${{ matrix.drift_threshold }} [skip ci]"
           for i in 1 2 3 4 5; do
             if git push; then
               exit 0
@@ -230,7 +255,7 @@ jobs:
             git fetch origin main
             git reset --soft origin/main
             git add results/
-            git commit -m "Add backtest results: ${{ matrix.coin }}/${{ matrix.strategy }} score${{ matrix.min_score }} ATR${{ matrix.atr }} fullclose=${{ matrix.full_close }} [skip ci]" --allow-empty
+            git commit -m "Add backtest results: ${{ matrix.coin }}/${{ matrix.strategy }} score${{ matrix.min_score }} ATR${{ matrix.atr }} fullclose=${{ matrix.full_close }} drift=${{ matrix.adverse_drift }}-${{ matrix.drift_threshold }} [skip ci]" --allow-empty
           done
           echo "Failed to push results after 5 attempts."
           exit 1
@@ -238,6 +263,6 @@ jobs:
       - name: Upload results as workflow artifact too
         uses: actions/upload-artifact@v4
         with:
-          name: backtest-results-${{ matrix.coin }}-${{ matrix.strategy }}-score${{ matrix.min_score }}-atr${{ matrix.atr }}-fc${{ matrix.full_close }}
+          name: backtest-results-${{ matrix.coin }}-${{ matrix.strategy }}-score${{ matrix.min_score }}-atr${{ matrix.atr }}-fc${{ matrix.full_close }}-drift${{ matrix.adverse_drift }}-${{ matrix.drift_threshold }}
           path: cloud-backtest/results/
           retention-days: 90
