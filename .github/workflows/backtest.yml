@@ -4,17 +4,21 @@ on:
   workflow_dispatch:
     inputs:
       coins:
-        description: 'SOL first, at its own real proven values (score 80, 18h hold) - testing the NEW asymmetric free-ride exit specifically, not re-testing hold time. Run separately for DOGE (score 79, 48h) and ETH (score 81, 60h) using their own real values, since each now has a different proven optimum.'
+        description: 'General-purpose sweep input - crossed with min_scores/max_hold_hours below. IGNORED if coin_configs (below) is non-empty - use coin_configs instead to run all 3 coins at their own correct real settings together in one run.'
         required: false
-        default: '["SOL"]'
+        default: '["SOL","DOGE","ETH"]'
+      coin_configs:
+        description: 'PREFERRED for "run everything at its real settings": JSON array of {"coin","min_score","max_hold_hours"} objects, tested as PAIRS (not crossed with each other) - e.g. SOL only at score 80/18h, DOGE only at 79/48h, ETH only at 81/60h, not all 27 cross-combinations. Leave as [] to fall back to the general coins/min_scores/max_hold_hours sweep instead.'
+        required: false
+        default: '[{"coin":"SOL","min_score":80,"max_hold_hours":18},{"coin":"DOGE","min_score":79,"max_hold_hours":48},{"coin":"ETH","min_score":81,"max_hold_hours":60}]'
       strategies:
         description: 'JSON array of presets to sweep. Locked to conservative only - the proven winner, not re-exploring.'
         required: false
         default: '["conservative"]'
       min_scores:
-        description: 'SOL real proven cutoff (80).'
+        description: 'General-purpose sweep input - IGNORED if coin_configs is non-empty.'
         required: false
-        default: '[80]'
+        default: '[79, 80, 81]'
       atr_values:
         description: "Fixed to conservative's real default (2.5x) - already confirmed the right setting, not re-sweeping it."
         required: false
@@ -56,9 +60,9 @@ on:
         required: false
         default: "365"
       max_hold_hours:
-        description: "Fixed to SOL's own real proven value (18h) - not re-testing hold time here, this run is specifically about the new exit style."
+        description: "General-purpose sweep input - IGNORED if coin_configs is non-empty."
         required: false
-        default: '[18]'
+        default: '[18, 48, 60]'
 
 jobs:
   # Builds the full cross-product (coin x strategy x min_score x atr x
@@ -81,6 +85,7 @@ jobs:
           IN_COINS: ${{ inputs.coins }}
           IN_STRATEGIES: ${{ inputs.strategies }}
           IN_MIN_SCORES: ${{ inputs.min_scores }}
+          IN_COIN_CONFIGS: ${{ inputs.coin_configs }}
           IN_ATR_VALUES: ${{ inputs.atr_values }}
           IN_FULL_CLOSE_MODES: ${{ inputs.full_close_modes }}
           IN_ASYMMETRIC_FREE_RIDE_MODES: ${{ inputs.asymmetric_free_ride_modes }}
@@ -108,32 +113,44 @@ jobs:
           skip_filter_modes = json.loads(os.environ["IN_SKIP_FILTER_TIMEFRAME"])
           timeframe_combos = json.loads(os.environ["IN_TIMEFRAME_COMBOS"])
           max_hold_hours_values = json.loads(os.environ["IN_MAX_HOLD_HOURS"])
+          coin_configs = json.loads(os.environ["IN_COIN_CONFIGS"])
+
+          # If coin_configs is provided, use it as PAIRED (coin, min_score,
+          # max_hold_hours) triples - e.g. SOL only at 80/18h, DOGE only at
+          # 79/48h, ETH only at 81/60h, not the full 3x3x3=27-combination
+          # cross-product the general sweep inputs would otherwise produce.
+          # Falls back to the original crossed sweep when coin_configs is
+          # empty, so existing parameter-exploration runs are unaffected.
+          if coin_configs:
+              coin_score_hold_triples = [(c["coin"], c["min_score"], c["max_hold_hours"]) for c in coin_configs]
+              print(f"Using coin_configs: {len(coin_score_hold_triples)} paired coin/score/hold combination(s), not a cross-product.")
+          else:
+              coin_score_hold_triples = [(coin, min_score, max_hold) for coin in coins for min_score in min_scores for max_hold in max_hold_hours_values]
+              print(f"coin_configs empty - falling back to the general crossed sweep: {len(coins)} coins x {len(min_scores)} scores x {len(max_hold_hours_values)} hold times.")
 
           combos = []
-          for coin in coins:
+          for coin, min_score, max_hold in coin_score_hold_triples:
               for strategy in strategies:
-                  for min_score in min_scores:
-                      for atr in atr_values:
-                          for full_close in full_close_modes:
-                              for asym_mode in asymmetric_free_ride_modes:
-                                  for reversal in reversal_thresholds:
-                                      for raw_reversal in raw_reversal_thresholds:
-                                          for skip_filter in skip_filter_modes:
-                                              for tf in timeframe_combos:
-                                                  for max_hold in max_hold_hours_values:
-                                                      combos.append({
-                                                          "coin": coin, "strategy": strategy,
-                                                          "min_score": str(min_score),
-                                                          "atr": str(atr), "full_close": str(full_close).lower(),
-                                                          "asym_free_ride": str(asym_mode).lower(),
-                                                          "stage1_frac": stage1_close_fraction,
-                                                          "trail_atr": trailing_atr_multiplier,
-                                                          "reversal": str(reversal),
-                                                          "raw_reversal": "" if raw_reversal is None else str(raw_reversal),
-                                                          "skip_filter": str(skip_filter).lower(),
-                                                          "primary_min": str(tf[0]), "confirm_min": str(tf[1]), "filter_min": str(tf[2]),
-                                                          "max_hold_hours": str(max_hold),
-                                                      })
+                  for atr in atr_values:
+                      for full_close in full_close_modes:
+                          for asym_mode in asymmetric_free_ride_modes:
+                              for reversal in reversal_thresholds:
+                                  for raw_reversal in raw_reversal_thresholds:
+                                      for skip_filter in skip_filter_modes:
+                                          for tf in timeframe_combos:
+                                              combos.append({
+                                                  "coin": coin, "strategy": strategy,
+                                                  "min_score": str(min_score),
+                                                  "atr": str(atr), "full_close": str(full_close).lower(),
+                                                  "asym_free_ride": str(asym_mode).lower(),
+                                                  "stage1_frac": stage1_close_fraction,
+                                                  "trail_atr": trailing_atr_multiplier,
+                                                  "reversal": str(reversal),
+                                                  "raw_reversal": "" if raw_reversal is None else str(raw_reversal),
+                                                  "skip_filter": str(skip_filter).lower(),
+                                                  "primary_min": str(tf[0]), "confirm_min": str(tf[1]), "filter_min": str(tf[2]),
+                                                  "max_hold_hours": str(max_hold),
+                                              })
 
           matrix = {"include": combos}
           print(f"Generated {len(combos)} combinations")
