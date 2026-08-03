@@ -1,0 +1,103 @@
+name: Idea 4c - OBV Full Tuning (all coins, multi-dimensional)
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Lookback window in days"
+        required: false
+        default: "365"
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ---- ETH: reproducibility check on the confirmed setting, not a
+          # new sweep (already validated stable across 5 nearby settings) ----
+          - { coin: "ETH", min_score: 81, max_hold_hours: 60, obv_bonus: 8, lookback: 10, slope_threshold: "0.3" }
+          - { coin: "ETH", min_score: 81, max_hold_hours: 60, obv_bonus: 8, lookback: 10, slope_threshold: "0.3" }
+
+          # ---- SOL: full multi-dimensional sweep - bonus size x slope
+          # threshold x lookback TOGETHER, not one axis at a time. SOL was
+          # flat across every single-axis test so far; if there's a real
+          # combination that unlocks it, varying one dimension while
+          # holding the others at a setting that already showed nothing
+          # would never find it. ----
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, obv_bonus: 3, lookback: 5, slope_threshold: "0.15" }
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, obv_bonus: 3, lookback: 5, slope_threshold: "0.3" }
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, obv_bonus: 3, lookback: 10, slope_threshold: "0.15" }
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, obv_bonus: 3, lookback: 10, slope_threshold: "0.3" }
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, obv_bonus: 5, lookback: 5, slope_threshold: "0.15" }
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, obv_bonus: 5, lookback: 5, slope_threshold: "0.3" }
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, obv_bonus: 5, lookback: 10, slope_threshold: "0.15" }
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, obv_bonus: 5, lookback: 10, slope_threshold: "0.3" }
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, obv_bonus: 8, lookback: 5, slope_threshold: "0.15" }
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, obv_bonus: 8, lookback: 5, slope_threshold: "0.3" }
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, obv_bonus: 8, lookback: 10, slope_threshold: "0.15" }
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, obv_bonus: 8, lookback: 10, slope_threshold: "0.3" }
+
+          # ---- DOGE: same multi-dimensional sweep, PLUS a direct repeat of
+          # the one setting that looked promising (bonus=8, lookback=5,
+          # threshold=0.3 -> $373 previously) to check it wasn't a fluke
+          # before trusting it. ----
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, obv_bonus: 8, lookback: 5, slope_threshold: "0.3" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, obv_bonus: 8, lookback: 5, slope_threshold: "0.3" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, obv_bonus: 3, lookback: 5, slope_threshold: "0.15" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, obv_bonus: 3, lookback: 5, slope_threshold: "0.3" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, obv_bonus: 3, lookback: 10, slope_threshold: "0.15" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, obv_bonus: 3, lookback: 10, slope_threshold: "0.3" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, obv_bonus: 5, lookback: 5, slope_threshold: "0.15" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, obv_bonus: 5, lookback: 5, slope_threshold: "0.3" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, obv_bonus: 5, lookback: 10, slope_threshold: "0.15" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, obv_bonus: 5, lookback: 10, slope_threshold: "0.3" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, obv_bonus: 8, lookback: 10, slope_threshold: "0.15" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, obv_bonus: 8, lookback: 10, slope_threshold: "0.3" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+      - name: Run backtest (${{ matrix.coin }} / bonus=${{ matrix.obv_bonus }} / lookback=${{ matrix.lookback }} / slope_threshold=${{ matrix.slope_threshold }})
+        working-directory: cloud-backtest
+        env:
+          BT_COINS: ${{ matrix.coin }}
+          BT_STRATEGIES: conservative
+          BT_DAYS: ${{ inputs.days }}
+          BT_MIN_SCORE_OVERRIDE: ${{ matrix.min_score }}
+          BT_MAX_HOLD_HOURS: ${{ matrix.max_hold_hours }}
+          BT_ATR_OVERRIDE: "2.5"
+          BT_OBV_CONFIRMATION_BONUS: ${{ matrix.obv_bonus }}
+          BT_OBV_LOOKBACK_BARS: ${{ matrix.lookback }}
+          BT_OBV_SLOPE_THRESHOLD: ${{ matrix.slope_threshold }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py
+      - name: Commit results
+        working-directory: cloud-backtest
+        run: |
+          git config user.name "coindcx-backtest-bot"
+          git config user.email "actions@github.com"
+          git add results/
+          git diff --staged --quiet && exit 0
+          git commit -m "Idea 4c OBV full tuning: ${{ matrix.coin }} bonus=${{ matrix.obv_bonus }} lb=${{ matrix.lookback }} st=${{ matrix.slope_threshold }} [skip ci]"
+          for i in 1 2 3 4 5; do
+            if git push; then exit 0; fi
+            if git pull --rebase; then continue; fi
+            git rebase --abort
+            git fetch origin main
+            git reset --soft origin/main
+            git add results/
+            git commit -m "Idea 4c OBV full tuning: ${{ matrix.coin }} bonus=${{ matrix.obv_bonus }} lb=${{ matrix.lookback }} st=${{ matrix.slope_threshold }} [skip ci]" --allow-empty
+          done
+          exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: idea4c-obv-${{ matrix.coin }}-b${{ matrix.obv_bonus }}-lb${{ matrix.lookback }}-st${{ matrix.slope_threshold }}
+          path: cloud-backtest/results/
+          retention-days: 90
