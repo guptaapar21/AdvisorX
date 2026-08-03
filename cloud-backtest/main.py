@@ -130,6 +130,11 @@ def main():
     # --- Idea #8: asymmetric take-profit stage weighting (DOGE hypothesis) ---
     stage_fractions_raw = os.environ.get("BT_STAGE_FRACTIONS", "0.3333,0.3333,0.3334")
     stage_fractions = tuple(float(x) for x in stage_fractions_raw.split(","))
+    # --- Idea #9: BTC lag-confirmation (DOGE hypothesis) ---
+    use_btc_lag_bonus = os.environ.get("BT_USE_BTC_LAG_BONUS", "").strip().lower() in ("1", "true", "yes")
+    btc_lag_bonus = float(os.environ.get("BT_BTC_LAG_BONUS", "0"))
+    btc_lag_bars = int(os.environ.get("BT_BTC_LAG_BARS", "6"))
+    btc_lag_min_score_magnitude = float(os.environ.get("BT_BTC_LAG_MIN_SCORE_MAGNITUDE", "25"))
     # --- Idea #5: mechanical soft-exit proxy (TRIM/TIGHTEN/FREEZE) - NOT real Gemini judgment ---
     soft_exit_enabled = os.environ.get("BT_SOFT_EXIT_ENABLED", "").strip().lower() in ("1", "true", "yes")
     soft_exit_trim_threshold = float(os.environ.get("BT_SOFT_EXIT_TRIM_THRESHOLD", "45"))
@@ -257,6 +262,8 @@ def main():
                     use_volatility_expansion_gate=use_volatility_expansion_gate,
                     min_atr_ratio_for_entry=min_atr_ratio_for_entry,
                     stage_fractions=stage_fractions,
+                    use_btc_lag_bonus=use_btc_lag_bonus, btc_lag_bonus=btc_lag_bonus,
+                    btc_lag_bars=btc_lag_bars, btc_lag_min_score_magnitude=btc_lag_min_score_magnitude,
                     soft_exit_enabled=soft_exit_enabled,
                     soft_exit_trim_threshold=soft_exit_trim_threshold,
                     soft_exit_trim_fraction=soft_exit_trim_fraction,
@@ -374,6 +381,8 @@ def main():
         variant_desc.append(f"volgate(minratio{min_atr_ratio_for_entry})")
     if stage_fractions != (0.3333, 0.3333, 0.3334):
         variant_desc.append(f"stagefrac{stage_fractions_raw}")
+    if use_btc_lag_bonus and btc_lag_bonus:
+        variant_desc.append(f"btclag{btc_lag_bars}bars-bonus{btc_lag_bonus:.0f}(mag{btc_lag_min_score_magnitude:.0f})")
     variant_str = f" [{', '.join(variant_desc)}]" if variant_desc else ""
     lines = [f"📊 *Cloud backtest complete{variant_str}* ({start_date} to {end_date}, {days}d)"]
     if not results_df.empty:

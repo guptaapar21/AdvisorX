@@ -155,6 +155,33 @@ def detect_trend_weakening(current_score, score_history):
             "weakening_severity": weakening_severity}
 
 
+def detect_btc_trend_lag_adverse(btc_candles, position_direction, lag_bars=6, min_score_magnitude=25):
+    """Idea #9 (DOGE hypothesis): tests the specific part of the original
+    BTC-trend theory that idea #6's CONCURRENT version never actually
+    checked. The claim was "DOGE lags behind BTC" - but idea #6 compared
+    BTC's trend RIGHT NOW against the position, which is the wrong timing
+    if DOGE is a genuine laggard: a concurrent check fires at the same
+    moment DOGE itself would already be reacting, adding nothing new.
+    This version instead asks "did BTC already move adverse lag_bars ago,
+    before DOGE caught up" - a real leading signal if the lag theory is
+    correct, and inert/neutral if it isn't (same honest, testable
+    structure as every other idea here - not assumed true).
+
+    Requires at least lag_bars + 55 (MIN_CANDLES_NEEDED) candles in
+    btc_candles to compute a valid lagged trend score; returns
+    btc_lag_adverse=False if there isn't enough history yet."""
+    if len(btc_candles) < lag_bars + 55:
+        return {"btc_lag_adverse": False, "btc_lag_trend_score": 0}
+    lagged_slice = btc_candles.iloc[:len(btc_candles) - lag_bars]
+    btc_tf = build_timeframe_indicators(lagged_slice)
+    btc_score = calculate_trend_score(btc_tf)
+    target_sign = -1 if position_direction == "long" else 1
+    return {
+        "btc_lag_adverse": bool(np.sign(btc_score) == target_sign and abs(btc_score) >= min_score_magnitude),
+        "btc_lag_trend_score": btc_score,
+    }
+
+
 def detect_btc_trend_adverse(btc_candles, position_direction, min_score_magnitude=25):
     """Idea #6: BTC-as-leading-indicator. If you're long an altcoin and BTC
     itself is trending down hard (or vice versa), that's a real leading

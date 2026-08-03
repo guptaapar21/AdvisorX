@@ -23,6 +23,7 @@ from market_state_analyzer import (
     build_timeframe_indicators, determine_trend_strength, determine_momentum_state,
     determine_market_state, calculate_triple_timeframe_consistency, calculate_trend_score,
     calculate_reversal_score, detect_btc_trend_adverse, calculate_stop_loss_with_btc_floor,
+    detect_btc_trend_lag_adverse,
 )
 from strategy_logic import route_strategy
 from scoring_stoploss import (
@@ -81,7 +82,9 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                   # --- Idea #7: volatility expansion entry gate (DOGE hypothesis) ---
                   use_volatility_expansion_gate=False, min_atr_ratio_for_entry=1.0,
                   # --- Idea #8: asymmetric take-profit stage weighting (DOGE hypothesis) ---
-                  stage_fractions=(0.3333, 0.3333, 0.3334)):
+                  stage_fractions=(0.3333, 0.3333, 0.3334),
+                  # --- Idea #9: BTC lag-confirmation (DOGE hypothesis - tests the actual lag claim, not concurrent) ---
+                  use_btc_lag_bonus=False, btc_lag_bonus=0, btc_lag_bars=6, btc_lag_min_score_magnitude=25):
     """
     strategy: one of "ultra-short"/"aggressive"/"balanced"/"conservative"/
     "swing-trend". Resolves that preset's real min_score, ATR stop
@@ -296,6 +299,22 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                     if btc_signal["btc_adverse"]:
                         reversal["reversal_score"] += btc_trend_bonus
                         reversal["details"].append(f"BTC trend confirms adverse move (btc_score={btc_signal['btc_trend_score']})")
+
+            # Idea #9: BTC LAG confirmation bonus (tests the actual "DOGE
+            # lags BTC" claim, not the concurrent version idea #6 already
+            # tested). Needs more history than the primary_slice window
+            # alone provides (lag_bars back from current), so this reads
+            # a longer slice directly from candles_5m rather than reusing
+            # primary_slice's shorter window.
+            if use_btc_lag_bonus and btc_lag_bonus and "btc_close" in candles_5m.columns:
+                lookback_needed = btc_lag_bars + 55
+                btc_lag_window = candles_5m[["btc_open", "btc_high", "btc_low", "btc_close", "btc_volume"]].iloc[max(0, i - lookback_needed):i + 1].rename(
+                    columns={"btc_open": "open", "btc_high": "high", "btc_low": "low", "btc_close": "close", "btc_volume": "volume"}
+                ).dropna()
+                lag_signal = detect_btc_trend_lag_adverse(btc_lag_window, direction, lag_bars=btc_lag_bars, min_score_magnitude=btc_lag_min_score_magnitude)
+                if lag_signal["btc_lag_adverse"]:
+                    reversal["reversal_score"] += btc_lag_bonus
+                    reversal["details"].append(f"BTC lag ({btc_lag_bars} bars back) confirms adverse move (score={lag_signal['btc_lag_trend_score']})")
 
             # Idea #3: ATR stop compression on adverse drift. Fires
             # independently of the reversal_score exit gate below - a
