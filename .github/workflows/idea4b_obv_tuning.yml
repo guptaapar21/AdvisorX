@@ -1,0 +1,78 @@
+name: Idea 4b - OBV Tuning (ETH only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Lookback window in days"
+        required: false
+        default: "365"
+      use_real_cvd:
+        description: "true = use real Binance taker buy/sell data instead of the OBV proxy"
+        required: false
+        default: "false"
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Baseline (matches the 3x-reproduced result: bonus=8, lookback=10, slope_threshold=0.3 default)
+          - { obv_bonus: 8, lookback: 10, slope_threshold: "0.3" }
+          # Vary lookback only, keep everything else at the reproduced setting
+          - { obv_bonus: 8, lookback: 5, slope_threshold: "0.3" }
+          - { obv_bonus: 8, lookback: 20, slope_threshold: "0.3" }
+          # Vary the slope threshold only (this is the constant that was
+          # hardcoded/guessed originally - checking if the ETH result
+          # survives nearby values or only exists at exactly 0.3)
+          - { obv_bonus: 8, lookback: 10, slope_threshold: "0.2" }
+          - { obv_bonus: 8, lookback: 10, slope_threshold: "0.4" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+      - name: Run backtest (ETH / bonus=${{ matrix.obv_bonus }} / lookback=${{ matrix.lookback }} / slope_threshold=${{ matrix.slope_threshold }})
+        working-directory: cloud-backtest
+        env:
+          BT_COINS: "ETH"
+          BT_STRATEGIES: conservative
+          BT_DAYS: ${{ inputs.days }}
+          BT_MIN_SCORE_OVERRIDE: "81"
+          BT_MAX_HOLD_HOURS: "60"
+          BT_ATR_OVERRIDE: "2.5"
+          BT_OBV_CONFIRMATION_BONUS: ${{ matrix.obv_bonus }}
+          BT_OBV_LOOKBACK_BARS: ${{ matrix.lookback }}
+          BT_OBV_SLOPE_THRESHOLD: ${{ matrix.slope_threshold }}
+          BT_USE_REAL_CVD: ${{ inputs.use_real_cvd }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py
+      - name: Commit results
+        working-directory: cloud-backtest
+        run: |
+          git config user.name "coindcx-backtest-bot"
+          git config user.email "actions@github.com"
+          git add results/
+          git diff --staged --quiet && exit 0
+          git commit -m "Idea 4b OBV tuning: ETH lookback=${{ matrix.lookback }} slopethresh=${{ matrix.slope_threshold }} [skip ci]"
+          for i in 1 2 3 4 5; do
+            if git push; then exit 0; fi
+            if git pull --rebase; then continue; fi
+            git rebase --abort
+            git fetch origin main
+            git reset --soft origin/main
+            git add results/
+            git commit -m "Idea 4b OBV tuning: ETH lookback=${{ matrix.lookback }} slopethresh=${{ matrix.slope_threshold }} [skip ci]" --allow-empty
+          done
+          exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: idea4b-obv-tuning-eth-lb${{ matrix.lookback }}-st${{ matrix.slope_threshold }}
+          path: cloud-backtest/results/
+          retention-days: 90
