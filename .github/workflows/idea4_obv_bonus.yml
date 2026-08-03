@@ -7,6 +7,10 @@ on:
         description: "Lookback window in days"
         required: false
         default: "365"
+      use_real_cvd:
+        description: "true = fetch REAL taker buy/sell volume from Binance (see binance_taker_volume_fetcher.py) and use genuine CVD instead of the OBV proxy. UNCONFIRMED whether Binance is reachable from GitHub Actions runners - if blocked (HTTP 451), this falls back to the OBV proxy automatically, check the job log for which one actually ran. false (default) = always uses the OBV proxy, same as before."
+        required: false
+        default: "false"
 
 jobs:
   backtest:
@@ -36,7 +40,7 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
-      - name: Run backtest (${{ matrix.coin }} / obv_bonus=${{ matrix.obv_bonus }})
+      - name: Run backtest (${{ matrix.coin }} / obv_bonus=${{ matrix.obv_bonus }} / real_cvd=${{ inputs.use_real_cvd }})
         working-directory: cloud-backtest
         env:
           BT_COINS: ${{ matrix.coin }}
@@ -46,6 +50,7 @@ jobs:
           BT_MAX_HOLD_HOURS: ${{ matrix.max_hold_hours }}
           BT_ATR_OVERRIDE: "2.5"
           BT_OBV_CONFIRMATION_BONUS: ${{ matrix.obv_bonus }}
+          BT_USE_REAL_CVD: ${{ inputs.use_real_cvd }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python main.py
