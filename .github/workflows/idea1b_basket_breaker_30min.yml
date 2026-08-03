@@ -1,0 +1,61 @@
+name: Idea 1b - Basket Breaker (30min)
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Lookback window in days"
+        required: false
+        default: "365"
+      min_correlated_positions:
+        description: "How many coins must be open in the same direction before the basket rule can trigger"
+        required: false
+        default: "2"
+      basket_negative_minutes:
+        description: "Minutes the combined basket must stay net-negative before the weakest position is force-closed"
+        required: false
+        default: "30"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+      - name: Run Idea 1 (basket circuit breaker) - all 3 coins, single process
+        working-directory: cloud-backtest
+        env:
+          BT_DAYS: ${{ inputs.days }}
+          BT_MIN_CORRELATED_POSITIONS: ${{ inputs.min_correlated_positions }}
+          BT_BASKET_NEGATIVE_MINUTES: ${{ inputs.basket_negative_minutes }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python run_basket_breaker_test.py
+      - name: Commit results
+        working-directory: cloud-backtest
+        run: |
+          git config user.name "coindcx-backtest-bot"
+          git config user.email "actions@github.com"
+          git add results/
+          git diff --staged --quiet && exit 0
+          git commit -m "Idea 1 basket breaker results [skip ci]"
+          for i in 1 2 3 4 5; do
+            if git push; then exit 0; fi
+            if git pull --rebase; then continue; fi
+            git rebase --abort
+            git fetch origin main
+            git reset --soft origin/main
+            git add results/
+            git commit -m "Idea 1 basket breaker results [skip ci]" --allow-empty
+          done
+          exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: idea1b-basket-breaker-30min-results
+          path: cloud-backtest/results/
+          retention-days: 90
