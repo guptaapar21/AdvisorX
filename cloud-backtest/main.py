@@ -118,6 +118,12 @@ def main():
     obv_lookback_bars = int(os.environ.get("BT_OBV_LOOKBACK_BARS", "10"))
     obv_slope_threshold = float(os.environ.get("BT_OBV_SLOPE_THRESHOLD", "0.3"))
     use_real_cvd = os.environ.get("BT_USE_REAL_CVD", "").strip().lower() in ("1", "true", "yes")
+    # --- Idea #6: BTC trend confirmation bonus + BTC stop-loss floor ---
+    use_btc_trend_bonus = os.environ.get("BT_USE_BTC_TREND_BONUS", "").strip().lower() in ("1", "true", "yes")
+    btc_trend_bonus = float(os.environ.get("BT_BTC_TREND_BONUS", "0"))
+    btc_min_score_magnitude = float(os.environ.get("BT_BTC_MIN_SCORE_MAGNITUDE", "25"))
+    use_btc_stop_floor = os.environ.get("BT_USE_BTC_STOP_FLOOR", "").strip().lower() in ("1", "true", "yes")
+    btc_stop_beta = float(os.environ.get("BT_BTC_STOP_BETA", "1.0"))
     # --- Idea #5: mechanical soft-exit proxy (TRIM/TIGHTEN/FREEZE) - NOT real Gemini judgment ---
     soft_exit_enabled = os.environ.get("BT_SOFT_EXIT_ENABLED", "").strip().lower() in ("1", "true", "yes")
     soft_exit_trim_threshold = float(os.environ.get("BT_SOFT_EXIT_TRIM_THRESHOLD", "45"))
@@ -171,6 +177,18 @@ def main():
     all_trades = []
     errors = []
 
+    btc_candles_5m = None
+    if use_btc_trend_bonus or use_btc_stop_floor:
+        print(f"\n=== BTC: fetching 1m data (shared across all coins this run) ===")
+        try:
+            btc_1m = fetch_coindcx_klines("BTC", "1m", str(start_date), str(end_date))
+            btc_candles_5m = resample_candles(btc_1m, primary_minutes)
+            print(f"  BTC: {len(btc_1m)} 1m candles -> {len(btc_candles_5m)} {primary_minutes}m candles")
+        except Exception as e:
+            print(f"  FAILED to fetch BTC: {e} - BTC trend bonus / stop floor will be inert this run "
+                  f"(both checks skip silently when the btc_close column isn't present).")
+            errors.append(f"BTC fetch: {e}")
+
     for coin in coins:
         print(f"\n=== {coin}: fetching 1m data ===")
         t0 = time.time()
@@ -182,6 +200,16 @@ def main():
             continue
         candles_5m = resample_candles(candles_1m, primary_minutes)
         print(f"  {coin}: {len(candles_1m)} 1m candles -> {len(candles_5m)} {primary_minutes}m candles in {time.time()-t0:.0f}s")
+
+        if btc_candles_5m is not None and coin != "BTC":
+            btc_renamed = btc_candles_5m.rename(columns={
+                "open": "btc_open", "high": "btc_high", "low": "btc_low",
+                "close": "btc_close", "volume": "btc_volume",
+            })
+            candles_5m = candles_5m.join(btc_renamed[["btc_open", "btc_high", "btc_low", "btc_close", "btc_volume"]], how="left")
+            n_matched = candles_5m["btc_close"].notna().sum()
+            print(f"  {coin}: BTC data merged - {n_matched}/{len(candles_5m)} bars matched "
+                  f"({'full coverage' if n_matched == len(candles_5m) else 'PARTIAL - gaps between coin and BTC candle timestamps'})")
 
         if use_real_cvd:
             taker_df = fetch_binance_taker_volume(coin, f"{primary_minutes}m", str(start_date), str(end_date))
@@ -217,6 +245,9 @@ def main():
                     drift_stop_tighten_atr_multiplier=drift_stop_tighten_atr_multiplier,
                     obv_confirmation_bonus=obv_confirmation_bonus, obv_lookback_bars=obv_lookback_bars,
                     obv_slope_threshold=obv_slope_threshold,
+                    use_btc_trend_bonus=use_btc_trend_bonus, btc_trend_bonus=btc_trend_bonus,
+                    btc_min_score_magnitude=btc_min_score_magnitude,
+                    use_btc_stop_floor=use_btc_stop_floor, btc_stop_beta=btc_stop_beta,
                     soft_exit_enabled=soft_exit_enabled,
                     soft_exit_trim_threshold=soft_exit_trim_threshold,
                     soft_exit_trim_fraction=soft_exit_trim_fraction,
@@ -326,6 +357,10 @@ def main():
         variant_desc.append(tag + ("+realCVD" if use_real_cvd else ""))
     if soft_exit_enabled:
         variant_desc.append(f"softexit-ON(trim@{soft_exit_trim_threshold:.0f},tighten@{soft_exit_tighten_threshold:.0f})")
+    if use_btc_trend_bonus and btc_trend_bonus:
+        variant_desc.append(f"btc-bonus{btc_trend_bonus:.0f}(mag{btc_min_score_magnitude:.0f})")
+    if use_btc_stop_floor:
+        variant_desc.append(f"btc-stopfloor(beta{btc_stop_beta})")
     variant_str = f" [{', '.join(variant_desc)}]" if variant_desc else ""
     lines = [f"📊 *Cloud backtest complete{variant_str}* ({start_date} to {end_date}, {days}d)"]
     if not results_df.empty:

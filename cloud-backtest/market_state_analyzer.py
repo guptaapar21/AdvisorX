@@ -12,7 +12,7 @@ than the live bot - if this matters for your conclusions, ask and it can be
 added.
 """
 import numpy as np
-from indicators import ema, rsi, macd, macd_histogram_turn, atr_ratio, avg_volume, detect_volume_spike
+from indicators import ema, rsi, macd, macd_histogram_turn, atr_ratio, avg_volume, detect_volume_spike, atr_wilder
 
 OVERSOLD_EXTREME = 20
 OVERSOLD_MILD = 30
@@ -153,6 +153,43 @@ def detect_trend_weakening(current_score, score_history):
     )
     return {"current_score": current_score, "previous_score": previous_score, "is_weakening": is_weakening,
             "weakening_severity": weakening_severity}
+
+
+def detect_btc_trend_adverse(btc_candles, position_direction, min_score_magnitude=25):
+    """Idea #6: BTC-as-leading-indicator. If you're long an altcoin and BTC
+    itself is trending down hard (or vice versa), that's a real leading
+    signal - alts amplify BTC moves, not the other way around. Uses the
+    SAME calculate_trend_score formula already validated for the coin's
+    own timeframes, just computed on BTC's candles instead.
+
+    Returns True if BTC's trend score is at least min_score_magnitude in
+    the direction that would hurt this position (BTC falling hurts a
+    long, BTC rising hurts a short) - same target_sign convention as
+    every other divergence function in this file."""
+    btc_tf = build_timeframe_indicators(btc_candles)
+    btc_score = calculate_trend_score(btc_tf)
+    target_sign = -1 if position_direction == "long" else 1
+    return {
+        "btc_adverse": bool(np.sign(btc_score) == target_sign and abs(btc_score) >= min_score_magnitude),
+        "btc_trend_score": btc_score,
+    }
+
+
+def calculate_stop_loss_with_btc_floor(coin_atr_distance, btc_candles, entry_price, beta=1.0):
+    """Idea #6 (stop-loss variant): blend BTC's own ATR% into the stop
+    distance as a FLOOR - never tightens the coin's own stop, only widens
+    it if BTC's volatility alone implies a bigger expected move than the
+    coin's own recent (possibly quiet) history suggests. Rationale: a
+    coin's own ATR can be misleadingly calm right before a BTC-driven
+    market-wide move blows through it - the coin's own history doesn't
+    know a BTC move is coming. beta=1.0 means "same distance BTC's own
+    ATR% would imply on this coin's price" - not a leverage/correlation
+    coefficient, just a starting default; tune via BT_BTC_STOP_BETA."""
+    btc_atr = atr_wilder(btc_candles, 14)
+    btc_current_price = btc_candles["close"].iloc[-1]
+    btc_atr_pct = (btc_atr / btc_current_price) if btc_current_price != 0 else 0
+    btc_implied_distance = entry_price * btc_atr_pct * beta
+    return max(coin_atr_distance, btc_implied_distance)
 
 
 def detect_adverse_drift(current_score, score_history, target_sign, net_threshold=10):

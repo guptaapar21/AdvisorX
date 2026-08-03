@@ -22,7 +22,7 @@ from indicators import ema, rsi, macd, macd_histogram_turn, atr_ratio, atr_wilde
 from market_state_analyzer import (
     build_timeframe_indicators, determine_trend_strength, determine_momentum_state,
     determine_market_state, calculate_triple_timeframe_consistency, calculate_trend_score,
-    calculate_reversal_score,
+    calculate_reversal_score, detect_btc_trend_adverse, calculate_stop_loss_with_btc_floor,
 )
 from strategy_logic import route_strategy
 from scoring_stoploss import (
@@ -72,6 +72,8 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                   drift_stop_tighten_enabled=False, drift_stop_tighten_atr_multiplier=1.2,
                   # --- Idea #4: OBV/price-divergence confirmation bonus (proxy for CVD, see indicators.py) ---
                   obv_confirmation_bonus=0, obv_lookback_bars=10, obv_slope_threshold=0.3,
+                  use_btc_trend_bonus=False, btc_trend_bonus=0, btc_min_score_magnitude=25,
+                  use_btc_stop_floor=False, btc_stop_beta=1.0,
                   # --- Idea #5: mechanical soft-exit proxy (TRIM/TIGHTEN/FREEZE) - NOT real Gemini judgment ---
                   soft_exit_enabled=False, soft_exit_trim_threshold=45, soft_exit_trim_fraction=0.5,
                   soft_exit_tighten_threshold=35, soft_exit_tighten_atr_multiplier=1.5,
@@ -272,6 +274,22 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                 if signal_fired:
                     reversal["reversal_score"] += obv_confirmation_bonus
                     reversal["details"].append(f"{cvd_source_used} confirms adverse flow (slope_norm {slope_norm})")
+
+            # Idea #6: BTC trend confirmation bonus. Uses BTC's own OHLCV,
+            # merged onto candles_5m as btc_open/btc_high/btc_low/btc_close/
+            # btc_volume columns by main.py (same join pattern already
+            # proven for real CVD) - reconstructs a candles-shaped slice on
+            # the fly here rather than threading a second DataFrame through
+            # every function signature.
+            if use_btc_trend_bonus and btc_trend_bonus and "btc_close" in primary_slice.columns:
+                btc_slice = primary_slice[["btc_open", "btc_high", "btc_low", "btc_close", "btc_volume"]].rename(
+                    columns={"btc_open": "open", "btc_high": "high", "btc_low": "low", "btc_close": "close", "btc_volume": "volume"}
+                ).dropna()
+                if len(btc_slice) >= 55:  # MIN_CANDLES_NEEDED
+                    btc_signal = detect_btc_trend_adverse(btc_slice, direction, min_score_magnitude=btc_min_score_magnitude)
+                    if btc_signal["btc_adverse"]:
+                        reversal["reversal_score"] += btc_trend_bonus
+                        reversal["details"].append(f"BTC trend confirms adverse move (btc_score={btc_signal['btc_trend_score']})")
 
             # Idea #3: ATR stop compression on adverse drift. Fires
             # independently of the reversal_score exit gate below - a
@@ -519,6 +537,27 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                         atr_multiplier=atr_multiplier,
                         min_stop_pct=stop_cfg["min_distance"], max_stop_pct=stop_cfg["max_distance"],
                     )
+                    if can_open and use_btc_stop_floor and "btc_close" in candles_5m.columns:
+                        # NOTE: sourced from candles_5m directly, NOT tf_filter["candles"] -
+                        # resample_candles() (used to build tf_filter) only knows about the
+                        # fixed open/high/low/close/volume columns and silently drops anything
+                        # else, including btc_*. Confirmed via a real before/after test: the
+                        # floor never engaged even with deliberately high BTC volatility until
+                        # this was switched to read from candles_5m instead.
+                        btc_window = candles_5m[["btc_open", "btc_high", "btc_low", "btc_close", "btc_volume"]].iloc[max(0, i - 60):i + 1].rename(
+                            columns={"btc_open": "open", "btc_high": "high", "btc_low": "low", "btc_close": "close", "btc_volume": "volume"}
+                        ).dropna()
+                        if len(btc_window) >= 15:  # atr_wilder needs 14+1
+                            own_distance = abs(current_price - sl_result["stop_price"])
+                            widened_distance = calculate_stop_loss_with_btc_floor(
+                                own_distance, btc_window, current_price, beta=btc_stop_beta
+                            )
+                            if widened_distance > own_distance:
+                                sl_result = dict(sl_result)  # don't mutate the original dict from should_open_position
+                                sl_result["stop_price"] = (current_price - widened_distance if direction == "long"
+                                                            else current_price + widened_distance)
+                                sl_result["stop_distance_pct"] = (widened_distance / current_price) * 100
+                                sl_result["btc_floor_applied"] = True
                     if can_open:
                         stop_distance_pct = abs(current_price - sl_result["stop_price"]) / current_price
                         open_position = {
