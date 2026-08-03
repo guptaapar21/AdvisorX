@@ -1,0 +1,79 @@
+name: Idea 6 - BTC Trend + Stop Floor
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Lookback window in days"
+        required: false
+        default: "365"
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Baseline (neither BTC feature) per coin
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, btc_trend_bonus: 0, btc_stop_floor: "false" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, btc_trend_bonus: 0, btc_stop_floor: "false" }
+          - { coin: "ETH", min_score: 81, max_hold_hours: 60, btc_trend_bonus: 0, btc_stop_floor: "false" }
+          # BTC trend confirmation bonus only
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, btc_trend_bonus: 10, btc_stop_floor: "false" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, btc_trend_bonus: 10, btc_stop_floor: "false" }
+          - { coin: "ETH", min_score: 81, max_hold_hours: 60, btc_trend_bonus: 10, btc_stop_floor: "false" }
+          # BTC stop floor only
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, btc_trend_bonus: 0, btc_stop_floor: "true" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, btc_trend_bonus: 0, btc_stop_floor: "true" }
+          - { coin: "ETH", min_score: 81, max_hold_hours: 60, btc_trend_bonus: 0, btc_stop_floor: "true" }
+          # Both together
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, btc_trend_bonus: 10, btc_stop_floor: "true" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, btc_trend_bonus: 10, btc_stop_floor: "true" }
+          - { coin: "ETH", min_score: 81, max_hold_hours: 60, btc_trend_bonus: 10, btc_stop_floor: "true" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+      - name: Run backtest (${{ matrix.coin }} / btc_trend_bonus=${{ matrix.btc_trend_bonus }} / btc_stop_floor=${{ matrix.btc_stop_floor }})
+        working-directory: cloud-backtest
+        env:
+          BT_COINS: ${{ matrix.coin }}
+          BT_STRATEGIES: conservative
+          BT_DAYS: ${{ inputs.days }}
+          BT_MIN_SCORE_OVERRIDE: ${{ matrix.min_score }}
+          BT_MAX_HOLD_HOURS: ${{ matrix.max_hold_hours }}
+          BT_ATR_OVERRIDE: "2.5"
+          BT_USE_BTC_TREND_BONUS: ${{ matrix.btc_trend_bonus != 0 && 'true' || 'false' }}
+          BT_BTC_TREND_BONUS: ${{ matrix.btc_trend_bonus }}
+          BT_USE_BTC_STOP_FLOOR: ${{ matrix.btc_stop_floor }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py
+      - name: Commit results
+        working-directory: cloud-backtest
+        run: |
+          git config user.name "coindcx-backtest-bot"
+          git config user.email "actions@github.com"
+          git add results/
+          git diff --staged --quiet && exit 0
+          git commit -m "Idea 6 BTC: ${{ matrix.coin }} trendbonus=${{ matrix.btc_trend_bonus }} stopfloor=${{ matrix.btc_stop_floor }} [skip ci]"
+          for i in 1 2 3 4 5; do
+            if git push; then exit 0; fi
+            if git pull --rebase; then continue; fi
+            git rebase --abort
+            git fetch origin main
+            git reset --soft origin/main
+            git add results/
+            git commit -m "Idea 6 BTC: ${{ matrix.coin }} trendbonus=${{ matrix.btc_trend_bonus }} stopfloor=${{ matrix.btc_stop_floor }} [skip ci]" --allow-empty
+          done
+          exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: idea6-btc-${{ matrix.coin }}-tb${{ matrix.btc_trend_bonus }}-sf${{ matrix.btc_stop_floor }}
+          path: cloud-backtest/results/
+          retention-days: 90
