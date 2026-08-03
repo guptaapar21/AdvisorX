@@ -1,4 +1,4 @@
-name: Idea 4b - OBV Tuning (ETH only)
+name: Idea 4b - OBV Tuning (all 3 coins)
 
 on:
   workflow_dispatch:
@@ -20,16 +20,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Baseline (matches the 3x-reproduced result: bonus=8, lookback=10, slope_threshold=0.3 default)
-          - { obv_bonus: 8, lookback: 10, slope_threshold: "0.3" }
-          # Vary lookback only, keep everything else at the reproduced setting
-          - { obv_bonus: 8, lookback: 5, slope_threshold: "0.3" }
-          - { obv_bonus: 8, lookback: 20, slope_threshold: "0.3" }
-          # Vary the slope threshold only (this is the constant that was
-          # hardcoded/guessed originally - checking if the ETH result
-          # survives nearby values or only exists at exactly 0.3)
-          - { obv_bonus: 8, lookback: 10, slope_threshold: "0.2" }
-          - { obv_bonus: 8, lookback: 10, slope_threshold: "0.4" }
+          # ETH - baseline (matches the 3x-reproduced result) + lookback/threshold sweep
+          - { coin: "ETH", min_score: 81, max_hold_hours: 60, obv_bonus: 8, lookback: 10, slope_threshold: "0.3" }
+          - { coin: "ETH", min_score: 81, max_hold_hours: 60, obv_bonus: 8, lookback: 5, slope_threshold: "0.3" }
+          - { coin: "ETH", min_score: 81, max_hold_hours: 60, obv_bonus: 8, lookback: 20, slope_threshold: "0.3" }
+          - { coin: "ETH", min_score: 81, max_hold_hours: 60, obv_bonus: 8, lookback: 10, slope_threshold: "0.2" }
+          - { coin: "ETH", min_score: 81, max_hold_hours: 60, obv_bonus: 8, lookback: 10, slope_threshold: "0.4" }
+          # SOL - same setting that showed zero effect before (slope_threshold was
+          # always 0.3, untested at looser values) + the same sweep
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, obv_bonus: 8, lookback: 10, slope_threshold: "0.3" }
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, obv_bonus: 8, lookback: 5, slope_threshold: "0.3" }
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, obv_bonus: 8, lookback: 20, slope_threshold: "0.3" }
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, obv_bonus: 8, lookback: 10, slope_threshold: "0.2" }
+          - { coin: "SOL", min_score: 80, max_hold_hours: 18, obv_bonus: 8, lookback: 10, slope_threshold: "0.15" }
+          # DOGE - same deal
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, obv_bonus: 8, lookback: 10, slope_threshold: "0.3" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, obv_bonus: 8, lookback: 5, slope_threshold: "0.3" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, obv_bonus: 8, lookback: 20, slope_threshold: "0.3" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, obv_bonus: 8, lookback: 10, slope_threshold: "0.2" }
+          - { coin: "DOGE", min_score: 79, max_hold_hours: 48, obv_bonus: 8, lookback: 10, slope_threshold: "0.15" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -37,14 +46,14 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
-      - name: Run backtest (ETH / bonus=${{ matrix.obv_bonus }} / lookback=${{ matrix.lookback }} / slope_threshold=${{ matrix.slope_threshold }})
+      - name: Run backtest (${{ matrix.coin }} / bonus=${{ matrix.obv_bonus }} / lookback=${{ matrix.lookback }} / slope_threshold=${{ matrix.slope_threshold }})
         working-directory: cloud-backtest
         env:
-          BT_COINS: "ETH"
+          BT_COINS: ${{ matrix.coin }}
           BT_STRATEGIES: conservative
           BT_DAYS: ${{ inputs.days }}
-          BT_MIN_SCORE_OVERRIDE: "81"
-          BT_MAX_HOLD_HOURS: "60"
+          BT_MIN_SCORE_OVERRIDE: ${{ matrix.min_score }}
+          BT_MAX_HOLD_HOURS: ${{ matrix.max_hold_hours }}
           BT_ATR_OVERRIDE: "2.5"
           BT_OBV_CONFIRMATION_BONUS: ${{ matrix.obv_bonus }}
           BT_OBV_LOOKBACK_BARS: ${{ matrix.lookback }}
@@ -60,7 +69,7 @@ jobs:
           git config user.email "actions@github.com"
           git add results/
           git diff --staged --quiet && exit 0
-          git commit -m "Idea 4b OBV tuning: ETH lookback=${{ matrix.lookback }} slopethresh=${{ matrix.slope_threshold }} [skip ci]"
+          git commit -m "Idea 4b OBV tuning: ${{ matrix.coin }} lookback=${{ matrix.lookback }} slopethresh=${{ matrix.slope_threshold }} [skip ci]"
           for i in 1 2 3 4 5; do
             if git push; then exit 0; fi
             if git pull --rebase; then continue; fi
@@ -68,11 +77,11 @@ jobs:
             git fetch origin main
             git reset --soft origin/main
             git add results/
-            git commit -m "Idea 4b OBV tuning: ETH lookback=${{ matrix.lookback }} slopethresh=${{ matrix.slope_threshold }} [skip ci]" --allow-empty
+            git commit -m "Idea 4b OBV tuning: ${{ matrix.coin }} lookback=${{ matrix.lookback }} slopethresh=${{ matrix.slope_threshold }} [skip ci]" --allow-empty
           done
           exit 1
       - uses: actions/upload-artifact@v4
         with:
-          name: idea4b-obv-tuning-eth-lb${{ matrix.lookback }}-st${{ matrix.slope_threshold }}
+          name: idea4b-obv-tuning-${{ matrix.coin }}-lb${{ matrix.lookback }}-st${{ matrix.slope_threshold }}
           path: cloud-backtest/results/
           retention-days: 90
