@@ -189,7 +189,7 @@ def main():
     errors = []
 
     btc_candles_5m = None
-    if use_btc_trend_bonus or use_btc_stop_floor:
+    if use_btc_trend_bonus or use_btc_stop_floor or use_btc_lag_bonus:
         print(f"\n=== BTC: fetching 1m data (shared across all coins this run) ===")
         try:
             btc_1m = fetch_coindcx_klines("BTC", "1m", str(start_date), str(end_date))
