@@ -124,6 +124,12 @@ def main():
     btc_min_score_magnitude = float(os.environ.get("BT_BTC_MIN_SCORE_MAGNITUDE", "25"))
     use_btc_stop_floor = os.environ.get("BT_USE_BTC_STOP_FLOOR", "").strip().lower() in ("1", "true", "yes")
     btc_stop_beta = float(os.environ.get("BT_BTC_STOP_BETA", "1.0"))
+    # --- Idea #7: volatility expansion entry gate (DOGE hypothesis) ---
+    use_volatility_expansion_gate = os.environ.get("BT_USE_VOLATILITY_EXPANSION_GATE", "").strip().lower() in ("1", "true", "yes")
+    min_atr_ratio_for_entry = float(os.environ.get("BT_MIN_ATR_RATIO_FOR_ENTRY", "1.0"))
+    # --- Idea #8: asymmetric take-profit stage weighting (DOGE hypothesis) ---
+    stage_fractions_raw = os.environ.get("BT_STAGE_FRACTIONS", "0.3333,0.3333,0.3334")
+    stage_fractions = tuple(float(x) for x in stage_fractions_raw.split(","))
     # --- Idea #5: mechanical soft-exit proxy (TRIM/TIGHTEN/FREEZE) - NOT real Gemini judgment ---
     soft_exit_enabled = os.environ.get("BT_SOFT_EXIT_ENABLED", "").strip().lower() in ("1", "true", "yes")
     soft_exit_trim_threshold = float(os.environ.get("BT_SOFT_EXIT_TRIM_THRESHOLD", "45"))
@@ -248,6 +254,9 @@ def main():
                     use_btc_trend_bonus=use_btc_trend_bonus, btc_trend_bonus=btc_trend_bonus,
                     btc_min_score_magnitude=btc_min_score_magnitude,
                     use_btc_stop_floor=use_btc_stop_floor, btc_stop_beta=btc_stop_beta,
+                    use_volatility_expansion_gate=use_volatility_expansion_gate,
+                    min_atr_ratio_for_entry=min_atr_ratio_for_entry,
+                    stage_fractions=stage_fractions,
                     soft_exit_enabled=soft_exit_enabled,
                     soft_exit_trim_threshold=soft_exit_trim_threshold,
                     soft_exit_trim_fraction=soft_exit_trim_fraction,
@@ -361,6 +370,10 @@ def main():
         variant_desc.append(f"btc-bonus{btc_trend_bonus:.0f}(mag{btc_min_score_magnitude:.0f})")
     if use_btc_stop_floor:
         variant_desc.append(f"btc-stopfloor(beta{btc_stop_beta})")
+    if use_volatility_expansion_gate:
+        variant_desc.append(f"volgate(minratio{min_atr_ratio_for_entry})")
+    if stage_fractions != (0.3333, 0.3333, 0.3334):
+        variant_desc.append(f"stagefrac{stage_fractions_raw}")
     variant_str = f" [{', '.join(variant_desc)}]" if variant_desc else ""
     lines = [f"📊 *Cloud backtest complete{variant_str}* ({start_date} to {end_date}, {days}d)"]
     if not results_df.empty:

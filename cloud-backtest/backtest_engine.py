@@ -77,7 +77,11 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                   # --- Idea #5: mechanical soft-exit proxy (TRIM/TIGHTEN/FREEZE) - NOT real Gemini judgment ---
                   soft_exit_enabled=False, soft_exit_trim_threshold=45, soft_exit_trim_fraction=0.5,
                   soft_exit_tighten_threshold=35, soft_exit_tighten_atr_multiplier=1.5,
-                  soft_exit_freeze_minutes=60):
+                  soft_exit_freeze_minutes=60,
+                  # --- Idea #7: volatility expansion entry gate (DOGE hypothesis) ---
+                  use_volatility_expansion_gate=False, min_atr_ratio_for_entry=1.0,
+                  # --- Idea #8: asymmetric take-profit stage weighting (DOGE hypothesis) ---
+                  stage_fractions=(0.3333, 0.3333, 0.3334)):
     """
     strategy: one of "ultra-short"/"aggressive"/"balanced"/"conservative"/
     "swing-trend". Resolves that preset's real min_score, ATR stop
@@ -149,6 +153,8 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
     Returns (trades_df, equity_curve_series). trades_df includes
     stages_done/leverage/stop_distance_pct for fee_model.py to consume.
     """
+    if abs(sum(stage_fractions) - 1.0) > 1e-6:
+        raise ValueError(f"stage_fractions must sum to 1.0, got {stage_fractions} (sum={sum(stage_fractions)})")
     weights = STRATEGY_SCORE_WEIGHTS[strategy]
     stop_cfg = STRATEGY_STOP_LOSS[strategy]
     atr_multiplier = atr_multiplier_override if atr_multiplier_override is not None else stop_cfg["atr_multiplier"]
@@ -451,12 +457,12 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                     pos["stop"] = calculate_target_price(pos["entry"], pos["stop"], s2, direction)
                 elif current_r >= adj_r["2"] and pos["stages_done"] == 1:
                     pos["stages_done"] = 2
-                    pos["realized_r"] += adj_r["2"] * 0.3333
+                    pos["realized_r"] += adj_r["2"] * stage_fractions[1]
                     pos["last_staged_r"] = adj_r["2"]
                     pos["stop"] = calculate_target_price(pos["entry"], pos["stop"], s1, direction)
                 elif current_r >= adj_r["1"] and pos["stages_done"] == 0:
                     pos["stages_done"] = 1
-                    pos["realized_r"] += adj_r["1"] * 0.3333
+                    pos["realized_r"] += adj_r["1"] * stage_fractions[0]
                     pos["last_staged_r"] = adj_r["1"]
                     pos["stop"] = pos["entry"]
 
@@ -468,7 +474,17 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                     # realized, this is the remaining runner closing).
                     remaining_fraction = 1.0 if pos["stages_done"] == 0 else (1.0 - stage1_close_fraction)
                 else:
-                    remaining_fraction = 1.0 - (0.3333 * pos["stages_done"] if pos["stages_done"] < 3 else 0.6667)
+                    # Uses the exact configured fractions (default sums to
+                    # 1.0 cleanly, unlike the old hardcoded 0.3333/0.3333/
+                    # 0.3334 rounding pattern this replaces) - remaining
+                    # is whatever hasn't been realized by prior stage
+                    # transitions yet.
+                    if pos["stages_done"] == 0:
+                        remaining_fraction = 1.0
+                    elif pos["stages_done"] == 1:
+                        remaining_fraction = stage_fractions[1] + stage_fractions[2]
+                    else:  # stages_done >= 2
+                        remaining_fraction = stage_fractions[2]
                 # Idea #5: subtract whatever fraction the soft-exit TRIM
                 # already realized early, so it isn't double-counted at
                 # final exit (that fraction's R was already banked into
@@ -526,6 +542,13 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                 # freeze_until_index never gets set above 0, so this
                 # never blocks anything unless explicitly opted in.
                 if soft_exit_enabled and i < freeze_until_index.get(direction, -1):
+                    pass
+                elif use_volatility_expansion_gate and tf_confirm.get("atr_ratio", 1.0) < min_atr_ratio_for_entry:
+                    # Idea #7 (DOGE hypothesis): skip entries during low-
+                    # volatility consolidation - atr_ratio < 1.0 means
+                    # current ATR is BELOW where it was 20 candles ago
+                    # (contracting/flat), the exact condition the idea
+                    # describes as producing slow adverse grinds.
                     pass
                 elif direction_filter is not None and direction != direction_filter:
                     pass
