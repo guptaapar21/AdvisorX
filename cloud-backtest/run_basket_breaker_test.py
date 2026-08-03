@@ -46,7 +46,7 @@ def send_telegram(text):
     try:
         resp = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             timeout=15,
         )
         if not resp.ok:
@@ -116,7 +116,7 @@ def main():
     os.makedirs("results", exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
-    lines = [f"📊 *Idea #1: Basket Circuit Breaker* ({start_date} to {end_date}, {days}d)"]
+    lines = [f"📊 <b>Idea #1: Basket Circuit Breaker</b> ({start_date} to {end_date}, {days}d)"]
     lines.append(f"min_correlated={min_correlated}, basket_negative_minutes={basket_minutes}")
     real_events = [e for e in breaker_events if e["real_early_close"]]
     lines.append(f"Breaker fired {len(breaker_events)} times ({len(real_events)} were real early closes, "
