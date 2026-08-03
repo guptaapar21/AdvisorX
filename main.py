@@ -130,6 +130,11 @@ def main():
     # --- Idea #8: asymmetric take-profit stage weighting (DOGE hypothesis) ---
     stage_fractions_raw = os.environ.get("BT_STAGE_FRACTIONS", "0.3333,0.3333,0.3334")
     stage_fractions = tuple(float(x) for x in stage_fractions_raw.split(","))
+    # --- Idea #9: BTC lag-confirmation (DOGE hypothesis) ---
+    use_btc_lag_bonus = os.environ.get("BT_USE_BTC_LAG_BONUS", "").strip().lower() in ("1", "true", "yes")
+    btc_lag_bonus = float(os.environ.get("BT_BTC_LAG_BONUS", "0"))
+    btc_lag_bars = int(os.environ.get("BT_BTC_LAG_BARS", "6"))
+    btc_lag_min_score_magnitude = float(os.environ.get("BT_BTC_LAG_MIN_SCORE_MAGNITUDE", "25"))
     # --- Idea #5: mechanical soft-exit proxy (TRIM/TIGHTEN/FREEZE) - NOT real Gemini judgment ---
     soft_exit_enabled = os.environ.get("BT_SOFT_EXIT_ENABLED", "").strip().lower() in ("1", "true", "yes")
     soft_exit_trim_threshold = float(os.environ.get("BT_SOFT_EXIT_TRIM_THRESHOLD", "45"))
@@ -184,15 +189,15 @@ def main():
     errors = []
 
     btc_candles_5m = None
-    if use_btc_trend_bonus or use_btc_stop_floor:
+    if use_btc_trend_bonus or use_btc_stop_floor or use_btc_lag_bonus:
         print(f"\n=== BTC: fetching 1m data (shared across all coins this run) ===")
         try:
             btc_1m = fetch_coindcx_klines("BTC", "1m", str(start_date), str(end_date))
             btc_candles_5m = resample_candles(btc_1m, primary_minutes)
             print(f"  BTC: {len(btc_1m)} 1m candles -> {len(btc_candles_5m)} {primary_minutes}m candles")
         except Exception as e:
-            print(f"  FAILED to fetch BTC: {e} - BTC trend bonus / stop floor will be inert this run "
-                  f"(both checks skip silently when the btc_close column isn't present).")
+            print(f"  FAILED to fetch BTC: {e} - BTC trend bonus / stop floor / lag bonus will all be "
+                  f"inert this run (all three checks skip silently when the btc_close column isn't present).")
             errors.append(f"BTC fetch: {e}")
 
     for coin in coins:
@@ -257,6 +262,8 @@ def main():
                     use_volatility_expansion_gate=use_volatility_expansion_gate,
                     min_atr_ratio_for_entry=min_atr_ratio_for_entry,
                     stage_fractions=stage_fractions,
+                    use_btc_lag_bonus=use_btc_lag_bonus, btc_lag_bonus=btc_lag_bonus,
+                    btc_lag_bars=btc_lag_bars, btc_lag_min_score_magnitude=btc_lag_min_score_magnitude,
                     soft_exit_enabled=soft_exit_enabled,
                     soft_exit_trim_threshold=soft_exit_trim_threshold,
                     soft_exit_trim_fraction=soft_exit_trim_fraction,
@@ -283,6 +290,11 @@ def main():
             trades["drift_stop_tighten_enabled"] = drift_stop_tighten_enabled
             trades["obv_confirmation_bonus"] = obv_confirmation_bonus
             trades["soft_exit_enabled"] = soft_exit_enabled
+            trades["use_btc_trend_bonus"] = use_btc_trend_bonus
+            trades["use_btc_stop_floor"] = use_btc_stop_floor
+            trades["use_volatility_expansion_gate"] = use_volatility_expansion_gate
+            trades["stage_fractions"] = stage_fractions_raw
+            trades["use_btc_lag_bonus"] = use_btc_lag_bonus
             all_trades.append(trades)
 
             summary = summarize_results(trades)
@@ -307,6 +319,11 @@ def main():
                    "drift_stop_tighten_enabled": drift_stop_tighten_enabled,
                    "obv_confirmation_bonus": obv_confirmation_bonus,
                    "soft_exit_enabled": soft_exit_enabled,
+                   "use_btc_trend_bonus": use_btc_trend_bonus,
+                   "use_btc_stop_floor": use_btc_stop_floor,
+                   "use_volatility_expansion_gate": use_volatility_expansion_gate,
+                   "stage_fractions": stage_fractions_raw,
+                   "use_btc_lag_bonus": use_btc_lag_bonus,
                    # Bug 7 fix: previously only present in the filename tag,
                    # not as real columns - meaning concatenating multiple
                    # results CSVs together (which is how every sweep in
@@ -374,6 +391,8 @@ def main():
         variant_desc.append(f"volgate(minratio{min_atr_ratio_for_entry})")
     if stage_fractions != (0.3333, 0.3333, 0.3334):
         variant_desc.append(f"stagefrac{stage_fractions_raw}")
+    if use_btc_lag_bonus and btc_lag_bonus:
+        variant_desc.append(f"btclag{btc_lag_bars}bars-bonus{btc_lag_bonus:.0f}(mag{btc_lag_min_score_magnitude:.0f})")
     variant_str = f" [{', '.join(variant_desc)}]" if variant_desc else ""
     lines = [f"📊 *Cloud backtest complete{variant_str}* ({start_date} to {end_date}, {days}d)"]
     if not results_df.empty:

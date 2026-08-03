@@ -418,6 +418,13 @@ function buildTools(config, creds) {
   let cachedPositionsRaw = null;
   let cachedOrdersRaw = null;
   const isSetField = (v) => v !== undefined && v !== null && v !== "None" && Number(v) !== 0;
+  // Both tables below live here (not recreated per-call, unlike before)
+  // for the same discoverability reason as OBV_CONFIRMATION_BONUS_BY_SYMBOL/
+  // BTC_TREND_BONUS_BY_SYMBOL in marketStateAnalyzer.js - anyone auditing
+  // "which coin gets which treatment" should find one clear list, not
+  // search inside function bodies.
+  const SYMBOLS_NEEDING_BTC_DATA = ["ETH"];
+  const DRIFT_STOP_TIGHTEN_ATR_MULTIPLIER_BY_SYMBOL = { SOL: 1.2 };
   async function getCachedPositions() {
     if (cachedPositionsRaw === null) cachedPositionsRaw = await exchange.getPositions(creds);
     return cachedPositionsRaw;
@@ -814,12 +821,10 @@ function buildTools(config, creds) {
       // the worst case is a missed fetch (btcCandles undefined), which
       // that function's own guard handles safely as "no bonus", not a
       // crash or a wrong number.
-      const SYMBOLS_NEEDING_BTC_DATA = ["ETH"];
       let btcCandles;
       if (SYMBOLS_NEEDING_BTC_DATA.includes(symbol)) {
         try {
-          const { primary } = await exchange.getMultiTimeframeCandles("BTC", config.marketType, config.timeframes, config.candleLimit, config.candleFetchDelayMs);
-          btcCandles = primary;
+          btcCandles = await exchange.getSingleTimeframeCandles("BTC", config.marketType, config.timeframes.primary, config.candleLimit);
         } catch (err) {
           runWarnings.push(`BTC trend bonus: couldn't fetch BTC candles (${err.message}) - skipping for this cycle.`);
         }
@@ -833,7 +838,6 @@ function buildTools(config, creds) {
       // time in the same cycle, double-writing SOL's trend history and
       // corrupting the multi-cycle drift detector this whole edge
       // depends on. One analysis per symbol per cycle, always.
-      const DRIFT_STOP_TIGHTEN_ATR_MULTIPLIER_BY_SYMBOL = { SOL: 1.2 };
       const multiplier = DRIFT_STOP_TIGHTEN_ATR_MULTIPLIER_BY_SYMBOL[symbol];
       if (multiplier) {
         const driftFired = reversal.timeframesReversed.some((f) => f.includes("drift"));

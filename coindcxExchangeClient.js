@@ -146,6 +146,19 @@ async function getCurrentPrice(symbol, marketType) {
   return candles[candles.length - 1].close;
 }
 
+// Same "don't fetch what you don't need" precedent as getCurrentPrice
+// above, for the opposite case: a full timeframe's worth of candles, but
+// only ONE timeframe - not all 3. Added for the BTC trend confirmation
+// bonus (ETH-only), which only reads the primary timeframe - calling the
+// full getMultiTimeframeCandles for this was wasting 2 extra real
+// exchange API calls plus 2 extra candleFetchDelayMs sleeps every single
+// cycle, for confirm/filter data that was fetched and then immediately
+// discarded.
+async function getSingleTimeframeCandles(symbol, marketType, interval, limit) {
+  const pair = await resolvePair(symbol, marketType);
+  return getCandlesForInterval(pair, interval, limit);
+}
+
 // Fetches primary/confirm/filter candles for one symbol, sequentially with
 // a small delay between requests (safety margin - see config.candleFetchDelayMs).
 async function getMultiTimeframeCandles(symbol, marketType, timeframes, candleLimit, delayMs = 300) {
@@ -310,6 +323,7 @@ async function closePosition(creds, { pair, direction, quantity, leverage, curre
 
 module.exports = {
   getMultiTimeframeCandles,
+  getSingleTimeframeCandles,
   getCurrentPrice,
   aggregateCandles,
   getOrderBook,
