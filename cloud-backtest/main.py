@@ -296,6 +296,16 @@ def main():
         variant_desc.append(f"tf{primary_minutes}m-{confirm_minutes}m-{filter_minutes}m")
     if max_hold_hours != 36:
         variant_desc.append(f"hold{max_hold_hours:.0f}h")
+    if use_adverse_drift:
+        variant_desc.append(f"drift-ON(net{drift_net_threshold:.0f})")
+    if dynamic_threshold_enabled:
+        variant_desc.append(f"dynthresh-ON({dynamic_threshold_after_minutes:.0f}m,{dynamic_threshold_drawdown_r}R->{dynamic_threshold_tightened:.0f})")
+    if drift_stop_tighten_enabled:
+        variant_desc.append(f"stoptighten-ON({drift_stop_tighten_atr_multiplier}x)")
+    if obv_confirmation_bonus:
+        variant_desc.append(f"obv-bonus{obv_confirmation_bonus:.0f}")
+    if soft_exit_enabled:
+        variant_desc.append(f"softexit-ON(trim@{soft_exit_trim_threshold:.0f},tighten@{soft_exit_tighten_threshold:.0f})")
     variant_str = f" [{', '.join(variant_desc)}]" if variant_desc else ""
     lines = [f"📊 *Cloud backtest complete{variant_str}* ({start_date} to {end_date}, {days}d)"]
     if not results_df.empty:
