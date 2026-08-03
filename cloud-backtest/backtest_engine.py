@@ -71,7 +71,7 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                   # --- Idea #3: ATR stop compression on adverse drift ---
                   drift_stop_tighten_enabled=False, drift_stop_tighten_atr_multiplier=1.2,
                   # --- Idea #4: OBV/price-divergence confirmation bonus (proxy for CVD, see indicators.py) ---
-                  obv_confirmation_bonus=0, obv_lookback_bars=10,
+                  obv_confirmation_bonus=0, obv_lookback_bars=10, obv_slope_threshold=0.3,
                   # --- Idea #5: mechanical soft-exit proxy (TRIM/TIGHTEN/FREEZE) - NOT real Gemini judgment ---
                   soft_exit_enabled=False, soft_exit_trim_threshold=45, soft_exit_trim_fraction=0.5,
                   soft_exit_tighten_threshold=35, soft_exit_tighten_atr_multiplier=1.5,
@@ -258,7 +258,7 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
             # obv_confirmation_bonus=0 (default) means this never changes
             # anything vs the existing score either way.
             if obv_confirmation_bonus:
-                cvd_signal = detect_real_cvd_divergence(primary_slice, direction, lookback=obv_lookback_bars)
+                cvd_signal = detect_real_cvd_divergence(primary_slice, direction, lookback=obv_lookback_bars, slope_threshold=obv_slope_threshold)
                 if cvd_signal is not None:
                     cvd_source_used = "real_cvd"
                     pos["used_real_cvd"] = True
@@ -266,7 +266,7 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                     slope_norm = cvd_signal["cvd_slope_norm"]
                 else:
                     cvd_source_used = "obv_proxy"
-                    obv_signal = detect_obv_price_divergence(primary_slice, direction, lookback=obv_lookback_bars)
+                    obv_signal = detect_obv_price_divergence(primary_slice, direction, lookback=obv_lookback_bars, slope_threshold=obv_slope_threshold)
                     signal_fired = obv_signal["obv_slope_adverse"]
                     slope_norm = obv_signal["obv_slope_norm"]
                 if signal_fired:

@@ -204,7 +204,7 @@ def real_cvd(taker_buy_volume, taker_sell_volume):
     return np.cumsum(delta)
 
 
-def detect_real_cvd_divergence(candles, direction, lookback=10):
+def detect_real_cvd_divergence(candles, direction, lookback=10, slope_threshold=0.3):
     """Same interface and same target_sign convention as
     detect_obv_price_divergence (direction = the OPEN POSITION's
     direction), but computed from REAL taker buy/sell volume columns
@@ -225,11 +225,11 @@ def detect_real_cvd_divergence(candles, direction, lookback=10):
     cvd_slope_norm = cvd_slope / avg_vol if avg_vol else 0.0
 
     target_sign = -1 if direction == "long" else 1
-    cvd_slope_adverse = np.sign(cvd_slope) == target_sign and abs(cvd_slope_norm) >= 0.3
+    cvd_slope_adverse = np.sign(cvd_slope) == target_sign and abs(cvd_slope_norm) >= slope_threshold
     return {"cvd_slope_adverse": bool(cvd_slope_adverse), "cvd_slope_norm": round(float(cvd_slope_norm), 3)}
 
 
-def detect_obv_price_divergence(candles, direction, lookback=10):
+def detect_obv_price_divergence(candles, direction, lookback=10, slope_threshold=0.3):
     """direction: "long" or "short" (the OPEN POSITION's direction, not
     the market's). Checks whether OBV over the last `lookback` primary
     candles is trending in the ADVERSE direction relative to the position,
@@ -253,5 +253,5 @@ def detect_obv_price_divergence(candles, direction, lookback=10):
     # falling); a short position is hurt by net buying pressure (OBV
     # rising) - same convention as calculate_reversal_score's target_sign.
     target_sign = -1 if direction == "long" else 1
-    obv_slope_adverse = np.sign(obv_slope) == target_sign and abs(obv_slope_norm) >= 0.3
+    obv_slope_adverse = np.sign(obv_slope) == target_sign and abs(obv_slope_norm) >= slope_threshold
     return {"obv_slope_adverse": bool(obv_slope_adverse), "obv_slope_norm": round(float(obv_slope_norm), 3)}

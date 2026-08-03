@@ -116,6 +116,7 @@ def main():
     # --- Idea #4: OBV/price-divergence confirmation bonus (proxy for CVD - see indicators.py) ---
     obv_confirmation_bonus = float(os.environ.get("BT_OBV_CONFIRMATION_BONUS", "0"))
     obv_lookback_bars = int(os.environ.get("BT_OBV_LOOKBACK_BARS", "10"))
+    obv_slope_threshold = float(os.environ.get("BT_OBV_SLOPE_THRESHOLD", "0.3"))
     use_real_cvd = os.environ.get("BT_USE_REAL_CVD", "").strip().lower() in ("1", "true", "yes")
     # --- Idea #5: mechanical soft-exit proxy (TRIM/TIGHTEN/FREEZE) - NOT real Gemini judgment ---
     soft_exit_enabled = os.environ.get("BT_SOFT_EXIT_ENABLED", "").strip().lower() in ("1", "true", "yes")
@@ -215,6 +216,7 @@ def main():
                     drift_stop_tighten_enabled=drift_stop_tighten_enabled,
                     drift_stop_tighten_atr_multiplier=drift_stop_tighten_atr_multiplier,
                     obv_confirmation_bonus=obv_confirmation_bonus, obv_lookback_bars=obv_lookback_bars,
+                    obv_slope_threshold=obv_slope_threshold,
                     soft_exit_enabled=soft_exit_enabled,
                     soft_exit_trim_threshold=soft_exit_trim_threshold,
                     soft_exit_trim_fraction=soft_exit_trim_fraction,
@@ -316,7 +318,12 @@ def main():
     if drift_stop_tighten_enabled:
         variant_desc.append(f"stoptighten-ON({drift_stop_tighten_atr_multiplier}x)")
     if obv_confirmation_bonus:
-        variant_desc.append(f"obv-bonus{obv_confirmation_bonus:.0f}" + ("+realCVD" if use_real_cvd else ""))
+        tag = f"obv-bonus{obv_confirmation_bonus:.0f}"
+        if obv_lookback_bars != 10:
+            tag += f",lookback{obv_lookback_bars}"
+        if obv_slope_threshold != 0.3:
+            tag += f",slopethresh{obv_slope_threshold}"
+        variant_desc.append(tag + ("+realCVD" if use_real_cvd else ""))
     if soft_exit_enabled:
         variant_desc.append(f"softexit-ON(trim@{soft_exit_trim_threshold:.0f},tighten@{soft_exit_tighten_threshold:.0f})")
     variant_str = f" [{', '.join(variant_desc)}]" if variant_desc else ""
