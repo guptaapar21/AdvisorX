@@ -18,7 +18,7 @@ this core simulation loop.
 import pandas as pd
 import numpy as np
 
-from indicators import ema, rsi, macd, macd_histogram_turn, atr_ratio, atr_wilder, detect_obv_price_divergence
+from indicators import ema, rsi, macd, macd_histogram_turn, atr_ratio, atr_wilder, detect_obv_price_divergence, detect_real_cvd_divergence
 from market_state_analyzer import (
     build_timeframe_indicators, determine_trend_strength, determine_momentum_state,
     determine_market_state, calculate_triple_timeframe_consistency, calculate_trend_score,
@@ -247,16 +247,31 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
             reversal = calculate_reversal_score(tf_primary, tf_confirm, tf_filter, direction, trend_history,
                                                  use_adverse_drift=use_adverse_drift, drift_net_threshold=drift_net_threshold)
 
-            # Idea #4: OBV/price-divergence confirmation bonus - proxy for
-            # CVD absorption (see indicators.py detect_obv_price_divergence
-            # for the honest caveat: this is signed-total-volume, not real
-            # taker buy/sell split). obv_confirmation_bonus=0 (default)
-            # means this never changes anything vs the existing score.
+            # Idea #4: OBV/CVD confirmation bonus. Prefers REAL CVD
+            # (genuine taker buy/sell split, e.g. from Binance via
+            # binance_taker_volume_fetcher.py, merged onto candles as
+            # taker_buy_volume/taker_sell_volume columns in main.py) when
+            # those columns are present on primary_slice. Falls back to
+            # the OBV proxy (see indicators.py for the honest caveat on
+            # what OBV can't distinguish) when real data isn't available -
+            # e.g. Binance blocked this run, or real-CVD wasn't requested.
+            # obv_confirmation_bonus=0 (default) means this never changes
+            # anything vs the existing score either way.
             if obv_confirmation_bonus:
-                obv_signal = detect_obv_price_divergence(primary_slice, direction, lookback=obv_lookback_bars)
-                if obv_signal["obv_slope_adverse"]:
+                cvd_signal = detect_real_cvd_divergence(primary_slice, direction, lookback=obv_lookback_bars)
+                if cvd_signal is not None:
+                    cvd_source_used = "real_cvd"
+                    pos["used_real_cvd"] = True
+                    signal_fired = cvd_signal["cvd_slope_adverse"]
+                    slope_norm = cvd_signal["cvd_slope_norm"]
+                else:
+                    cvd_source_used = "obv_proxy"
+                    obv_signal = detect_obv_price_divergence(primary_slice, direction, lookback=obv_lookback_bars)
+                    signal_fired = obv_signal["obv_slope_adverse"]
+                    slope_norm = obv_signal["obv_slope_norm"]
+                if signal_fired:
                     reversal["reversal_score"] += obv_confirmation_bonus
-                    reversal["details"].append(f"OBV confirms adverse flow (slope_norm {obv_signal['obv_slope_norm']})")
+                    reversal["details"].append(f"{cvd_source_used} confirms adverse flow (slope_norm {slope_norm})")
 
             # Idea #3: ATR stop compression on adverse drift. Fires
             # independently of the reversal_score exit gate below - a
@@ -460,6 +475,7 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                     "drift_stop_tightened": pos.get("drift_stop_tightened", False),
                     "soft_trim_done": pos.get("soft_trim_done", False),
                     "soft_tighten_done": pos.get("soft_tighten_done", False),
+                    "used_real_cvd": pos.get("used_real_cvd", False),
                 })
                 equity *= (1 + total_r * 0.01)  # 1% risk per trade convention (unchanged)
                 # Idea #5 (FREEZE_REENTRY proxy): only freeze re-entry in
@@ -515,6 +531,7 @@ def run_backtest(symbol, candles_5m, strategy="balanced", min_score=None, max_po
                             "stop_distance_pct": stop_distance_pct,
                             # ---- idea #3/#5 per-position state, all inert unless opted in ----
                             "drift_stop_tightened": False, "soft_trim_done": False,
+                            "used_real_cvd": False,
                             "soft_tighten_done": False, "soft_trim_fraction_taken": 0.0,
                         }
 

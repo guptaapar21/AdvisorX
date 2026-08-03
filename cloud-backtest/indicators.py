@@ -194,8 +194,43 @@ def obv(candles):
     return np.cumsum(signed_vol)
 
 
+def real_cvd(taker_buy_volume, taker_sell_volume):
+    """Genuine Cumulative Volume Delta from REAL aggressor-side data (e.g.
+    Binance's taker_buy/taker_sell split via binance_taker_volume_fetcher.py)
+    - NOT the OBV proxy below. delta = taker_buy - taker_sell per bar,
+    cumulated. This is the real thing detect_obv_price_divergence was
+    always a stand-in for."""
+    delta = taker_buy_volume.values - taker_sell_volume.values
+    return np.cumsum(delta)
+
+
+def detect_real_cvd_divergence(candles, direction, lookback=10):
+    """Same interface and same target_sign convention as
+    detect_obv_price_divergence (direction = the OPEN POSITION's
+    direction), but computed from REAL taker buy/sell volume columns
+    ('taker_buy_volume', 'taker_sell_volume') that must already be present
+    on `candles` - see main.py for where these get merged in from
+    binance_taker_volume_fetcher.py. Returns None (not a dict) if those
+    columns aren't present, so callers can cleanly detect "real CVD not
+    available this run" and fall back to the OBV proxy."""
+    if "taker_buy_volume" not in candles.columns or "taker_sell_volume" not in candles.columns:
+        return None
+    if len(candles) < lookback + 1:
+        return {"cvd_slope_adverse": False, "cvd_slope_norm": 0.0}
+
+    window = candles.tail(lookback + 1)
+    cvd_series = real_cvd(window["taker_buy_volume"], window["taker_sell_volume"])
+    cvd_slope = cvd_series[-1] - cvd_series[0]
+    avg_vol = window["volume"].mean()
+    cvd_slope_norm = cvd_slope / avg_vol if avg_vol else 0.0
+
+    target_sign = -1 if direction == "long" else 1
+    cvd_slope_adverse = np.sign(cvd_slope) == target_sign and abs(cvd_slope_norm) >= 0.3
+    return {"cvd_slope_adverse": bool(cvd_slope_adverse), "cvd_slope_norm": round(float(cvd_slope_norm), 3)}
+
+
 def detect_obv_price_divergence(candles, direction, lookback=10):
-    """direction: \"long\" or \"short\" (the OPEN POSITION's direction, not
+    """direction: "long" or "short" (the OPEN POSITION's direction, not
     the market's). Checks whether OBV over the last `lookback` primary
     candles is trending in the ADVERSE direction relative to the position,
     while price has moved comparatively little - i.e. more (proxy-)volume
