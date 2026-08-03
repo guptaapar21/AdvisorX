@@ -2,7 +2,7 @@
 // directly from the source file, not reconstructed from memory - includes
 // full MACD/RSI divergence detection.
 
-const { ema, rsi, macd, atrRatio, macdHistogramTurn, avgVolume } = require("./indicators");
+const { ema, rsi, macd, atrRatio, macdHistogramTurn, avgVolume, detectOBVPriceDivergence } = require("./indicators");
 
 const OVERSOLD_EXTREME_THRESHOLD = 20;
 const OVERSOLD_MILD_THRESHOLD = 30;
@@ -142,6 +142,58 @@ function detectTrendWeakening(currentScore, scoreHistory) {
   return { currentScore, previousScore, change, changePercent, isWeakening, isReversing, weakeningSeverity };
 }
 
+// NEW: catches a slow, steady grind toward the adverse direction that
+// detectTrendWeakening structurally cannot see. That function only fires
+// on a single-step MAGNITUDE DROP (current < previous * 0.8) - it has no
+// concept of direction, so a score climbing step-by-step toward the
+// position's bad side (e.g. a short's primary score going 14 -> 20 -> 22
+// -> 27, each step a real move in the wrong direction) never registers,
+// because the magnitude is growing, not shrinking. Confirmed against real
+// trade data: this exact pattern held ETH/DOGE's reversalScore at 0 for
+// over an hour while both shorts moved steadily against their stops.
+//
+// This looks at the last few cycles (from persisted history + the current
+// reading) and asks a direction-based question instead: has the score
+// moved toward the target (adverse) side on most recent steps, covering
+// real distance overall - regardless of whether any single step was big
+// enough to trip the old severity>40 check.
+function detectAdverseDrift(currentScore, scoreHistory, targetSign) {
+  const sequence = [...scoreHistory, currentScore];
+  if (sequence.length < 3) {
+    return { isDrifting: false, netMovement: 0, adverseSteps: 0, totalSteps: 0 };
+  }
+
+  // Cap to the most recent 4 points (3 steps) - matches history's 5-slot cap.
+  const window = sequence.slice(-4);
+  const steps = [];
+  for (let i = 1; i < window.length; i++) steps.push(window[i] - window[i - 1]);
+
+  // A step counts as "adverse" if it moves in the target (bad-for-position)
+  // direction. Signed so netMovement is always positive when the overall
+  // move across the window is toward the target direction, regardless of
+  // whether target is +1 (short, watching for bullish) or -1 (long,
+  // watching for bearish).
+  const adverseSteps = steps.filter((s) => Math.sign(s) === targetSign).length;
+  const netMovement = (window[window.length - 1] - window[0]) * targetSign;
+
+  // Require: almost every step (allowing exactly one flat/neutral step)
+  // moved the adverse way, real cumulative distance covered (not noise),
+  // and the current reading itself is already leaning adverse - this is
+  // specifically the slow-grind case, not a replacement for the sharp
+  // >30 threshold above it. Threshold tuned against the real ETH short
+  // from Aug 2 (primary score 14->20->22->27, net +13 over 3 cycles,
+  // reversalScore stuck at 0 the whole time) - 15 missed that exact case
+  // by 2 points; 10 catches it right as the score hits 27, without firing
+  // on single-step noise (each of the earlier 14->20, 20->22 steps alone
+  // stays under 10).
+  const isDrifting = steps.length >= 2
+    && adverseSteps >= steps.length - 1
+    && netMovement >= 10
+    && Math.sign(currentScore) === targetSign;
+
+  return { isDrifting, netMovement: Math.round(netMovement), adverseSteps, totalSteps: steps.length };
+}
+
 // ---- MACD / RSI divergence detection (matches source exactly) ----
 
 function detectMACDDivergence(candles, macdValues) {
@@ -279,7 +331,46 @@ function getHistory(historyStore, symbol) {
 
 // Full reversal score (0-100), matching source weighting:
 // primary 40% / confirm 25% / filter 15% / MACD divergence 10% / RSI divergence 10%.
-function calculateReversalScore(tfPrimary, tfConfirm, tfFilter, positionDirection, history) {
+// OBV confirmation bonus, per symbol. ONLY ETH is enabled - this is a
+// real, backtest-validated finding (Aug 2026), not a guess: +$382 vs
+// $298 baseline over 365 real days, and it stayed within $381-383 across
+// a full sweep of nearby lookback/slopeThreshold settings (5/10/20 bars,
+// 0.2/0.3/0.4 threshold) - a genuinely stable result, unlike idea #1
+// (basket circuit breaker) which flipped which coin it helped depending
+// on the exact minute threshold and was rejected as noise.
+// SOL and DOGE are deliberately left at 0: SOL showed zero effect at
+// every setting tried ($190-193 throughout, still below its own $243
+// no-OBV baseline - a genuine "doesn't help", not an undertuned one).
+// DOGE was inconclusive - lookback=5 recovered some of the gap ($333 ->
+// $373) but that's one setting, not a confirmed pattern the way ETH's
+// stability across 5 settings is - so DOGE stays off until that's
+// actually re-confirmed, not enabled on a single untested lead.
+// BTC trend confirmation bonus config, per symbol. ONLY ETH is enabled -
+// backtest-validated (Aug 2026): mag=20/bonus=5 gave $362 vs $298 baseline
+// (+21.5%), and stayed positive across every nearby setting tested
+// (bonus 5/10/15, magnitude 20/25/30 - never dropped below baseline).
+// SOL and DOGE were ALSO tested with this same mechanism and confirmed
+// NEGATIVE at every setting - do not extend this table to them.
+const BTC_TREND_BONUS_BY_SYMBOL = { ETH: { bonus: 5, magnitude: 20 } };
+
+// direction: the OPEN POSITION's direction. btcCandles: BTC's own primary-
+// timeframe candles (fetched separately by the caller - this function
+// does no exchange access itself, matching calculateReversalScore's own
+// pure/sync design). Uses the SAME calculateTrendScore already used
+// elsewhere in this file, just computed on BTC's candles instead.
+function detectBTCTrendAdverse(btcCandles, direction, minScoreMagnitude = 25) {
+  const btcTf = buildTimeframeIndicators(btcCandles);
+  const btcScore = calculateTrendScore(btcTf);
+  const targetSign = direction === "long" ? -1 : 1;
+  return {
+    btcAdverse: Math.sign(btcScore) === targetSign && Math.abs(btcScore) >= minScoreMagnitude,
+    btcTrendScore: btcScore,
+  };
+}
+
+const OBV_CONFIRMATION_BONUS_BY_SYMBOL = { ETH: 8 };
+
+function calculateReversalScore(tfPrimary, tfConfirm, tfFilter, positionDirection, history, symbol, btcCandles) {
   let score = 0;
   const details = [];
   const reversedFrames = [];
@@ -291,24 +382,33 @@ function calculateReversalScore(tfPrimary, tfConfirm, tfFilter, positionDirectio
   const targetDivergence = positionDirection === "long" ? "bearish" : "bullish";
 
   const primaryChange = detectTrendWeakening(scorePrimary, history.primary);
+  const primaryDrift = detectAdverseDrift(scorePrimary, history.primary, targetSign);
   if (Math.sign(scorePrimary) === targetSign && Math.abs(scorePrimary) > 30) {
     score += 40; details.push(`primary timeframe strongly reversed (score=${scorePrimary})`); reversedFrames.push("primary");
   } else if (primaryChange.isWeakening && primaryChange.weakeningSeverity > 40) {
     score += 20; details.push(`primary timeframe weakening significantly (${primaryChange.weakeningSeverity}%)`);
+  } else if (primaryDrift.isDrifting) {
+    score += 18; details.push(`primary timeframe drifting adverse over ${primaryDrift.totalSteps} cycles (net ${primaryDrift.netMovement}, score=${scorePrimary})`); reversedFrames.push("primary_drift");
   } else if (Math.abs(scorePrimary) < 20) {
     score += 12; details.push(`primary timeframe entering range (score=${scorePrimary})`);
   }
 
   const confirmChange = detectTrendWeakening(scoreConfirm, history.confirm);
+  const confirmDrift = detectAdverseDrift(scoreConfirm, history.confirm, targetSign);
   if (Math.sign(scoreConfirm) === targetSign && Math.abs(scoreConfirm) > 30) {
     score += 25; details.push(`confirm timeframe strongly reversed (score=${scoreConfirm})`); reversedFrames.push("confirm");
   } else if (confirmChange.isWeakening && confirmChange.weakeningSeverity > 40) {
     score += 12; details.push(`confirm timeframe weakening significantly (${confirmChange.weakeningSeverity}%)`);
+  } else if (confirmDrift.isDrifting) {
+    score += 11; details.push(`confirm timeframe drifting adverse over ${confirmDrift.totalSteps} cycles (net ${confirmDrift.netMovement}, score=${scoreConfirm})`); reversedFrames.push("confirm_drift");
   }
 
   const filterChange = detectTrendWeakening(scoreFilter, history.filter);
+  const filterDrift = detectAdverseDrift(scoreFilter, history.filter, targetSign);
   if (Math.sign(scoreFilter) === targetSign && Math.abs(scoreFilter) > 30) {
     score += 15; details.push(`filter timeframe reversed (score=${scoreFilter})`); reversedFrames.push("filter");
+  } else if (filterDrift.isDrifting) {
+    score += 7; details.push(`filter timeframe drifting adverse over ${filterDrift.totalSteps} cycles (net ${filterDrift.netMovement}, score=${scoreFilter})`); reversedFrames.push("filter_drift");
   }
 
   // MACD divergence (10%) - primary timeframe
@@ -326,6 +426,33 @@ function calculateReversalScore(tfPrimary, tfConfirm, tfFilter, positionDirectio
     const rsiDiv = detectRSIDivergence(tfConfirm.candles.slice(-30), rsiSeries.slice(-30));
     if (rsiDiv.type === targetDivergence && rsiDiv.strength >= 60) {
       score += 10; details.push(`${rsiDiv.description} (strength ${rsiDiv.strength})`);
+    }
+  }
+
+  // OBV confirmation bonus (validated Aug 2026, see OBV_CONFIRMATION_BONUS_BY_SYMBOL
+  // above for why this is ETH-only). Adds to score independently of every
+  // branch above - it's a confidence multiplier on top of whatever else
+  // already fired, not a replacement for any of it.
+  const obvBonus = symbol ? (OBV_CONFIRMATION_BONUS_BY_SYMBOL[symbol] || 0) : 0;
+  if (obvBonus && tfPrimary.candles && tfPrimary.candles.length >= 11) {
+    const obvSignal = detectOBVPriceDivergence(tfPrimary.candles, positionDirection);
+    if (obvSignal.obvSlopeAdverse) {
+      score += obvBonus;
+      details.push(`OBV confirms adverse flow (slope_norm ${obvSignal.obvSlopeNorm})`);
+    }
+  }
+
+  // BTC trend confirmation bonus (validated Aug 2026, ETH-only - see
+  // BTC_TREND_BONUS_BY_SYMBOL above). btcCandles is optional and fetched
+  // by the caller (agentTools.js's check_reversal) only when symbol is
+  // in the table, to avoid an unnecessary extra fetch for every other
+  // coin/cycle.
+  const btcConfig = symbol ? BTC_TREND_BONUS_BY_SYMBOL[symbol] : null;
+  if (btcConfig && btcCandles && btcCandles.length >= 55) {
+    const btcSignal = detectBTCTrendAdverse(btcCandles, positionDirection, btcConfig.magnitude);
+    if (btcSignal.btcAdverse) {
+      score += btcConfig.bonus;
+      details.push(`BTC trend confirms adverse move (btc_score=${btcSignal.btcTrendScore})`);
     }
   }
 
@@ -361,6 +488,7 @@ module.exports = {
   calculateTripleTimeframeConsistency,
   calculateTrendScore,
   detectTrendWeakening,
+  detectAdverseDrift,
   getHistory,
   updateHistory,
   calculateReversalScore,

@@ -2,7 +2,20 @@
 // NOT the per-strategy descriptions in tradingAgent.ts's prompt text, which
 // are never actually read by this logic (confirmed: no reference to
 // getStrategyParams or partialTakeProfit config anywhere in the source).
-// Always 1R/2R/3R at 33.33%/33.33%/0%, adjusted only by volatility.
+// Default: 1R/2R/3R at 33.33%/33.33%/0%, adjusted only by volatility.
+//
+// Idea #8 (validated Aug 2026, DOGE-specific): DOGE's own backtest showed
+// asymmetric weighting toward the 3R+ tail beats the equal-thirds split -
+// $421 baseline -> $476 (20/30/50) -> $496 (15/25/60), both consistently
+// above baseline, the more extreme split performing better in the
+// direction the original theory predicted (DOGE's fat-tail breakouts
+// reward letting more size ride for the big move). SOL and ETH were NOT
+// tested with this change and keep the proven default - do not extend
+// this table to other coins without the same backtest validation DOGE got.
+const STAGE_CLOSE_PERCENT_BY_SYMBOL = {
+  DOGE: { stage1: 15, stage2: 25 },
+};
+const DEFAULT_STAGE_CLOSE_PERCENT = { stage1: 33.33, stage2: 33.33 };
 
 const { atrWilder } = require("./indicators");
 
@@ -43,7 +56,7 @@ function calculateTargetPrice(entryPrice, stopLossPrice, rMultiple, side) {
 // Checks a position against the staged plan. `stagesAdvised` is a plain
 // object like { "1": true } tracking what's already been done for this
 // position (replaces the original's SQLite history query).
-function checkPartialTakeProfitOpportunity(entryPrice, currentPrice, originalStopLoss, side, stagesAdvised, candles15m) {
+function checkPartialTakeProfitOpportunity(entryPrice, currentPrice, originalStopLoss, side, stagesAdvised, candles15m, symbol) {
   const volatility = analyzeMarketVolatility(candles15m);
   const currentR = calculateRMultiple(entryPrice, currentPrice, originalStopLoss, side);
 
@@ -73,10 +86,11 @@ function checkPartialTakeProfitOpportunity(entryPrice, currentPrice, originalSto
     else recommendation = `R=${currentR.toFixed(2)}, waiting for stage 1 (${adjustedR1.toFixed(2)}R, ${volatility.level} vol)`;
   }
 
+  const closePercents = symbol ? (STAGE_CLOSE_PERCENT_BY_SYMBOL[symbol] || DEFAULT_STAGE_CLOSE_PERCENT) : DEFAULT_STAGE_CLOSE_PERCENT;
   let closePercent = 0;
   let newStop;
-  if (canExecuteStage === 1) { closePercent = 33.33; newStop = entryPrice; }
-  else if (canExecuteStage === 2) { closePercent = 33.33; newStop = calculateTargetPrice(entryPrice, originalStopLoss, 1, side); }
+  if (canExecuteStage === 1) { closePercent = closePercents.stage1; newStop = entryPrice; }
+  else if (canExecuteStage === 2) { closePercent = closePercents.stage2; newStop = calculateTargetPrice(entryPrice, originalStopLoss, 1, side); }
   else if (canExecuteStage === 3) { closePercent = 0; newStop = calculateTargetPrice(entryPrice, originalStopLoss, 2, side); }
 
   return {
@@ -91,4 +105,4 @@ function checkPartialTakeProfitOpportunity(entryPrice, currentPrice, originalSto
   };
 }
 
-module.exports = { analyzeMarketVolatility, adjustRMultipleForVolatility, calculateRMultiple, calculateTargetPrice, checkPartialTakeProfitOpportunity };
+module.exports = { analyzeMarketVolatility, adjustRMultipleForVolatility, calculateRMultiple, calculateTargetPrice, checkPartialTakeProfitOpportunity, STAGE_CLOSE_PERCENT_BY_SYMBOL, DEFAULT_STAGE_CLOSE_PERCENT };

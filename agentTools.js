@@ -109,7 +109,7 @@ const declarations = [
   {
     name: "check_partial_take_profit_opportunity",
     description:
-      "Checks an open position against the real staged take-profit plan (1R/2R/3R at 33.33%/33.33%/0%, adjusted for current volatility 0.8x-1.5x) using the AI's own original entry/stop recommendation for that position, and reports whether a new stage has been reached.",
+      "Checks an open position against the real staged take-profit plan (1R/2R/3R, adjusted for current volatility 0.8x-1.5x) using the AI's own original entry/stop recommendation for that position, and reports whether a new stage has been reached and the actual closePercent to use (33.33%/33.33%/0% by default, but DOGE uses a validated 15%/25%/0% split - the returned closePercent already reflects the right one for this symbol, just act on it).",
     parameters: {
       type: "object",
       properties: {
@@ -123,7 +123,7 @@ const declarations = [
   {
     name: "check_reversal",
     description:
-      "Checks an open position for a trend reversal using the real weighted score (primary timeframe 40%, confirm 25%, filter 15%, MACD divergence 10%, RSI divergence 10%). Score >=70 means close immediately regardless of take-profit stage; 30-70 is an early warning to factor into judgment, not an automatic action.",
+      "Checks an open position for a trend reversal using the real weighted score (primary timeframe 40%, confirm 25%, filter 15%, MACD divergence 10%, RSI divergence 10%). Score >=70 means close immediately regardless of take-profit stage; 30-70 is an early warning to factor into judgment, not an automatic action. For SOL specifically, if adverse drift is contributing to the score, the response also includes a driftStopTighten field (candidateStop, shouldTighten, verifiedAgainstRealStop) - see decision priority instructions for how to act on it. Absent/undefined for other coins or when drift isn't firing.",
     parameters: {
       type: "object",
       properties: {
@@ -417,6 +417,7 @@ function buildTools(config, creds) {
   // genuine state change.
   let cachedPositionsRaw = null;
   let cachedOrdersRaw = null;
+  const isSetField = (v) => v !== undefined && v !== null && v !== "None" && Number(v) !== 0;
   async function getCachedPositions() {
     if (cachedPositionsRaw === null) cachedPositionsRaw = await exchange.getPositions(creds);
     return cachedPositionsRaw;
@@ -793,7 +794,7 @@ function buildTools(config, creds) {
       }
 
       return takeProfitManagement.checkPartialTakeProfitOpportunity(
-        adv.entryPrice, currentPrice, adv.initialStop, action, adv.stagesAdvised, candles15m
+        adv.entryPrice, currentPrice, adv.initialStop, action, adv.stagesAdvised, candles15m, symbol
       );
     },
 
@@ -804,7 +805,83 @@ function buildTools(config, creds) {
       if (analysis.error) return { reversalScore: 0, error: analysis.error };
 
       const history = msa.getHistory(trendHistoryStore, symbol);
-      return msa.calculateReversalScore(analysis.tfPrimary, analysis.tfConfirm, analysis.tfFilter, action, history);
+
+      // BTC trend bonus (validated Aug 2026, ETH-only per marketStateAnalyzer.js's
+      // BTC_TREND_BONUS_BY_SYMBOL) needs BTC's own candles, which
+      // calculateReversalScore itself can't fetch (pure/sync function).
+      // This list is a fetch-avoidance optimization only, not the real
+      // gate - if it ever falls out of sync with BTC_TREND_BONUS_BY_SYMBOL,
+      // the worst case is a missed fetch (btcCandles undefined), which
+      // that function's own guard handles safely as "no bonus", not a
+      // crash or a wrong number.
+      const SYMBOLS_NEEDING_BTC_DATA = ["ETH"];
+      let btcCandles;
+      if (SYMBOLS_NEEDING_BTC_DATA.includes(symbol)) {
+        try {
+          const { primary } = await exchange.getMultiTimeframeCandles("BTC", config.marketType, config.timeframes, config.candleLimit, config.candleFetchDelayMs);
+          btcCandles = primary;
+        } catch (err) {
+          runWarnings.push(`BTC trend bonus: couldn't fetch BTC candles (${err.message}) - skipping for this cycle.`);
+        }
+      }
+
+      const reversal = msa.calculateReversalScore(analysis.tfPrimary, analysis.tfConfirm, analysis.tfFilter, action, history, symbol, btcCandles);
+
+      // Idea #3 (validated Aug 2026, SOL-specific): folded into this SAME
+      // call rather than a separate tool, deliberately - a second tool
+      // calling analyzeSymbol again would call updateHistory a second
+      // time in the same cycle, double-writing SOL's trend history and
+      // corrupting the multi-cycle drift detector this whole edge
+      // depends on. One analysis per symbol per cycle, always.
+      const DRIFT_STOP_TIGHTEN_ATR_MULTIPLIER_BY_SYMBOL = { SOL: 1.2 };
+      const multiplier = DRIFT_STOP_TIGHTEN_ATR_MULTIPLIER_BY_SYMBOL[symbol];
+      if (multiplier) {
+        const driftFired = reversal.timeframesReversed.some((f) => f.includes("drift"));
+        if (driftFired) {
+          const candles = analysis.tfConfirm.candles;
+          const atr14 = atrWilder(candles, 14);
+          const currentPrice = candles[candles.length - 1].close;
+          const distance = atr14 * multiplier;
+          const candidateStop = action === "long" ? currentPrice - distance : currentPrice + distance;
+
+          // Mechanically check against the REAL current stop from the
+          // exchange (not left to the model's own judgment/memory) -
+          // only report shouldTighten=true if candidateStop is actually
+          // closer to price than what's really set right now.
+          let isActuallyTighter = null;
+          try {
+            const contract = `B-${symbol}_USDT`;
+            const positionsRaw = await getCachedPositions();
+            const activePositions = getActivePositions(positionsRaw);
+            const realPosition = activePositions.find((p) => {
+              const posContract = p.pair ?? p.contract;
+              const posDirection = Number(p.active_pos ?? p.size ?? 0) > 0 ? "long" : "short";
+              return posContract === contract && posDirection === action;
+            });
+            const realCurrentStop = realPosition && isSetField(realPosition.stop_loss_trigger)
+              ? Number(realPosition.stop_loss_trigger) : null;
+            if (realCurrentStop !== null) {
+              isActuallyTighter = action === "long" ? candidateStop > realCurrentStop : candidateStop < realCurrentStop;
+            }
+          } catch (err) {
+            // Leave isActuallyTighter as null (unknown) - the note below
+            // tells the model to fall back to its own judgment only when
+            // this real check couldn't be performed, not by default.
+          }
+
+          reversal.driftStopTighten = {
+            shouldTighten: isActuallyTighter === null ? false : isActuallyTighter,
+            candidateStop: Number(candidateStop.toFixed(6)),
+            atrMultiplier: multiplier,
+            verifiedAgainstRealStop: isActuallyTighter !== null,
+            note: isActuallyTighter === null
+              ? "Could not verify against the real exchange stop - defaulting to NOT tightening this cycle (fail-closed). Will retry verification next cycle."
+              : (isActuallyTighter ? "Verified tighter than the real current stop - safe to apply." : "NOT tighter than the real current stop already in place - do not apply."),
+          };
+        }
+      }
+
+      return reversal;
     },
 
     // Real, evidence-based safety net: the original engine force-closes any
@@ -998,6 +1075,15 @@ function buildTools(config, creds) {
       const target3 = entryPrice + dir * r * 3;
       const decimals = entryPrice >= 1 ? 2 : 6;
       const fmt = (n) => n.toFixed(decimals);
+      // Same per-symbol table as takeProfitManagement.js - kept in sync
+      // manually since this is just a preview message, not the actual
+      // enforced calculation (that happens in check_partial_take_profit_
+      // opportunity at close time). Mistake caught during a self-audit:
+      // this used to hardcode ~33%/~33% for every symbol regardless of
+      // the real DOGE-specific split, which would have shown the wrong
+      // preview the moment DOGE's TP weighting changed.
+      const symbolForPreview = contract.replace(/^[A-Z]-/, "").replace(/_USDT$/, "");
+      const previewPercents = takeProfitManagement.STAGE_CLOSE_PERCENT_BY_SYMBOL[symbolForPreview] || takeProfitManagement.DEFAULT_STAGE_CLOSE_PERCENT;
 
       if (config.autoTradingPaused) {
         // Advisory-only path, unchanged from before automatic execution
@@ -1010,7 +1096,7 @@ function buildTools(config, creds) {
             `Entry: ${fmt(entryPrice)} | Stop: ${fmt(stopPrice)} | Leverage: ${leverage}x`,
             `Suggested size: ${finalPositionSizeUsdt} USDT margin`,
             ...riskNotes,
-            `Targets (staged take-profit): 1R ${fmt(target1)} (close ~33%) | 2R ${fmt(target2)} (close ~33%) | 3R ${fmt(target3)} (trail rest)`,
+            `Targets (staged take-profit): 1R ${fmt(target1)} (close ~${previewPercents.stage1}%) | 2R ${fmt(target2)} (close ~${previewPercents.stage2}%) | 3R ${fmt(target3)} (trail rest)`,
             `Reasoning: ${reasoning}`,
             ``,
             `_Auto-trading is currently paused (/resumeauto to re-enable). No order has been placed. Execute manually on CoinDCX if you agree._`,
@@ -1301,7 +1387,6 @@ function buildTools(config, creds) {
               // position's own real field (confirmed, not guessed) and
               // re-affirm just that, rather than leave the position
               // with nothing tracked at all.
-              const isSetField = (v) => v !== undefined && v !== null && v !== "None" && Number(v) !== 0;
               const currentStop = isSetField(realPosition.stop_loss_trigger) ? Number(realPosition.stop_loss_trigger) : null;
               if (currentStop !== null) {
                 await exchange.placeBracketOrders(creds, { positionId: realPosition.id, stopPrice: currentStop });
