@@ -37,22 +37,27 @@ MIN_CANDLES_NEEDED = 55  # matches the live bot's own minimum
 
 
 def _closed_bucket_candles(resampled, as_of_time, rule_minutes, window=200, primary_step_minutes=5):
-    """Returns the last `window` fully-closed buckets as of `as_of_time` -
-    bounded rolling window (fixes the O(n^2) unbounded-slice bug that
-    likely caused Colab hangs on full-year runs).
+    """Returns the last `window` fully-closed buckets as of `as_of_time`.
 
-    primary_step_minutes: how far the outer loop actually steps forward
-    each iteration. Previously hardcoded to a bare 5-minute tolerance,
-    silently assuming the primary timeframe was always 5m - now that it's
-    configurable, using the wrong tolerance here means treating a candle
-    as "closed" earlier or later than it really is, which is a real
-    lookahead-bias risk specifically on faster combos like 1m primary."""
+    STRICT closed-bucket check: a bucket only counts as closed if
+    bucket_end <= as_of_time, full stop - no added tolerance. The
+    previous version allowed `bucket_end > as_of_time + primary_step_minutes`
+    as the cutoff, which is NOT the same thing - it let a bucket that
+    would close before the NEXT primary step be treated as already closed
+    NOW, even when it was still several minutes from actually finishing.
+    Confirmed with a direct test: a candle that opened 10 minutes into a
+    15-minute bucket (5 minutes still left before it closes) was being
+    included as fully closed. That's real look-ahead, not a rounding
+    nicety - the backtest could see values from a bar that hadn't
+    finished forming yet, something no live system could ever do.
+    `primary_step_minutes` is kept as a parameter for backward
+    compatibility with existing callers but no longer used to add slack."""
     sliced = resampled.loc[:as_of_time].tail(window)
     if len(sliced) == 0:
         return sliced
     last_bucket_start = sliced.index[-1]
     bucket_end = last_bucket_start + pd.Timedelta(minutes=rule_minutes)
-    if bucket_end > as_of_time + pd.Timedelta(minutes=primary_step_minutes):
+    if bucket_end > as_of_time:
         return sliced.iloc[:-1]
     return sliced
 

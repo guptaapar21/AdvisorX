@@ -57,7 +57,10 @@ def main():
 
     end_date = datetime.now(timezone.utc).date()
     start_date = end_date - timedelta(days=args.days)
-    print(f"Weekly P&L, live config, {start_date} to {end_date} ({args.days}d)\n")
+    print(f"Weekly P&L, live config, {start_date} to {end_date} ({args.days}d)")
+    print("Engine: POST-LOOKAHEAD-FIX (_closed_bucket_candles now uses a strict, zero-slack "
+          "closed-bucket check - see backtest_engine.py). Every number below was computed after "
+          "that fix, not before it.\n")
 
     # ETH needs BTC's own candles for the BTC trend bonus - fetch once,
     # shared, same as main.py does (not once per coin).
@@ -71,6 +74,7 @@ def main():
     print(f"  BTC: {len(btc_1m)} 1m candles -> {len(btc_5m)} 5m candles\n")
 
     all_trades = []
+    baseline_totals = {}
 
     for coin, cfg in LIVE_CONFIG.items():
         print(f"=== {coin}: fetching 1m data ===")
@@ -90,12 +94,28 @@ def main():
         max_hold_bars = round(cfg.pop("max_hold_hours") * 60 / 5)
         min_score = cfg.pop("min_score")
 
+        # BASELINE: same coin, same min_score/hold, but NONE of the
+        # deployed features - proves the edge against a clean control
+        # under the SAME corrected engine, not just reported in isolation.
+        baseline_trades, _ = run_backtest(
+            coin, candles_5m, strategy="conservative",
+            min_score=min_score, max_hold_bars=max_hold_bars,
+        )
+        if len(baseline_trades):
+            baseline_trades = apply_fees_and_interest(baseline_trades, bar_minutes=5)
+            baseline_trades = apply_dollar_pnl(baseline_trades)
+            baseline_total = baseline_trades["dollar_pnl"].sum()
+        else:
+            baseline_total = 0.0
+        print(f"  {coin} BASELINE (no features, same engine): {len(baseline_trades)} trades, ${baseline_total:.2f}")
+        baseline_totals[coin] = baseline_total
+
         trades, _ = run_backtest(
             coin, candles_5m, strategy="conservative",
             min_score=min_score, max_hold_bars=max_hold_bars,
             **cfg,
         )
-        print(f"  {coin}: {len(trades)} trades\n")
+        print(f"  {coin} DEPLOYED CONFIG: {len(trades)} trades\n")
 
         if len(trades) == 0:
             continue
@@ -143,6 +163,25 @@ def main():
     combined_weekly["cumulative"] = combined_weekly["dollar_pnl"].cumsum().round(2)
     print(combined_weekly.to_string(index=False))
     print(f"\nGRAND TOTAL: {combined['dollar_pnl'].sum():.2f} across {len(combined)} trades")
+
+    print("\n" + "=" * 70)
+    print("PROOF TABLE: baseline vs deployed config, SAME corrected engine")
+    print("=" * 70)
+    grand_baseline = 0.0
+    grand_deployed = 0.0
+    for coin in LIVE_CONFIG:
+        coin_trades = combined[combined["coin"] == coin]
+        deployed_total = coin_trades["dollar_pnl"].sum() if not coin_trades.empty else 0.0
+        base_total = baseline_totals.get(coin, 0.0)
+        delta = deployed_total - base_total
+        pct = (delta / abs(base_total) * 100) if base_total != 0 else float("nan")
+        verdict = "EDGE HOLDS" if delta > 0 else "EDGE DID NOT SURVIVE THE FIX" if base_total != 0 else "N/A"
+        print(f"{coin:5} baseline=${base_total:8.2f}  deployed=${deployed_total:8.2f}  "
+              f"delta=${delta:8.2f} ({pct:+.1f}%)  -> {verdict}")
+        grand_baseline += base_total
+        grand_deployed += deployed_total
+    print(f"\nTOTAL   baseline=${grand_baseline:.2f}  deployed=${grand_deployed:.2f}  "
+          f"delta=${grand_deployed - grand_baseline:.2f}")
 
     os.makedirs("results", exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
