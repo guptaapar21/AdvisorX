@@ -53,7 +53,13 @@ LIVE_CONFIG = {
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--days", type=int, default=365)
+    parser.add_argument("--coin", type=str, default=None,
+                         help="Run just this one coin (SOL/DOGE/ETH) instead of all 3. "
+                              "Used by the parallel per-coin workflow to avoid the sequential "
+                              "4x-fetch timeout that killed the first full run at 60 minutes.")
     args = parser.parse_args()
+
+    coins_to_run = {args.coin: LIVE_CONFIG[args.coin]} if args.coin else LIVE_CONFIG
 
     end_date = datetime.now(timezone.utc).date()
     start_date = end_date - timedelta(days=args.days)
@@ -63,20 +69,25 @@ def main():
           "that fix, not before it.\n")
 
     # ETH needs BTC's own candles for the BTC trend bonus - fetch once,
-    # shared, same as main.py does (not once per coin).
-    print("=== BTC: fetching 1m data (needed for ETH's BTC trend bonus) ===")
-    btc_1m = fetch_coindcx_klines("BTC", "1m", str(start_date), str(end_date))
-    btc_5m = resample_candles(btc_1m, 5)
-    btc_renamed = btc_5m.rename(columns={
-        "open": "btc_open", "high": "btc_high", "low": "btc_low",
-        "close": "btc_close", "volume": "btc_volume",
-    })
-    print(f"  BTC: {len(btc_1m)} 1m candles -> {len(btc_5m)} 5m candles\n")
+    # shared, same as main.py does (not once per coin). Skipped entirely
+    # when ETH isn't being run this call - saves ~9 minutes of fetch time
+    # for a SOL-only or DOGE-only job, which matters now that each coin
+    # runs as its own parallel matrix job.
+    btc_renamed = None
+    if "ETH" in coins_to_run:
+        print("=== BTC: fetching 1m data (needed for ETH's BTC trend bonus) ===")
+        btc_1m = fetch_coindcx_klines("BTC", "1m", str(start_date), str(end_date))
+        btc_5m = resample_candles(btc_1m, 5)
+        btc_renamed = btc_5m.rename(columns={
+            "open": "btc_open", "high": "btc_high", "low": "btc_low",
+            "close": "btc_close", "volume": "btc_volume",
+        })
+        print(f"  BTC: {len(btc_1m)} 1m candles -> {len(btc_5m)} 5m candles\n")
 
     all_trades = []
     baseline_totals = {}
 
-    for coin, cfg in LIVE_CONFIG.items():
+    for coin, cfg in coins_to_run.items():
         print(f"=== {coin}: fetching 1m data ===")
         candles_1m = fetch_coindcx_klines(coin, "1m", str(start_date), str(end_date))
         candles_5m = resample_candles(candles_1m, 5)
@@ -136,7 +147,7 @@ def main():
     print("\n" + "=" * 70)
     print("PER-COIN WEEKLY BREAKDOWN")
     print("=" * 70)
-    for coin in LIVE_CONFIG:
+    for coin in coins_to_run:
         coin_trades = combined[combined["coin"] == coin]
         if coin_trades.empty:
             continue
@@ -169,7 +180,7 @@ def main():
     print("=" * 70)
     grand_baseline = 0.0
     grand_deployed = 0.0
-    for coin in LIVE_CONFIG:
+    for coin in coins_to_run:
         coin_trades = combined[combined["coin"] == coin]
         deployed_total = coin_trades["dollar_pnl"].sum() if not coin_trades.empty else 0.0
         base_total = baseline_totals.get(coin, 0.0)
@@ -185,10 +196,11 @@ def main():
 
     os.makedirs("results", exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    out_path = f"results/weekly_pnl_live_config_{timestamp}.csv"
+    coin_tag = args.coin if args.coin else "ALL"
+    out_path = f"results/weekly_pnl_live_config_{coin_tag}_{timestamp}.csv"
     combined_weekly.insert(0, "coin", "ALL")
     per_coin_weeklies = []
-    for coin in LIVE_CONFIG:
+    for coin in coins_to_run:
         coin_trades = combined[combined["coin"] == coin]
         if coin_trades.empty:
             continue
