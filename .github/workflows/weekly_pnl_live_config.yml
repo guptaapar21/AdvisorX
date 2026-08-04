@@ -1,0 +1,47 @@
+name: Weekly PnL - Live Config
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "How many days back to compute (default 365 = full year to date)"
+        required: false
+        default: "365"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+      - name: Run weekly P&L for live config
+        working-directory: cloud-backtest
+        run: python weekly_pnl_live_config.py --days ${{ inputs.days }}
+      - name: Commit results
+        working-directory: cloud-backtest
+        run: |
+          git config user.name "coindcx-backtest-bot"
+          git config user.email "actions@github.com"
+          git add results/
+          git diff --staged --quiet && exit 0
+          git commit -m "Weekly PnL (live config) [skip ci]"
+          for i in 1 2 3 4 5; do
+            if git push; then exit 0; fi
+            if git pull --rebase; then continue; fi
+            git rebase --abort
+            git fetch origin main
+            git reset --soft origin/main
+            git add results/
+            git commit -m "Weekly PnL (live config) [skip ci]" --allow-empty
+          done
+          exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: weekly-pnl-live-config
+          path: cloud-backtest/results/
+          retention-days: 90
