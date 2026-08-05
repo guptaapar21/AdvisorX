@@ -16,6 +16,8 @@ Usage:
   python3 run_momentum_scalp_backtest.py --coin SOL --atr-multiplier 1.2 --r-target 1.5
 """
 import argparse
+import itertools
+import json
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
@@ -80,50 +82,105 @@ def run_momentum_scalp(candles_5m, atr_multiplier=1.2, r_target=1.5, use_macd=Fa
     return pd.DataFrame(trades)
 
 
+def run_one_combo(candles_5m, coin, atr_multiplier, r_target, use_macd, use_rsi, max_hold_bars):
+    """One parameter combo's full result, given already-fetched candles.
+    Factored out so --sweep-all can call this 24 times per fetch instead
+    of fetching 24 times."""
+    trades = run_momentum_scalp(candles_5m, atr_multiplier=atr_multiplier, r_target=r_target,
+                                 use_macd=use_macd, use_rsi=use_rsi, max_hold_bars=max_hold_bars)
+    if len(trades) == 0:
+        return {"coin": coin, "atr_multiplier": atr_multiplier, "r_target": r_target,
+                "use_macd": use_macd, "use_rsi": use_rsi, "trades": 0,
+                "win_rate": None, "total_pnl": None, "exit_breakdown": {}}
+    trades = trades.copy()
+    trades["symbol"] = coin
+    trades["strategy"] = "momentum_scalp_5m"
+    trades = apply_fees_and_interest(trades, bar_minutes=5)
+    trades = apply_dollar_pnl(trades)
+    return {
+        "coin": coin, "atr_multiplier": atr_multiplier, "r_target": r_target,
+        "use_macd": use_macd, "use_rsi": use_rsi, "trades": len(trades),
+        "win_rate": round((trades["dollar_pnl"] > 0).mean() * 100, 1),
+        "total_pnl": round(trades["dollar_pnl"].sum(), 2),
+        "exit_breakdown": trades["exit_reason"].value_counts().to_dict(),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--coin", type=str, required=True)
     parser.add_argument("--days", type=int, default=365)
+    parser.add_argument("--max-hold-hours", type=float, default=4.0)
     parser.add_argument("--atr-multiplier", type=float, default=1.2)
     parser.add_argument("--r-target", type=float, default=1.5)
     parser.add_argument("--use-macd", action="store_true")
     parser.add_argument("--use-rsi", action="store_true")
-    parser.add_argument("--max-hold-hours", type=float, default=4.0)
+    parser.add_argument("--sweep-all", action="store_true",
+                         help="Fetch this coin's data ONCE, then run every parameter combination "
+                              "in-memory instead of re-fetching per combo (24x fewer real API "
+                              "requests per coin - the original per-combo-job design hammered "
+                              "CoinDCX's public API with 12,480 requests per coin instead of 520).")
     args = parser.parse_args()
 
     now = datetime.now(timezone.utc)
     start_date = now.date() - timedelta(days=args.days)
     fetch_end_time = now.isoformat()
+    max_hold_bars = round(args.max_hold_hours * 60 / 5)
 
-    print(f"Idea #10: 5m Momentum Scalp | {args.coin} | {start_date} to {now.date()} ({args.days}d)")
-    print(f"atr_multiplier={args.atr_multiplier}, r_target={args.r_target}, "
-          f"use_macd={args.use_macd}, use_rsi={args.use_rsi}, max_hold_hours={args.max_hold_hours}")
+    print(f"{'Idea #10 sweep' if args.sweep_all else 'Idea #10'}: 5m Momentum Scalp | {args.coin} | "
+          f"{start_date} to {now.date()} ({args.days}d)")
 
     candles_1m = fetch_coindcx_klines(args.coin, "1m", str(start_date), fetch_end_time)
     candles_5m = resample_candles(candles_1m, 5)
-    print(f"{args.coin}: {len(candles_1m)} 1m candles -> {len(candles_5m)} 5m candles")
+    print(f"{args.coin}: {len(candles_1m)} 1m candles -> {len(candles_5m)} 5m candles "
+          f"(ONE fetch, reused for every combo below)" if args.sweep_all else "")
 
-    max_hold_bars = round(args.max_hold_hours * 60 / 5)
-    trades = run_momentum_scalp(candles_5m, atr_multiplier=args.atr_multiplier, r_target=args.r_target,
-                                 use_macd=args.use_macd, use_rsi=args.use_rsi, max_hold_bars=max_hold_bars)
-    print(f"{args.coin}: {len(trades)} trades")
-
-    if len(trades) == 0:
-        print("No trades - nothing further to report.")
+    if not args.sweep_all:
+        trades = run_momentum_scalp(candles_5m, atr_multiplier=args.atr_multiplier, r_target=args.r_target,
+                                     use_macd=args.use_macd, use_rsi=args.use_rsi, max_hold_bars=max_hold_bars)
+        print(f"{args.coin}: {len(trades)} trades")
+        if len(trades) == 0:
+            print("No trades - nothing further to report.")
+            return
+        trades["symbol"] = args.coin
+        trades["strategy"] = "momentum_scalp_5m"
+        trades = apply_fees_and_interest(trades, bar_minutes=5)
+        trades = apply_dollar_pnl(trades)
+        win_rate = (trades["dollar_pnl"] > 0).mean() * 100
+        total_pnl = trades["dollar_pnl"].sum()
+        exit_breakdown = trades["exit_reason"].value_counts().to_dict()
+        print(f"\n=== RESULTS: {args.coin} ===")
+        print(f"Trades: {len(trades)} | Win rate: {win_rate:.1f}% | Total $ P&L: {total_pnl:.2f}")
+        print(f"Exit reason breakdown: {exit_breakdown}")
         return
 
-    trades["symbol"] = args.coin
-    trades["strategy"] = "momentum_scalp_5m"
-    trades = apply_fees_and_interest(trades, bar_minutes=5)
-    trades = apply_dollar_pnl(trades)
+    atr_multipliers = [1.0, 1.25, 1.5]
+    r_targets = [1.5, 2.0]
+    confirmation_sets = [
+        ("core3", False, False),
+        ("core3_macd", True, False),
+        ("core3_rsi", False, True),
+        ("core3_macd_rsi", True, True),
+    ]
 
-    win_rate = (trades["dollar_pnl"] > 0).mean() * 100
-    total_pnl = trades["dollar_pnl"].sum()
-    exit_breakdown = trades["exit_reason"].value_counts().to_dict()
+    results = []
+    for atr_mult, r_tgt, (conf_name, use_macd, use_rsi) in itertools.product(atr_multipliers, r_targets, confirmation_sets):
+        result = run_one_combo(candles_5m, args.coin, atr_mult, r_tgt, use_macd, use_rsi, max_hold_bars)
+        result["confirmations"] = conf_name
+        results.append(result)
+        print(f"  atr={atr_mult}, r_target={r_tgt}, conf={conf_name:15} -> "
+              f"{result['trades']:4} trades | win_rate={result['win_rate']} | total_pnl={result['total_pnl']}")
 
-    print(f"\n=== RESULTS: {args.coin} ===")
-    print(f"Trades: {len(trades)} | Win rate: {win_rate:.1f}% | Total $ P&L: {total_pnl:.2f}")
-    print(f"Exit reason breakdown: {exit_breakdown}")
+    results_df = pd.DataFrame(results)
+    print(f"\n=== FULL SWEEP RESULTS: {args.coin} (24 combos, 1 fetch) ===")
+    print(results_df.to_string(index=False))
+
+    valid = results_df.dropna(subset=["total_pnl"])
+    if len(valid):
+        best = valid.loc[valid["total_pnl"].idxmax()]
+        print(f"\nBest combo for {args.coin}: atr={best['atr_multiplier']}, r_target={best['r_target']}, "
+              f"conf={best['confirmations']} -> ${best['total_pnl']:.2f} ({best['trades']} trades, "
+              f"{best['win_rate']}% win rate)")
 
 
 if __name__ == "__main__":
