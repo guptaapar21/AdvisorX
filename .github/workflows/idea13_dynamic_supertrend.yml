@@ -1,0 +1,32 @@
+name: Idea 13 - Dynamic 3m SuperTrend (1m confirmation)
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Lookback window in days"
+        required: false
+        default: "180"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        coin: [SOL, DOGE, ETH]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+      - name: Run 36-combo sweep for ${{ matrix.coin }} (one fetch)
+        working-directory: cloud-backtest
+        run: >
+          python run_dynamic_supertrend_backtest.py
+          --coin ${{ matrix.coin }}
+          --days ${{ inputs.days }}
+          --sweep-all
