@@ -33,10 +33,54 @@ MIN_CANDLES_NEEDED = 30
 LOOKBACK_WINDOW_BARS = 100  # same fixed bound as ideas #10/#11's runners - see those files
                             # for the full O(n^2) history this avoids repeating.
 
-TIMEFRAME_MINUTES = {"1m": 1, "3m": 3, "15m": 15}
+TIMEFRAME_MINUTES = {"1m": 1, "3m": 3, "15m": 15, "1h": 60}
+
+HTF_PERIOD = 10       # fixed 1h SuperTrend settings used only for the alignment filter -
+HTF_MULTIPLIER = 3.0  # not swept; the point is a coarse chop filter, not another tunable.
+
+# SAFETY ASSUMPTION - VERIFY BEFORE TRUSTING htf=1h_align RESULTS:
+# candles_1h.index[i] is assumed to be the bar's OPEN time (pandas resample's default,
+# label="left"), meaning the bar's close/SuperTrend value isn't actually known until
+# index[i] + 1h. If that's correct, this shift is required to avoid handing 3m bars an
+# 1h trend value up to ~57 minutes before it was really available. If your fetcher/
+# resample_candles instead labels bars by CLOSE time, set this to False - leaving it
+# True in that case would just make the filter needlessly stale by an extra hour, not
+# wrong, but check to be sure.
+HTF_INDEX_IS_OPEN_TIME = True
 
 
-def run_supertrend_backtest(candles, period=10, multiplier=3.0, r_target=1.5, max_hold_bars=48):
+def compute_htf_trend_series(candles_1h):
+    """
+    Walks the 1h candles once with the same bounded-window pattern as the main
+    loop and records the SuperTrend trend ("up"/"down") as of each 1h close.
+    No lookahead: the trend at 1h bar i only uses candles up to and including i.
+    Returned as a Series indexed by the timestamp the value actually becomes
+    available (see HTF_INDEX_IS_OPEN_TIME - shifted forward by 1h if the source
+    index is open-time-labeled), for merge_asof'ing onto the entry timeframe's
+    timestamps using only 1h bars already closed.
+    """
+    n = len(candles_1h)
+    idx, trend = [], []
+    for i in range(MIN_CANDLES_NEEDED, n):
+        window = candles_1h.iloc[max(0, i - LOOKBACK_WINDOW_BARS):i + 1]
+        st = calculate_supertrend(window, period=HTF_PERIOD, multiplier=HTF_MULTIPLIER)
+        idx.append(candles_1h.index[i])
+        trend.append(st["trend"])
+    available_at = pd.DatetimeIndex(idx)
+    if HTF_INDEX_IS_OPEN_TIME:
+        available_at = available_at + pd.Timedelta(hours=1)
+    return pd.Series(trend, index=available_at, name="htf_trend")
+
+
+def run_supertrend_backtest(candles, period=10, multiplier=3.0, r_target=1.5, max_hold_bars=48,
+                             htf_trend_asof=None):
+    """
+    htf_trend_asof: optional pandas Series (DatetimeIndex -> "up"/"down"), already
+    merge_asof-aligned so that htf_trend_asof.loc[t] gives the most recently CLOSED
+    1h SuperTrend direction as of entry timestamp t (or NaN before the first 1h bar
+    closes). When provided, an entry is only taken if it agrees with this direction -
+    i.e. long entries require 1h trend == "up", shorts require "down".
+    """
     trades = []
     open_position = None
     n = len(candles)
@@ -73,6 +117,15 @@ def run_supertrend_backtest(candles, period=10, multiplier=3.0, r_target=1.5, ma
             st = calculate_supertrend(window, period=period, multiplier=multiplier)
             if st["flipped"]:
                 direction = "long" if st["trend"] == "up" else "short"
+
+                if htf_trend_asof is not None:
+                    htf_dir = htf_trend_asof.loc[t] if t in htf_trend_asof.index else None
+                    if htf_dir is None or pd.isna(htf_dir):
+                        continue  # no closed 1h bar yet - skip rather than assume alignment
+                    required = "up" if direction == "long" else "down"
+                    if htf_dir != required:
+                        continue  # HTF disagrees - filtered out
+
                 stop_price = st["value"]
                 stop_distance = abs(current_price - stop_price)
                 if stop_distance > 0:
@@ -86,13 +139,14 @@ def run_supertrend_backtest(candles, period=10, multiplier=3.0, r_target=1.5, ma
     return pd.DataFrame(trades)
 
 
-def run_one_combo(candles, coin, timeframe, period, multiplier, r_target, max_hold_bars):
+def run_one_combo(candles, coin, timeframe, period, multiplier, r_target, max_hold_bars,
+                   htf_trend_asof=None, htf_label="off"):
     trades = run_supertrend_backtest(candles, period=period, multiplier=multiplier, r_target=r_target,
-                                      max_hold_bars=max_hold_bars)
+                                      max_hold_bars=max_hold_bars, htf_trend_asof=htf_trend_asof)
     if len(trades) == 0:
         return {"coin": coin, "timeframe": timeframe, "period": period, "multiplier": multiplier,
-                "r_target": r_target, "trades": 0, "win_rate": None, "gross_expected_r": None,
-                "total_pnl": None, "exit_breakdown": {}}
+                "r_target": r_target, "htf_filter": htf_label, "trades": 0, "win_rate": None,
+                "gross_expected_r": None, "total_pnl": None, "exit_breakdown": {}}
     trades = trades.copy()
     trades["symbol"] = coin
     trades["strategy"] = "supertrend"
@@ -101,6 +155,7 @@ def run_one_combo(candles, coin, timeframe, period, multiplier, r_target, max_ho
     trades = apply_dollar_pnl(trades)
     return {
         "coin": coin, "timeframe": timeframe, "period": period, "multiplier": multiplier, "r_target": r_target,
+        "htf_filter": htf_label,
         "trades": len(trades), "win_rate": round((trades["dollar_pnl"] > 0).mean() * 100, 1),
         "gross_expected_r": round(trades["r_achieved"].mean(), 4),
         "total_pnl": round(trades["dollar_pnl"].sum(), 2),
@@ -120,13 +175,18 @@ def main():
     parser.add_argument("--multiplier", type=float, default=3.0)
     parser.add_argument("--r-target", type=float, default=1.5)
     parser.add_argument("--sweep-all", action="store_true")
+    parser.add_argument("--sweep-tuning", action="store_true",
+                        help="Path A grid: fixed 3m timeframe, period in [10,14], multiplier in "
+                             "[3.0,4.0,5.0], r_target in [2.0,2.5,3.0,3.5], HTF filter off vs 1h-align "
+                             "(48 combos). Widens stops/targets to shrink fees as a fraction of R.")
     args = parser.parse_args()
 
     now = datetime.now(timezone.utc)
     start_date = now.date() - timedelta(days=args.days)
     fetch_end_time = now.isoformat()
 
-    print(f"{'Idea #12 sweep' if args.sweep_all else 'Idea #12'}: SuperTrend | {args.coin} | timeframe={args.timeframe} | "
+    mode_label = "Idea #12 sweep" if args.sweep_all else ("Idea #12 tuning sweep" if args.sweep_tuning else "Idea #12")
+    print(f"{mode_label}: SuperTrend | {args.coin} | timeframe={args.timeframe} | "
           f"{start_date} to {now.date()} ({args.days}d)")
 
     candles_1m = fetch_coindcx_klines(args.coin, "1m", str(start_date), fetch_end_time)
@@ -161,6 +221,56 @@ def main():
             best = valid.loc[valid["total_pnl"].idxmax()]
             print(f"\nBest combo for {args.coin}: tf={best['timeframe']}, period={best['period']}, "
                   f"mult={best['multiplier']}, r_target={best['r_target']} -> ${best['total_pnl']:.2f} "
+                  f"({best['trades']} trades, {best['win_rate']}% win rate, gross R={best['gross_expected_r']})")
+        return
+
+    if args.sweep_tuning:
+        # Fixed 3m timeframe - grounded on the validated gross signal from the idea #12
+        # sweep. Wider multiplier/r_target values shrink fees as a fraction of R; the
+        # HTF filter is tested as an ablation on top, not swept in combination with itself.
+        candles_3m = resample_candles(candles_1m, TIMEFRAME_MINUTES["3m"])
+        candles_1h = resample_candles(candles_1m, TIMEFRAME_MINUTES["1h"])
+        print(f"{args.coin}: {len(candles_1m)} 1m candles -> {len(candles_3m)} 3m candles, "
+              f"{len(candles_1h)} 1h candles (ONE fetch)")
+
+        htf_trend_1h = compute_htf_trend_series(candles_1h)
+        print(f"  HTF filter: assuming candles_1h index = "
+              f"{'open' if HTF_INDEX_IS_OPEN_TIME else 'close'}-time "
+              f"(HTF_INDEX_IS_OPEN_TIME={HTF_INDEX_IS_OPEN_TIME}) - "
+              f"trend values shifted to their real availability time before merging.")
+        # merge_asof onto the 3m index: for each 3m bar t, take the most recent 1h trend
+        # value whose availability timestamp is <= t, so only already-closed (and, per the
+        # shift above, already-available) 1h bars are used - no lookahead.
+        htf_aligned = pd.merge_asof(
+            pd.DataFrame(index=candles_3m.index).reset_index().rename(columns={"index": "t"}),
+            htf_trend_1h.reset_index().rename(columns={"index": "t"}),
+            on="t", direction="backward",
+        ).set_index("t")["htf_trend"]
+
+        periods = [10, 14]
+        multipliers = [3.0, 4.0, 5.0]
+        r_targets = [2.0, 2.5, 3.0, 3.5]
+        htf_options = [("off", None), ("1h_align", htf_aligned)]
+
+        max_hold_bars = round(args.max_hold_hours * 60 / TIMEFRAME_MINUTES["3m"])
+        results = []
+        for period, mult, r_tgt, (htf_label, htf_series) in itertools.product(
+                periods, multipliers, r_targets, htf_options):
+            result = run_one_combo(candles_3m, args.coin, "3m", period, mult, r_tgt, max_hold_bars,
+                                    htf_trend_asof=htf_series, htf_label=htf_label)
+            results.append(result)
+            print(f"  period={period}, mult={mult}, r_target={r_tgt}, htf={htf_label} -> "
+                  f"{result['trades']:5} trades | win_rate={result['win_rate']} | "
+                  f"gross_R={result['gross_expected_r']} | total_pnl={result['total_pnl']}")
+
+        results_df = pd.DataFrame(results)
+        print(f"\n=== TUNING SWEEP RESULTS: {args.coin} (48 combos, 1 fetch) ===")
+        print(results_df.to_string(index=False))
+        valid = results_df.dropna(subset=["total_pnl"])
+        if len(valid):
+            best = valid.loc[valid["total_pnl"].idxmax()]
+            print(f"\nBest combo for {args.coin}: period={best['period']}, mult={best['multiplier']}, "
+                  f"r_target={best['r_target']}, htf={best['htf_filter']} -> ${best['total_pnl']:.2f} "
                   f"({best['trades']} trades, {best['win_rate']}% win rate, gross R={best['gross_expected_r']})")
         return
 
