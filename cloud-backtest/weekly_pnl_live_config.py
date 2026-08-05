@@ -61,7 +61,10 @@ def main():
 
     coins_to_run = {args.coin: LIVE_CONFIG[args.coin]} if args.coin else LIVE_CONFIG
 
-    end_date = datetime.now(timezone.utc).date()
+    end_date = datetime.now(timezone.utc).date()  # display/labeling only - NOT what gets fetched
+    fetch_end_time = datetime.now(timezone.utc).isoformat()  # the REAL current moment -
+                                       # str(end_date) alone parses as midnight of today,
+                                       # silently dropping every hour since midnight from the fetch
     start_date = end_date - timedelta(days=args.days)
     print(f"Weekly P&L, live config, {start_date} to {end_date} ({args.days}d)")
     print("Engine: POST-LOOKAHEAD-FIX (_closed_bucket_candles now uses a strict, zero-slack "
@@ -76,7 +79,7 @@ def main():
     btc_renamed = None
     if "ETH" in coins_to_run:
         print("=== BTC: fetching 1m data (needed for ETH's BTC trend bonus) ===")
-        btc_1m = fetch_coindcx_klines("BTC", "1m", str(start_date), str(end_date))
+        btc_1m = fetch_coindcx_klines("BTC", "1m", str(start_date), fetch_end_time)
         btc_5m = resample_candles(btc_1m, 5)
         btc_renamed = btc_5m.rename(columns={
             "open": "btc_open", "high": "btc_high", "low": "btc_low",
@@ -89,7 +92,7 @@ def main():
 
     for coin, cfg in coins_to_run.items():
         print(f"=== {coin}: fetching 1m data ===")
-        candles_1m = fetch_coindcx_klines(coin, "1m", str(start_date), str(end_date))
+        candles_1m = fetch_coindcx_klines(coin, "1m", str(start_date), fetch_end_time)
         candles_5m = resample_candles(candles_1m, 5)
         print(f"  {coin}: {len(candles_1m)} 1m candles -> {len(candles_5m)} 5m candles")
 
