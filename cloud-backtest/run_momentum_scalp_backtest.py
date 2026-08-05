@@ -27,6 +27,16 @@ from momentum_scalp import detect_momentum_scalp_signal, calculate_scalp_stop_ta
 from fee_model import apply_fees_and_interest, apply_dollar_pnl
 
 MIN_CANDLES_NEEDED = 30  # enough for EMA(13)+lookback with margin
+LOOKBACK_WINDOW_BARS = 100  # generous margin over what any indicator here needs
+                            # (MACD's slow+signal=35, RSI's 14+1, EMA13, structure
+                            # lookback=3) - a FIXED size, NOT the full history.
+                            # Using candles_5m.iloc[:i+1] (unbounded, growing every
+                            # bar) was the exact O(n^2) bug already documented and
+                            # fixed once elsewhere in this codebase
+                            # (_closed_bucket_candles's own docstring warns about
+                            # this specifically) - reintroduced here by mistake,
+                            # confirmed by a real DOGE run timing out at 30 minutes
+                            # having made almost no visible progress.
 
 
 def run_momentum_scalp(candles_5m, atr_multiplier=1.2, r_target=1.5, use_macd=False, use_rsi=False,
@@ -41,8 +51,8 @@ def run_momentum_scalp(candles_5m, atr_multiplier=1.2, r_target=1.5, use_macd=Fa
     n = len(candles_5m)
 
     for i in range(MIN_CANDLES_NEEDED, n):
-        window = candles_5m.iloc[:i + 1]   # <-- the ONE slice everything below derives from.
-        t = candles_5m.index[i]            # Nothing past this row is ever touched in this loop.
+        window = candles_5m.iloc[max(0, i - LOOKBACK_WINDOW_BARS):i + 1]   # <-- bounded, fixed-size.
+        t = candles_5m.index[i]            # Still never touches anything past row i.
         current_price = window["close"].iloc[-1]
 
         if open_position is not None:
