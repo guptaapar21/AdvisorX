@@ -31,7 +31,7 @@ session) - a bug here can't hide inside a bigger, more complex function.
 """
 import numpy as np
 
-from indicators import ema, rsi, macd_series, atr_wilder, avg_volume, detect_volume_spike
+from indicators import ema, rsi, macd, macd_series, atr_wilder, avg_volume, detect_volume_spike
 
 def detect_consolidation_breakout(candles, lookback=10, range_atr_ratio=1.5, volume_spike_threshold=1.5):
     """Idea #11: genuinely different mechanism from idea #10's momentum
@@ -340,3 +340,28 @@ def classify_1m_confirmation(candles_1m, direction, fast=9, slow=21, strong_thre
         return "contradicting"
     gap_pct = abs(gap_now) / current_price if current_price != 0 else 0
     return "strong" if gap_pct >= strong_threshold_pct else "weak"
+
+
+def detect_macd_zero_cross(candles, direction):
+    """Bullish: MACD line crosses ABOVE its signal line (histogram flips
+    from <=0 to >0 between the last two bars) AND the MACD line itself
+    is above the zero line at that moment. Bearish (short): mirrored -
+    crosses below signal AND MACD line is below zero. Stricter than a
+    plain crossover - specifically requires the cross to already be on
+    the "confirming" side of zero, not a reversal crossover from deep
+    negative/positive territory."""
+    closes = candles["close"].values
+    hist_series = macd_series(closes)
+    if len(hist_series) < 2:
+        return False
+    m = macd(closes)
+    if m is None:
+        return False
+    macd_line_value = m["macd"]
+
+    if direction == "long":
+        crossed_up = hist_series[-2] <= 0 and hist_series[-1] > 0
+        return bool(crossed_up and macd_line_value > 0)
+    else:
+        crossed_down = hist_series[-2] >= 0 and hist_series[-1] < 0
+        return bool(crossed_down and macd_line_value < 0)
