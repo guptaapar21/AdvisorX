@@ -31,7 +31,85 @@ session) - a bug here can't hide inside a bigger, more complex function.
 """
 import numpy as np
 
-from indicators import ema, rsi, macd_series, atr_wilder
+from indicators import ema, rsi, macd_series, atr_wilder, avg_volume, detect_volume_spike
+
+def detect_consolidation_breakout(candles, lookback=10, range_atr_ratio=1.5, volume_spike_threshold=1.5):
+    """Idea #11: genuinely different mechanism from idea #10's momentum
+    scalp - that one required a trend already confirmed three lagging
+    ways (EMA cross+widening, 3 higher-highs/lows, OBV slope), which
+    testing showed fires only AFTER the move is essentially over
+    (gross expected R near zero at every setting tested). This instead
+    triggers AT THE MOMENT price escapes a tight range - the signal
+    exists before the move develops, not after.
+
+    Two conditions, both on data already available in the caller-bounded
+    `candles` window:
+      1. CONSOLIDATION: the `lookback` candles BEFORE the current one
+         have a tight high-low range relative to volatility - range
+         under `range_atr_ratio` x ATR(14). This is checked on the prior
+         candles only, excluding the current (possibly-breaking) one.
+      2. BREAKOUT: the CURRENT candle's close is outside that prior
+         range, confirmed by a real volume spike (reusing the existing
+         detect_volume_spike/avg_volume functions - previously flagged
+         as missing entirely from breakout-style signals in this
+         project's Python port).
+
+    Returns {"action": "long"/"short"/"wait", "range_high": ..., "range_low": ...}
+    - the range bounds are returned so the caller can size the stop
+      structurally (opposite side of the range) instead of pure ATR,
+      a genuinely different risk model from idea #10 too.
+    """
+    if len(candles) < lookback + 15:  # +15 margin for atr_wilder/avg_volume's own needs
+        return {"action": "wait"}
+
+    prior = candles.iloc[-(lookback + 1):-1]   # the lookback candles BEFORE the current one
+    current = candles.iloc[-1]
+
+    range_high = prior["high"].max()
+    range_low = prior["low"].min()
+    range_width = range_high - range_low
+
+    atr14 = atr_wilder(candles.iloc[:-1], 14)  # ATR computed on prior candles only, not including
+                                                 # the current (possibly-breaking) one - the whole
+                                                 # point is measuring how tight things WERE, not
+                                                 # letting today's breakout candle inflate its own
+                                                 # volatility comparison.
+    if atr14 == 0:
+        return {"action": "wait"}
+
+    is_consolidating = range_width < (range_atr_ratio * atr14)
+    if not is_consolidating:
+        return {"action": "wait"}
+
+    avg_vol = avg_volume(prior, period=lookback)
+    vol_signal = detect_volume_spike(current["volume"], avg_vol, threshold=volume_spike_threshold)
+    if not vol_signal["is_spike"]:
+        return {"action": "wait"}
+
+    if current["close"] > range_high:
+        return {"action": "long", "range_high": range_high, "range_low": range_low}
+    elif current["close"] < range_low:
+        return {"action": "short", "range_high": range_high, "range_low": range_low}
+    return {"action": "wait"}
+
+
+def calculate_breakout_stop_target(direction, entry_price, range_high, range_low, r_target=1.5):
+    """Structural stop: the OPPOSITE side of the consolidation range that
+    just broke - not an ATR multiple. If the breakout is real, price
+    shouldn't come back through the range it just escaped; if it does,
+    that's a clean, structurally-motivated invalidation, not an
+    arbitrary volatility-based distance."""
+    if direction == "long":
+        stop_price = range_low
+        stop_distance = entry_price - stop_price
+        target_price = entry_price + stop_distance * r_target
+    else:
+        stop_price = range_high
+        stop_distance = stop_price - entry_price
+        target_price = entry_price - stop_distance * r_target
+    return {"stop_price": stop_price, "target_price": target_price, "stop_distance": stop_distance}
+
+
 
 
 def detect_ema_slope_widening(candles, direction, fast=5, slow=13, lookback=3):
