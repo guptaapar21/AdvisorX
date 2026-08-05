@@ -240,3 +240,57 @@ def calculate_scalp_stop_target(candles, direction, entry_price, atr_multiplier=
         stop_price = entry_price + stop_distance
         target_price = entry_price - stop_distance * r_target
     return {"stop_price": stop_price, "target_price": target_price, "stop_distance": stop_distance}
+
+
+def calculate_supertrend(candles, period=10, multiplier=3.0):
+    """SuperTrend is RECURSIVE, unlike every other indicator in this
+    file (EMA/RSI/MACD are memoryless - recomputed fresh from a window
+    each call). SuperTrend's bands ratchet forward from the PREVIOUS
+    bar's final bands, so it needs the recursive history replayed, not
+    just the current bar's raw values. This function replays the full
+    band/trend recursion across the given (already-bounded, zero-
+    lookahead) candles window from its own start - it does NOT thread
+    state across separate calls, avoiding any risk of that state
+    accidentally holding information from before what the caller
+    intended to bound. Window must be long enough for the ratchet to
+    converge - same convergence property already validated for Wilder
+    ATR (100 bars is far more than the ~40-50 needed)."""
+    highs = candles["high"].values
+    lows = candles["low"].values
+    closes = candles["close"].values
+    n = len(candles)
+    if n < period + 2:
+        return {"trend": None, "value": None, "flipped": False}
+
+    trs = np.zeros(n)
+    for i in range(1, n):
+        trs[i] = max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
+    atr = np.zeros(n)
+    atr[period] = trs[1:period + 1].mean()
+    for i in range(period + 1, n):
+        atr[i] = (atr[i - 1] * (period - 1) + trs[i]) / period
+
+    hl2 = (highs + lows) / 2
+    final_upper = np.zeros(n)
+    final_lower = np.zeros(n)
+    trend = np.ones(n, dtype=int)
+
+    start = period
+    final_upper[start] = hl2[start] + multiplier * atr[start]
+    final_lower[start] = hl2[start] - multiplier * atr[start]
+    trend[start] = 1 if closes[start] > final_upper[start] else -1
+
+    for i in range(start + 1, n):
+        basic_upper = hl2[i] + multiplier * atr[i]
+        basic_lower = hl2[i] - multiplier * atr[i]
+        final_upper[i] = basic_upper if (basic_upper < final_upper[i - 1] or closes[i - 1] > final_upper[i - 1]) else final_upper[i - 1]
+        final_lower[i] = basic_lower if (basic_lower > final_lower[i - 1] or closes[i - 1] < final_lower[i - 1]) else final_lower[i - 1]
+        if trend[i - 1] == 1:
+            trend[i] = -1 if closes[i] < final_lower[i] else 1
+        else:
+            trend[i] = 1 if closes[i] > final_upper[i] else -1
+
+    current_trend = "up" if trend[-1] == 1 else "down"
+    flipped = bool(trend[-1] != trend[-2]) if n > start + 1 else False
+    st_value = final_lower[-1] if trend[-1] == 1 else final_upper[-1]
+    return {"trend": current_trend, "value": float(st_value), "flipped": flipped}
