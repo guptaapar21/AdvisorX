@@ -242,8 +242,8 @@ def main():
         # value whose availability timestamp is <= t, so only already-closed (and, per the
         # shift above, already-available) 1h bars are used - no lookahead.
         htf_aligned = pd.merge_asof(
-            pd.DataFrame(index=candles_3m.index).reset_index().rename(columns={"index": "t"}),
-            htf_trend_1h.reset_index().rename(columns={"index": "t"}),
+            pd.DataFrame({"t": candles_3m.index}),
+            pd.DataFrame({"t": htf_trend_1h.index, "htf_trend": htf_trend_1h.values}),
             on="t", direction="backward",
         ).set_index("t")["htf_trend"]
 
