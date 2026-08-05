@@ -1,0 +1,24 @@
+name: Win Rate + Last 7 Days Trade Log
+
+on:
+  workflow_dispatch:
+    inputs:
+      history_days:
+        description: "How far back for the overall win-rate calculation (default 365)"
+        required: false
+        default: "365"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+      - name: Run win rate + last 7 days trade log
+        working-directory: cloud-backtest
+        run: python win_rate_and_recent_trades.py --history-days ${{ inputs.history_days }}
