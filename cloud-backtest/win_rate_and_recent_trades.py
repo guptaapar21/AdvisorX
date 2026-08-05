@@ -34,7 +34,14 @@ def main():
                               "The last-7-days trade log is always exactly the most recent 7 "
                               "days regardless of this value - this only controls how much "
                               "history backs the overall win-rate number.")
+    parser.add_argument("--coin", type=str, default=None,
+                         help="Run just this one coin (SOL/DOGE/ETH) instead of all 3. Used by "
+                              "the parallel per-coin workflow - the sequential all-4-fetch "
+                              "version already timed out once at 45 minutes, cancelled 30%% "
+                              "through its 4th coin's fetch. Same fix as weekly_pnl_live_config.py.")
     args = parser.parse_args()
+
+    coins_to_run = {args.coin: LIVE_CONFIG[args.coin]} if args.coin else LIVE_CONFIG
 
     now = datetime.now(timezone.utc)
     end_date = now.date()  # display/labeling only - NOT what gets fetched, see fetch_end_time below
@@ -50,18 +57,19 @@ def main():
     print(f"'Last 7 days' cutoff: trades with exit_time >= {seven_days_ago} (exact, not rounded)\n")
 
     btc_renamed = None
-    print("=== BTC: fetching 1m data (needed for ETH's BTC trend bonus) ===")
-    btc_1m = fetch_coindcx_klines("BTC", "1m", str(start_date), fetch_end_time)
-    btc_5m = resample_candles(btc_1m, 5)
-    btc_renamed = btc_5m.rename(columns={
-        "open": "btc_open", "high": "btc_high", "low": "btc_low",
-        "close": "btc_close", "volume": "btc_volume",
-    })
-    print(f"  BTC: {len(btc_1m)} 1m candles -> {len(btc_5m)} 5m candles\n")
+    if "ETH" in coins_to_run:
+        print("=== BTC: fetching 1m data (needed for ETH's BTC trend bonus) ===")
+        btc_1m = fetch_coindcx_klines("BTC", "1m", str(start_date), fetch_end_time)
+        btc_5m = resample_candles(btc_1m, 5)
+        btc_renamed = btc_5m.rename(columns={
+            "open": "btc_open", "high": "btc_high", "low": "btc_low",
+            "close": "btc_close", "volume": "btc_volume",
+        })
+        print(f"  BTC: {len(btc_1m)} 1m candles -> {len(btc_5m)} 5m candles\n")
 
     all_trades = []
 
-    for coin, cfg in LIVE_CONFIG.items():
+    for coin, cfg in coins_to_run.items():
         cfg = dict(cfg)  # don't mutate the shared module-level table
         print(f"=== {coin}: fetching 1m data ===")
         candles_1m = fetch_coindcx_klines(coin, "1m", str(start_date), fetch_end_time)
@@ -104,7 +112,7 @@ def main():
     print("=" * 70)
     print("QUESTION 1: OVERALL WIN RATE (deployed config, corrected engine)")
     print("=" * 70)
-    for coin in LIVE_CONFIG:
+    for coin in coins_to_run:
         coin_trades = combined[combined["coin"] == coin]
         if coin_trades.empty:
             continue
