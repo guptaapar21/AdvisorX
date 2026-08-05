@@ -241,9 +241,15 @@ def main():
         # merge_asof onto the 3m index: for each 3m bar t, take the most recent 1h trend
         # value whose availability timestamp is <= t, so only already-closed (and, per the
         # shift above, already-available) 1h bars are used - no lookahead.
+        # merge_asof requires both key columns to share the exact same datetime64
+        # resolution (e.g. ms vs us) - candles_3m.index and htf_trend_1h.index can
+        # come out at different resolutions depending on how each was built, so
+        # normalize both to a common unit before merging.
+        left_t = pd.DatetimeIndex(candles_3m.index).as_unit("us")
+        right_t = pd.DatetimeIndex(htf_trend_1h.index).as_unit("us")
         htf_aligned = pd.merge_asof(
-            pd.DataFrame({"t": candles_3m.index}),
-            pd.DataFrame({"t": htf_trend_1h.index, "htf_trend": htf_trend_1h.values}),
+            pd.DataFrame({"t": left_t}),
+            pd.DataFrame({"t": right_t, "htf_trend": htf_trend_1h.values}),
             on="t", direction="backward",
         ).set_index("t")["htf_trend"]
 
