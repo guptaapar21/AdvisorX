@@ -20,9 +20,6 @@ jobs:
       fail-fast: false
       matrix:
         coin: [SOL, DOGE, ETH]
-        atr_multiplier: ["1.0", "1.25", "1.5"]
-        r_target: ["1.5", "2.0"]
-        confirmations: ["core3", "core3_macd", "core3_rsi", "core3_macd_rsi"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,23 +27,11 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
-      - name: Set confirmation flags
-        id: flags
-        run: |
-          case "${{ matrix.confirmations }}" in
-            core3)          echo "macd_flag=" >> $GITHUB_OUTPUT;      echo "rsi_flag=" >> $GITHUB_OUTPUT ;;
-            core3_macd)     echo "macd_flag=--use-macd" >> $GITHUB_OUTPUT; echo "rsi_flag=" >> $GITHUB_OUTPUT ;;
-            core3_rsi)      echo "macd_flag=" >> $GITHUB_OUTPUT;      echo "rsi_flag=--use-rsi" >> $GITHUB_OUTPUT ;;
-            core3_macd_rsi) echo "macd_flag=--use-macd" >> $GITHUB_OUTPUT; echo "rsi_flag=--use-rsi" >> $GITHUB_OUTPUT ;;
-          esac
-      - name: Run momentum scalp backtest
+      - name: Run full 24-combo sweep for ${{ matrix.coin }} (one fetch, not 24)
         working-directory: cloud-backtest
         run: >
           python run_momentum_scalp_backtest.py
           --coin ${{ matrix.coin }}
           --days ${{ inputs.days }}
-          --atr-multiplier ${{ matrix.atr_multiplier }}
-          --r-target ${{ matrix.r_target }}
           --max-hold-hours ${{ inputs.max_hold_hours }}
-          ${{ steps.flags.outputs.macd_flag }}
-          ${{ steps.flags.outputs.rsi_flag }}
+          --sweep-all
