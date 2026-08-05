@@ -1,0 +1,32 @@
+name: Idea 14 - MACD Zero Cross (1m)
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Lookback window - 90d default (1m data is enormous)"
+        required: false
+        default: "90"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        coin: [SOL, DOGE, ETH]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+      - name: Run 18-combo sweep for ${{ matrix.coin }} (one fetch)
+        working-directory: cloud-backtest
+        run: >
+          python run_macd_cross_backtest.py
+          --coin ${{ matrix.coin }}
+          --days ${{ inputs.days }}
+          --sweep-all
