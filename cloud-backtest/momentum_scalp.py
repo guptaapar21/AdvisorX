@@ -294,3 +294,49 @@ def calculate_supertrend(candles, period=10, multiplier=3.0):
     flipped = bool(trend[-1] != trend[-2]) if n > start + 1 else False
     st_value = final_lower[-1] if trend[-1] == 1 else final_upper[-1]
     return {"trend": current_trend, "value": float(st_value), "flipped": flipped}
+
+
+def classify_1m_confirmation(candles_1m, direction, fast=9, slow=21, strong_threshold_pct=0.0015):
+    """Uses a FASTER timeframe (1m) to gauge conviction behind a 3m
+    SuperTrend flip, returning one of three tiers used to dynamically
+    size the exit - not a fixed stop/target regardless of context.
+
+    Uses the EMA GAP MAGNITUDE (normalized by price), not a binary
+    "widening over N bars" flag. The widening-flag version was tested
+    directly against a genuinely ambiguous case (flat/choppy history,
+    only barely tipping positive in the last 3 bars) and STILL returned
+    "strong" - the gap grows monotonically almost any time the sign
+    agrees at all, making a widening-based "weak" tier nearly
+    unreachable in practice. A magnitude threshold is a real,
+    continuously-varying signal instead.
+
+      "contradicting" - 1m EMA(fast) on the WRONG side of EMA(slow)
+                          relative to the 3m trade direction. Skip the
+                          trade entirely - this also directly helps the
+                          frequency/fee problem (idea #12's 3m result
+                          showed real gross edge but too many trades).
+      "strong"          - agrees with direction AND the gap is at least
+                          `strong_threshold_pct` of price - real
+                          separation, not just barely on the right side.
+                          Use a WIDER target, let it run.
+      "weak"            - agrees with direction but the gap is smaller
+                          than the threshold - barely on the right
+                          side. Use a TIGHTER target, lock in gains
+                          fast rather than risk giving them back.
+
+    candles_1m must already be bounded by the caller to end at the same
+    moment the 3m bar itself closed - zero lookahead preserved."""
+    closes = candles_1m["close"].values
+    if len(closes) < slow:
+        return "weak"  # not enough 1m history yet - default to the cautious tier, never to "strong"
+    ema_fast_series = ema(closes, fast)
+    ema_slow_series = ema(closes, slow)
+    offset = len(ema_fast_series) - len(ema_slow_series)
+    gap_now = ema_fast_series[offset:][-1] - ema_slow_series[-1]
+    current_price = closes[-1]
+
+    target_sign = 1 if direction == "long" else -1
+    if np.sign(gap_now) != target_sign:
+        return "contradicting"
+    gap_pct = abs(gap_now) / current_price if current_price != 0 else 0
+    return "strong" if gap_pct >= strong_threshold_pct else "weak"
