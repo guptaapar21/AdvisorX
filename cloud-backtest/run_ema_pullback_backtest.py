@@ -42,8 +42,10 @@ def run_backtest(candles, r_target=1.5, max_hold_bars=60, trend_lookback=3,
     disabled (this is the control / original strategy, unchanged).
     When set, a position still open at that many bars after entry is
     checked exactly ONCE: if its max favorable excursion so far (in R,
-    the same R used for the 1.5R/2R target) never reached
-    momentum_mfe_r_threshold, it's exited at that checkpoint's close.
+    the same R used for the 1.5R/2R target) never exceeded
+    momentum_mfe_r_threshold (strictly - so a 0R threshold genuinely
+    requires having moved into profit at all, not merely "not negative"),
+    it's exited at that checkpoint's close.
     If it DID reach the threshold, nothing else changes - the trade
     keeps running under the existing SL / target / 3h max hold exactly
     as before. SL/TP hits always take precedence over the momentum
@@ -113,7 +115,14 @@ def run_backtest(candles, r_target=1.5, max_hold_bars=60, trend_lookback=3,
                     and bars_held >= momentum_checkpoint_bars
                     and not hit_stop and not hit_target):
                 pos["momentum_checked"] = True
-                if pos["mfe_r"] < momentum_mfe_r_threshold:
+                if pos["mfe_r"] <= momentum_mfe_r_threshold:
+                    # <=, not <: mfe_r starts at 0.0 and (via the max()
+                    # above) can never go negative, so a strict "<" against
+                    # a 0.0 threshold could never be true - that variant
+                    # would have been silently identical to the control.
+                    # "<=" makes the 0R case a genuine "must have moved into
+                    # profit at all" test, and keeps every other threshold's
+                    # pass condition consistently "strictly greater than".
                     hit_momentum_failure = True
 
             if hit_stop or hit_target or hit_max_hold or hit_momentum_failure:
@@ -201,7 +210,12 @@ def _run_momentum_task(args):
     checkpoint of None with threshold None is the CONTROL: momentum-
     failure exit fully disabled, i.e. the original strategy untouched."""
     candles, coin, r_target, max_hold_bars, trend_lookback, checkpoint_minutes, mfe_r_threshold = args
-    checkpoint_bars = round(checkpoint_minutes / 3) if checkpoint_minutes is not None else None
+    checkpoint_bars = max(0, round(checkpoint_minutes / 3) - 1) if checkpoint_minutes is not None else None
+    # -1 above corrects an off-by-one: the entry candle itself (bars_held=0)
+    # already closes 3 minutes after entry, since entry happened at THAT
+    # candle's own open. So bars_held=0 -> 3m elapsed, bars_held=1 -> 6m
+    # elapsed, etc. Without the -1, a "3m" checkpoint was actually firing
+    # at bars_held>=1 (6m elapsed), and "6m" was firing at 9m elapsed.
     result = run_one_combo(candles, coin, r_target, max_hold_bars, trend_lookback,
                             momentum_checkpoint_bars=checkpoint_bars,
                             momentum_mfe_r_threshold=mfe_r_threshold if mfe_r_threshold is not None else 0.0)
@@ -281,7 +295,7 @@ def main():
                 result = future.result()
                 results.append(result)
                 label = "CONTROL (no momentum check)" if result["checkpoint_minutes"] is None \
-                    else f"checkpoint={result['checkpoint_minutes']}m, MFE>={result['mfe_r_threshold']}R"
+                    else f"checkpoint={result['checkpoint_minutes']}m, MFE>{result['mfe_r_threshold']}R"
                 print(f"  {label} -> {result['trades']:5} trades | win_rate={result['win_rate']} | "
                       f"gross_R={result['gross_expected_r']} | total_pnl={result['total_pnl']} | "
                       f"exits={result['exit_breakdown']}")
@@ -297,7 +311,7 @@ def main():
         if len(valid):
             best = valid.loc[valid["total_pnl"].idxmax()]
             best_label = "CONTROL" if pd.isna(best["checkpoint_minutes"]) \
-                else f"checkpoint={best['checkpoint_minutes']}m, MFE>={best['mfe_r_threshold']}R"
+                else f"checkpoint={best['checkpoint_minutes']}m, MFE>{best['mfe_r_threshold']}R"
             print(f"\nBest variant for {args.coin}: {best_label} -> ${best['total_pnl']:.2f} "
                   f"({best['trades']} trades, {best['win_rate']}% win rate, gross R={best['gross_expected_r']})")
         return
