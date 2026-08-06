@@ -1,0 +1,31 @@
+name: Idea 17b - CER Buckets (5 coins)
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Lookback window in days"
+        required: false
+        default: "365"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        coin: [BTC, ETH, SOL, XRP, DOGE]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+      - name: Run CER bucket analysis for ${{ matrix.coin }}
+        working-directory: cloud-backtest
+        run: >
+          python run_supertrend_cer_buckets.py
+          --coin ${{ matrix.coin }}
+          --days ${{ inputs.days }}
