@@ -381,3 +381,71 @@ def calculate_vwap(candles):
     if total_volume == 0:
         return None
     return float((typical_price * candles["volume"]).sum() / total_volume)
+
+
+def detect_ema_pullback_rejection(candles, direction, fast=9, slow=21, trend_lookback=3):
+    """Idea #18: VWAP directional bias + 9/21 EMA trend alignment + a
+    genuine PULLBACK to the fast EMA + a REJECTION candle at that level.
+    This is the signal on the CURRENT (last) candle in the window - the
+    caller is responsible for entering on the NEXT candle's open, not
+    this candle's close (see run_ema_pullback_backtest.py for why).
+
+    Long requires ALL of:
+      - price above VWAP (directional bias)
+      - EMA9 > EMA21 (trend alignment)
+      - a genuine prior trend leg: `trend_lookback` candles ago, price
+        was clearly separated from EMA9 (confirms this is a real
+        pullback, not just chop sitting on the EMA the whole time)
+      - the current candle's LOW touches or dips to EMA9 (the pullback
+        itself)
+      - the current candle's CLOSE is back above EMA9 and above its own
+        OPEN (a real bullish rejection candle, not just a touch)
+    Short is the exact mirror.
+    """
+    closes = candles["close"].values
+    highs = candles["high"].values
+    lows = candles["low"].values
+    opens = candles["open"].values
+    n = len(candles)
+    if n < slow + trend_lookback + 1:
+        return False
+
+    ema_fast_series = ema(closes, fast)
+    ema_slow_series = ema(closes, slow)
+    offset = len(ema_fast_series) - len(ema_slow_series)
+    ema_fast_aligned = ema_fast_series[offset:]
+
+    vwap = calculate_vwap(candles)
+    if vwap is None:
+        return False
+
+    current_close = closes[-1]
+    current_open = opens[-1]
+    current_low = lows[-1]
+    current_high = highs[-1]
+    ema9_now = ema_fast_aligned[-1]
+    ema21_now = ema_slow_series[-1]
+    ema9_prior = ema_fast_aligned[-(trend_lookback + 1)]
+    price_prior = closes[-(trend_lookback + 1)]
+    # Meaningful separation threshold, not just "> 0" - a near-zero gap
+    # is satisfied by ordinary noise even in flat/choppy data with no
+    # real trend leg at all (confirmed directly: tested against
+    # deliberately flat/choppy synthetic data and the naive ">0" check
+    # incorrectly returned True). 0.1% of price is a real, non-trivial
+    # separation.
+    min_separation = current_close * 0.001
+
+    if direction == "long":
+        vwap_ok = current_close > vwap
+        trend_ok = ema9_now > ema21_now
+        had_real_leg = (price_prior - ema9_prior) > min_separation
+        touched = current_low <= ema9_now
+        rejected = current_close > ema9_now and current_close > current_open
+        return bool(vwap_ok and trend_ok and had_real_leg and touched and rejected)
+    else:
+        vwap_ok = current_close < vwap
+        trend_ok = ema9_now < ema21_now
+        had_real_leg = (ema9_prior - price_prior) > min_separation
+        touched = current_high >= ema9_now
+        rejected = current_close < ema9_now and current_close < current_open
+        return bool(vwap_ok and trend_ok and had_real_leg and touched and rejected)
