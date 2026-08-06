@@ -1,0 +1,28 @@
+name: Idea 15 - Pure SuperTrend 5m (SOL only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Lookback window in days"
+        required: false
+        default: "365"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+      - name: Run 12-combo sweep for SOL (one fetch)
+        working-directory: cloud-backtest
+        run: >
+          python run_pure_supertrend_5m.py
+          --coin SOL
+          --days ${{ inputs.days }}
+          --sweep-all
