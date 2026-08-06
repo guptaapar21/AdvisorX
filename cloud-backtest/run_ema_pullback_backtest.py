@@ -180,6 +180,35 @@ def run_one_combo(candles, coin, r_target, max_hold_bars, trend_lookback,
     trades["strategy"] = "ema_pullback_vwap"
     trades = apply_fees_and_interest(trades, bar_minutes=3)
     trades = apply_dollar_pnl(trades)
+
+    # STOP-DISTANCE DIAGNOSTICS: added to check, before any momentum/RSI
+    # sweep, whether the ~1.1-1.2R fee cost is driven by structurally tiny
+    # rejection-candle stops (CER-17-style issue) rather than a fee-model
+    # bug. stop_distance_pct is already captured per-trade in the engine.
+    sd = trades["stop_distance_pct"] * 100  # as a percentage, e.g. 0.10 -> 0.10%
+    stop_distance_stats = {
+        "mean_pct": round(sd.mean(), 4),
+        "median_pct": round(sd.median(), 4),
+        "p10_pct": round(sd.quantile(0.10), 4),
+        "p25_pct": round(sd.quantile(0.25), 4),
+        "p50_pct": round(sd.quantile(0.50), 4),
+        "p75_pct": round(sd.quantile(0.75), 4),
+        "p90_pct": round(sd.quantile(0.90), 4),
+        "pct_under_0.10": round((sd < 0.10).mean() * 100, 1),
+        "pct_under_0.20": round((sd < 0.20).mean() * 100, 1),
+        "pct_under_0.30": round((sd < 0.30).mean() * 100, 1),
+        "pct_over_0.50": round((sd > 0.50).mean() * 100, 1),
+    }
+
+    # NET R BY EXIT REASON: separates "the edge is fine but stops kill it"
+    # from "even target-hitting winners don't clear costs" - the latter
+    # would mean tightening stops further (to improve win rate) can't fix
+    # this, since it would only shrink R further and raise fee_r_cost more.
+    net_r_by_exit = {
+        reason: round(group["net_r"].mean(), 4)
+        for reason, group in trades.groupby("exit_reason")
+    }
+
     return {
         "coin": coin, "r_target": r_target, "trend_lookback": trend_lookback,
         "trades": len(trades), "win_rate": round((trades["dollar_pnl"] > 0).mean() * 100, 1),
@@ -190,6 +219,8 @@ def run_one_combo(candles, coin, r_target, max_hold_bars, trend_lookback,
         "net_expected_r": round(trades["net_r"].mean(), 4),
         "total_pnl": round(trades["dollar_pnl"].sum(), 2),
         "exit_breakdown": trades["exit_reason"].value_counts().to_dict(),
+        "stop_distance_stats": stop_distance_stats,
+        "net_r_by_exit_reason": net_r_by_exit,
     }
 
 
@@ -201,7 +232,14 @@ def _run_hold_minutes_task(args):
     not tangled up with other parameters or (not touched at all here)
     an RSI filter."""
     candles, coin, r_target, hold_minutes, trend_lookback = args
-    max_hold_bars = round(hold_minutes / 3)  # 3-minute candles
+    # -1, matching the same off-by-one fix already applied to the momentum
+    # checkpoint: the entry candle itself (bars_held=0) already closes 3
+    # real minutes after entry, since entry happens at THAT candle's own
+    # open. Without the -1, hit_max_hold (bars_held >= max_hold_bars) fires
+    # one full bar later than the label says - a "3m" hold was actually
+    # exiting ~6m after entry, "6m" at ~9m, "9m" at ~12m. This makes the
+    # labels match actual elapsed time from entry.
+    max_hold_bars = max(0, round(hold_minutes / 3) - 1)  # 3-minute candles
     result = run_one_combo(candles, coin, r_target, max_hold_bars, trend_lookback)
     result["max_hold_minutes"] = hold_minutes
     return result
@@ -264,6 +302,8 @@ def main():
               f"Gross expected R: {result['gross_expected_r']} | Net expected R (after fees): {result['net_expected_r']} | "
               f"Total $ P&L: {result['total_pnl']}")
         print(f"Exit reason breakdown: {result['exit_breakdown']}")
+        print(f"Net R by exit reason: {result['net_r_by_exit_reason']}")
+        print(f"Stop distance %% stats: {result['stop_distance_stats']}")
         return
 
     if mode == "momentum-sweep":
@@ -350,10 +390,19 @@ def main():
                   f"total_pnl={result['total_pnl']}")
 
     results_df = pd.DataFrame(results).sort_values("max_hold_minutes")
+    print_cols = [c for c in results_df.columns if c not in ("stop_distance_stats", "net_r_by_exit_reason")]
     print(f"\n=== EXIT-MODE SWEEP RESULTS: {args.coin} "
           f"(r_target={args.r_target}, trend_lookback={args.trend_lookback} fixed; "
           f"{len(tasks)} hold-time variants, 1 fetch) ===")
-    print(results_df.to_string(index=False))
+    print(results_df[print_cols].to_string(index=False))
+
+    # Stop distance is a function of the entry signal only, not the hold
+    # time, so it's ~identical across the 3/6/9m variants (same entries,
+    # only the exit rule differs) - print it once rather than 3x.
+    print(f"\nStop distance %% stats ({args.coin}, same across hold variants - entries are unchanged): "
+          f"{results[0]['stop_distance_stats']}")
+    for r in sorted(results, key=lambda x: x["max_hold_minutes"]):
+        print(f"  hold={r['max_hold_minutes']}m net R by exit reason: {r['net_r_by_exit_reason']}")
 
     valid = results_df.dropna(subset=["total_pnl"])
     if len(valid):
