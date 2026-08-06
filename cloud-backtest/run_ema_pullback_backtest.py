@@ -37,7 +37,8 @@ LOOKBACK_WINDOW_BARS = 100
 
 
 def run_backtest(candles, r_target=1.5, max_hold_bars=60, trend_lookback=3,
-                  momentum_checkpoint_bars=None, momentum_mfe_r_threshold=0.0):
+                  momentum_checkpoint_bars=None, momentum_mfe_r_threshold=0.0,
+                  min_stop_distance_pct=None):
     """momentum_checkpoint_bars=None -> momentum-failure exit is fully
     disabled (this is the control / original strategy, unchanged).
     When set, a position still open at that many bars after entry is
@@ -50,7 +51,21 @@ def run_backtest(candles, r_target=1.5, max_hold_bars=60, trend_lookback=3,
     keeps running under the existing SL / target / 3h max hold exactly
     as before. SL/TP hits always take precedence over the momentum
     check (checked first, below) - a trade that already stopped or
-    hit target this bar never reaches the momentum check at all."""
+    hit target this bar never reaches the momentum check at all.
+
+    min_stop_distance_pct=None -> no economic-viability filter (control,
+    original strategy, unchanged). When set (e.g. 0.20 for 0.20%), a
+    signal whose stop distance (as % of entry price) falls BELOW this
+    floor is simply never taken: no trade is opened, no row is added to
+    `trades`, and the engine immediately resumes scanning for the next
+    signal on the very next bar - exactly as if the rejection candle had
+    never fired. This is applied AT ENTRY, not as a post-hoc filter on
+    the resulting trades list, so trade sequencing (one position at a
+    time) is preserved: skipping a micro-stop trade can free the engine
+    to catch a later, wider-stop signal it would otherwise have missed
+    while "stuck" in the skipped trade. Entry signal detection itself
+    (detect_ema_pullback_rejection) is completely untouched - this only
+    gates whether a detected signal is actually acted on."""
     trades = []
     open_position = None
     pending_entry = None
@@ -67,7 +82,15 @@ def run_backtest(candles, r_target=1.5, max_hold_bars=60, trend_lookback=3,
             entry_price = bar_open
             stop_price = pending_entry["stop_price"]
             stop_distance = abs(entry_price - stop_price)
-            if stop_distance > 0:
+            stop_distance_pct_check = (stop_distance / entry_price * 100) if entry_price != 0 else 0.0
+            # ECONOMIC-VIABILITY FILTER (Idea #18B): if the stop is tighter
+            # than the floor, skip this trade entirely - no position opened,
+            # no trade row recorded. stop_distance>0 guard is still applied
+            # first (unchanged pre-existing behavior for a degenerate 0-width
+            # stop), then the min-stop floor on top of it.
+            passes_min_stop = (min_stop_distance_pct is None
+                                or stop_distance_pct_check >= min_stop_distance_pct)
+            if stop_distance > 0 and passes_min_stop:
                 target_price = (entry_price + stop_distance * r_target if direction == "long"
                                  else entry_price - stop_distance * r_target)
                 open_position = {
@@ -167,13 +190,16 @@ def run_backtest(candles, r_target=1.5, max_hold_bars=60, trend_lookback=3,
 
 
 def run_one_combo(candles, coin, r_target, max_hold_bars, trend_lookback,
-                   momentum_checkpoint_bars=None, momentum_mfe_r_threshold=0.0):
+                   momentum_checkpoint_bars=None, momentum_mfe_r_threshold=0.0,
+                   min_stop_distance_pct=None):
     trades = run_backtest(candles, r_target=r_target, max_hold_bars=max_hold_bars, trend_lookback=trend_lookback,
                            momentum_checkpoint_bars=momentum_checkpoint_bars,
-                           momentum_mfe_r_threshold=momentum_mfe_r_threshold)
+                           momentum_mfe_r_threshold=momentum_mfe_r_threshold,
+                           min_stop_distance_pct=min_stop_distance_pct)
     if len(trades) == 0:
         return {"coin": coin, "r_target": r_target, "trend_lookback": trend_lookback,
                 "trades": 0, "win_rate": None, "gross_expected_r": None, "net_expected_r": None,
+                "avg_cost_r": None, "profit_factor": None,
                 "total_pnl": None, "exit_breakdown": {}}
     trades = trades.copy()
     trades["symbol"] = coin
@@ -209,6 +235,15 @@ def run_one_combo(candles, coin, r_target, max_hold_bars, trend_lookback,
         for reason, group in trades.groupby("exit_reason")
     }
 
+    # PROFIT FACTOR: gross $ won on winning trades / gross $ lost on losing
+    # trades, computed on NET (post-fee) dollar P&L since that's what
+    # actually determines viability. Trades with exactly 0 net P&L count
+    # toward neither side (matches standard PF convention). Undefined
+    # (None) if there are no losing trades, to avoid a divide-by-zero.
+    gross_win = trades.loc[trades["dollar_pnl"] > 0, "dollar_pnl"].sum()
+    gross_loss = trades.loc[trades["dollar_pnl"] < 0, "dollar_pnl"].sum()
+    profit_factor = round(gross_win / abs(gross_loss), 3) if gross_loss < 0 else None
+
     return {
         "coin": coin, "r_target": r_target, "trend_lookback": trend_lookback,
         "trades": len(trades), "win_rate": round((trades["dollar_pnl"] > 0).mean() * 100, 1),
@@ -217,6 +252,13 @@ def run_one_combo(candles, coin, r_target, max_hold_bars, trend_lookback,
         # minus fee_interest_r_cost) - this is the number that actually
         # answers "does the edge survive costs", not just gross R.
         "net_expected_r": round(trades["net_r"].mean(), 4),
+        # avg_cost_r: mean fee+interest R-cost per trade, i.e. exactly the
+        # gap between gross_expected_r and net_expected_r above - reported
+        # separately (rather than making the reader subtract) since Idea
+        # #18B is specifically about tracking how this shrinks as the
+        # min-stop floor rises.
+        "avg_cost_r": round(trades["fee_interest_r_cost"].mean(), 4),
+        "profit_factor": profit_factor,
         "total_pnl": round(trades["dollar_pnl"].sum(), 2),
         "exit_breakdown": trades["exit_reason"].value_counts().to_dict(),
         "stop_distance_stats": stop_distance_stats,
@@ -267,6 +309,27 @@ def _run_momentum_task(args):
     return result
 
 
+def _run_min_stop_task(args):
+    """Top-level (picklable) worker for the parallel min-stop-distance /
+    cost-to-R economic-viability ablation (Idea #18B). r_target,
+    trend_lookback, and max_hold_bars are all held FIXED at the CLI
+    values - the ONLY thing varying across workers is the minimum stop
+    distance (as % of entry price) required to take a trade at all.
+    min_stop_pct=None is the CONTROL: no floor, i.e. the original
+    strategy completely unmodified."""
+    candles, coin, r_target, max_hold_bars, trend_lookback, min_stop_pct = args
+    result = run_one_combo(candles, coin, r_target, max_hold_bars, trend_lookback,
+                            min_stop_distance_pct=min_stop_pct)
+    result["min_stop_pct"] = min_stop_pct
+    # cost_pct_of_1r: avg_cost_r expressed as "cost consumes X% of a full
+    # 1R move" - the portable, coin/fee-tier-agnostic framing from the
+    # analysis (e.g. avg_cost_r=0.5 -> costs eat 50% of 1R on average).
+    # None when there were no trades to avoid a spurious 0.0.
+    result["cost_pct_of_1r"] = (round(result["avg_cost_r"] * 100, 1)
+                                 if result.get("avg_cost_r") is not None else None)
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--coin", type=str, default="BTC")
@@ -279,13 +342,21 @@ def main():
                          help="Momentum-failure-exit ablation: control (no momentum check) vs "
                               "checkpoint in {3,6} minutes x required MFE in {>0R,0.1R,0.25R,0.5R}. "
                               "r_target/trend_lookback/max_hold_hours held fixed at their CLI values.")
+    parser.add_argument("--min-stop-sweep", action="store_true",
+                         help="Idea #18B: economic-viability / minimum stop-distance ablation. "
+                              "Control (no floor) vs stop-distance floors in "
+                              "{0.10,0.15,0.20,0.25,0.30,0.40,0.50}%% of entry price. Same entries, "
+                              "same r_target/trend_lookback/max_hold_hours - only whether a detected "
+                              "signal is skipped for being economically too tight varies.")
     args = parser.parse_args()
 
     now = datetime.now(timezone.utc)
     start_date = now.date() - timedelta(days=args.days)
     fetch_end_time = now.isoformat()
 
-    mode = "momentum-sweep" if args.momentum_sweep else ("hold-sweep" if args.sweep_all else "single")
+    mode = ("min-stop-sweep" if args.min_stop_sweep
+            else "momentum-sweep" if args.momentum_sweep
+            else "hold-sweep" if args.sweep_all else "single")
     print(f"Idea #18 [{mode}]: EMA Pullback + VWAP | {args.coin} | 3m | "
           f"{start_date} to {now.date()} ({args.days}d)")
 
@@ -295,7 +366,12 @@ def main():
           + (" (ONE fetch, reused for every combo below)" if mode != "single" else ""))
 
     if mode == "single":
-        max_hold_bars = round(args.max_hold_hours * 60 / 3)
+        # -1: same off-by-one correction applied everywhere else in this
+        # file - the entry candle itself (bars_held=0) already represents
+        # the first 3 elapsed minutes, since entry happens at that candle's
+        # own open. Without the -1, a "3h" max hold would actually fire one
+        # 3m candle (one full bar) late.
+        max_hold_bars = max(0, round(args.max_hold_hours * 60 / 3) - 1)
         result = run_one_combo(candles_3m, args.coin, args.r_target, max_hold_bars, args.trend_lookback)
         print(f"\n=== RESULTS: {args.coin} ===")
         print(f"Trades: {result['trades']} | Win rate: {result['win_rate']} | "
@@ -320,7 +396,11 @@ def main():
         # 0.25R is the primary hypothesis per the spec; the surrounding
         # thresholds (>0R, 0.1R, 0.5R) are there to see if there's a broad
         # relationship rather than cherry-picking whichever number wins.
-        max_hold_bars = round(args.max_hold_hours * 60 / 3)
+        # -1: same off-by-one correction as the 3/6/9m hold-sweep and
+        # single mode - bars_held=0 already represents the first 3 elapsed
+        # minutes (entry happens at that candle's own open), so without
+        # the -1 the nominal max_hold_hours fires one 3m candle late.
+        max_hold_bars = max(0, round(args.max_hold_hours * 60 / 3) - 1)
         checkpoints_minutes = [3, 6]
         mfe_r_thresholds = [0.0, 0.1, 0.25, 0.5]
 
@@ -361,6 +441,71 @@ def main():
             print(f"\nBest variant for {args.coin}: {best_label} -> ${best['total_pnl']:.2f} "
                   f"({best['trades']} trades, {best['win_rate']}% win rate, "
                   f"gross R={best['gross_expected_r']}, net R={best['net_expected_r']})")
+        return
+
+    if mode == "min-stop-sweep":
+        # ECONOMIC-VIABILITY / MIN-STOP-DISTANCE ABLATION (Idea #18B): a
+        # separate, simpler experiment from the momentum-failure ablation
+        # above. r_target, trend_lookback, and max_hold are all held FIXED
+        # at their CLI values - the ONLY thing varying is the minimum stop
+        # distance (as % of entry price) required to actually take a
+        # detected signal. This directly tests the diagnosis from the
+        # stop-distance-vs-fee analysis: does removing the tightest-stop
+        # (highest cost/R) trades let net expectancy recover, or does gross
+        # R stay near zero even after they're gone (which would mean the
+        # entry signal itself lacks edge, independent of stop sizing)?
+        # Thresholds intentionally broad, not tuned to "the best number" -
+        # per the analysis, the goal is the shape of the relationship.
+        # -1: same off-by-one correction as everywhere else - bars_held=0
+        # already represents the first 3 elapsed minutes since entry
+        # happens at that candle's own open, so without the -1 the nominal
+        # max_hold_hours fires one 3m candle late.
+        max_hold_bars = max(0, round(args.max_hold_hours * 60 / 3) - 1)
+        min_stop_thresholds = [None, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
+
+        tasks = [
+            (candles_3m, args.coin, args.r_target, max_hold_bars, args.trend_lookback, thr)
+            for thr in min_stop_thresholds
+        ]
+
+        results = []
+        max_workers = min(len(tasks), os.cpu_count() or 1)
+        print(f"Running {len(tasks)} min-stop-distance variants in parallel ({max_workers} workers)...")
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_run_min_stop_task, task): task for task in tasks}
+            for future in as_completed(futures):
+                result = future.result()
+                results.append(result)
+                label = "CONTROL (no min stop)" if result["min_stop_pct"] is None \
+                    else f"min_stop>={result['min_stop_pct']}%"
+                print(f"  {label} -> {result['trades']:5} trades | win_rate={result['win_rate']} | "
+                      f"gross_R={result['gross_expected_r']} | avg_cost_R={result['avg_cost_r']} "
+                      f"({result['cost_pct_of_1r']}% of 1R) | net_R={result['net_expected_r']} | "
+                      f"PF={result['profit_factor']} | total_pnl={result['total_pnl']}")
+
+        results_df = pd.DataFrame(results).sort_values(by="min_stop_pct", na_position="first")
+        print_cols = [c for c in results_df.columns if c not in ("stop_distance_stats", "net_r_by_exit_reason", "exit_breakdown")]
+        print(f"\n=== MIN-STOP-DISTANCE ABLATION (Idea #18B): {args.coin} "
+              f"(r_target={args.r_target}, trend_lookback={args.trend_lookback}, "
+              f"max_hold={args.max_hold_hours}h all fixed; {len(tasks)} variants incl. control, 1 fetch) ===")
+        print(results_df[print_cols].to_string(index=False))
+
+        valid = results_df.dropna(subset=["gross_expected_r"])
+        if len(valid):
+            print("\nGross R by threshold (does the signal have edge once micro-stop trades are removed?):")
+            for _, row in valid.iterrows():
+                label = "CONTROL" if pd.isna(row["min_stop_pct"]) else f">={row['min_stop_pct']}%"
+                print(f"  {label:>10}: gross_R={row['gross_expected_r']:>8} | net_R={row['net_expected_r']:>8} | "
+                      f"n={row['trades']}")
+
+        valid_pnl = results_df.dropna(subset=["total_pnl"])
+        if len(valid_pnl):
+            best = valid_pnl.loc[valid_pnl["total_pnl"].idxmax()]
+            best_label = "CONTROL" if pd.isna(best["min_stop_pct"]) else f"min_stop>={best['min_stop_pct']}%"
+            print(f"\nBest variant for {args.coin}: {best_label} -> ${best['total_pnl']:.2f} "
+                  f"({best['trades']} trades, {best['win_rate']}% win rate, "
+                  f"gross R={best['gross_expected_r']}, net R={best['net_expected_r']}, "
+                  f"PF={best['profit_factor']})")
         return
 
     # HOLD-TIME SWEEP (--sweep-all): a separate, simpler experiment from
