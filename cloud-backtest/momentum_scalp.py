@@ -365,3 +365,19 @@ def detect_macd_zero_cross(candles, direction):
     else:
         crossed_down = hist_series[-2] >= 0 and hist_series[-1] < 0
         return bool(crossed_down and macd_line_value < 0)
+
+
+def calculate_vwap(candles):
+    """Volume-weighted average price over the given (already-bounded,
+    zero-lookahead) window - a rolling VWAP over the same window used
+    for every other indicator in this file, not a session-anchored
+    reset (crypto trades 24/7, no natural session boundary, and a
+    rolling window avoids introducing a new alignment/reset-timing risk
+    alongside everything else already carefully bounded in this
+    project). Uses typical price (high+low+close)/3, the standard VWAP
+    convention, not close alone."""
+    typical_price = (candles["high"] + candles["low"] + candles["close"]) / 3
+    total_volume = candles["volume"].sum()
+    if total_volume == 0:
+        return None
+    return float((typical_price * candles["volume"]).sum() / total_volume)
