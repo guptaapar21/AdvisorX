@@ -173,7 +173,8 @@ def run_one_combo(candles, coin, r_target, max_hold_bars, trend_lookback,
                            momentum_mfe_r_threshold=momentum_mfe_r_threshold)
     if len(trades) == 0:
         return {"coin": coin, "r_target": r_target, "trend_lookback": trend_lookback,
-                "trades": 0, "win_rate": None, "gross_expected_r": None, "total_pnl": None, "exit_breakdown": {}}
+                "trades": 0, "win_rate": None, "gross_expected_r": None, "net_expected_r": None,
+                "total_pnl": None, "exit_breakdown": {}}
     trades = trades.copy()
     trades["symbol"] = coin
     trades["strategy"] = "ema_pullback_vwap"
@@ -183,6 +184,10 @@ def run_one_combo(candles, coin, r_target, max_hold_bars, trend_lookback,
         "coin": coin, "r_target": r_target, "trend_lookback": trend_lookback,
         "trades": len(trades), "win_rate": round((trades["dollar_pnl"] > 0).mean() * 100, 1),
         "gross_expected_r": round(trades["r_achieved"].mean(), 4),
+        # net_r already computed by apply_fees_and_interest (r_achieved
+        # minus fee_interest_r_cost) - this is the number that actually
+        # answers "does the edge survive costs", not just gross R.
+        "net_expected_r": round(trades["net_r"].mean(), 4),
         "total_pnl": round(trades["dollar_pnl"].sum(), 2),
         "exit_breakdown": trades["exit_reason"].value_counts().to_dict(),
     }
@@ -256,7 +261,8 @@ def main():
         result = run_one_combo(candles_3m, args.coin, args.r_target, max_hold_bars, args.trend_lookback)
         print(f"\n=== RESULTS: {args.coin} ===")
         print(f"Trades: {result['trades']} | Win rate: {result['win_rate']} | "
-              f"Gross expected R: {result['gross_expected_r']} | Total $ P&L: {result['total_pnl']}")
+              f"Gross expected R: {result['gross_expected_r']} | Net expected R (after fees): {result['net_expected_r']} | "
+              f"Total $ P&L: {result['total_pnl']}")
         print(f"Exit reason breakdown: {result['exit_breakdown']}")
         return
 
@@ -297,8 +303,8 @@ def main():
                 label = "CONTROL (no momentum check)" if result["checkpoint_minutes"] is None \
                     else f"checkpoint={result['checkpoint_minutes']}m, MFE>{result['mfe_r_threshold']}R"
                 print(f"  {label} -> {result['trades']:5} trades | win_rate={result['win_rate']} | "
-                      f"gross_R={result['gross_expected_r']} | total_pnl={result['total_pnl']} | "
-                      f"exits={result['exit_breakdown']}")
+                      f"gross_R={result['gross_expected_r']} | net_R={result['net_expected_r']} | "
+                      f"total_pnl={result['total_pnl']} | exits={result['exit_breakdown']}")
 
         results_df = pd.DataFrame(results).sort_values(
             by=["checkpoint_minutes", "mfe_r_threshold"], na_position="first")
@@ -313,7 +319,8 @@ def main():
             best_label = "CONTROL" if pd.isna(best["checkpoint_minutes"]) \
                 else f"checkpoint={best['checkpoint_minutes']}m, MFE>{best['mfe_r_threshold']}R"
             print(f"\nBest variant for {args.coin}: {best_label} -> ${best['total_pnl']:.2f} "
-                  f"({best['trades']} trades, {best['win_rate']}% win rate, gross R={best['gross_expected_r']})")
+                  f"({best['trades']} trades, {best['win_rate']}% win rate, "
+                  f"gross R={best['gross_expected_r']}, net R={best['net_expected_r']})")
         return
 
     # HOLD-TIME SWEEP (--sweep-all): a separate, simpler experiment from
@@ -339,7 +346,8 @@ def main():
             print(f"  hold={result['max_hold_minutes']}m, r_target={result['r_target']}, "
                   f"trend_lookback={result['trend_lookback']} -> "
                   f"{result['trades']:5} trades | win_rate={result['win_rate']} | "
-                  f"gross_R={result['gross_expected_r']} | total_pnl={result['total_pnl']}")
+                  f"gross_R={result['gross_expected_r']} | net_R={result['net_expected_r']} | "
+                  f"total_pnl={result['total_pnl']}")
 
     results_df = pd.DataFrame(results).sort_values("max_hold_minutes")
     print(f"\n=== EXIT-MODE SWEEP RESULTS: {args.coin} "
@@ -352,7 +360,8 @@ def main():
         best = valid.loc[valid["total_pnl"].idxmax()]
         print(f"\nBest hold time for {args.coin}: {best['max_hold_minutes']}m -> "
               f"${best['total_pnl']:.2f} ({best['trades']} trades, "
-              f"{best['win_rate']}% win rate, gross R={best['gross_expected_r']})")
+              f"{best['win_rate']}% win rate, gross R={best['gross_expected_r']}, "
+              f"net R={best['net_expected_r']})")
 
 
 if __name__ == "__main__":
