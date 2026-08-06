@@ -19,7 +19,7 @@ closes. Using a bar's own open the moment that bar begins is standard,
 legitimate "enter at next candle's open" execution, not lookahead.
 
 Usage:
-  python3 run_ema_pullback_backtest.py --coin BTC --r-target 1.5 --sweep-all
+  python3 run_ema_pullback_backtest.py --coin BTC --days 365 --rsi-sweep
 """
 import argparse
 import os
@@ -38,7 +38,7 @@ LOOKBACK_WINDOW_BARS = 100
 
 def run_backtest(candles, r_target=1.5, max_hold_bars=60, trend_lookback=3,
                   momentum_checkpoint_bars=None, momentum_mfe_r_threshold=0.0,
-                  min_stop_distance_pct=None):
+                  min_stop_distance_pct=None, rsi_filter=None):
     """momentum_checkpoint_bars=None -> momentum-failure exit is fully
     disabled (this is the control / original strategy, unchanged).
     When set, a position still open at that many bars after entry is
@@ -66,6 +66,19 @@ def run_backtest(candles, r_target=1.5, max_hold_bars=60, trend_lookback=3,
     while "stuck" in the skipped trade. Entry signal detection itself
     (detect_ema_pullback_rejection) is completely untouched - this only
     gates whether a detected signal is actually acted on."""
+    # RSI14 is computed once from completed 3m closes. At signal bar i we only
+    # read RSI[i], which is known when that rejection candle closes; entry is
+    # still at bar i+1 open, so this introduces no lookahead. Wilder-style
+    # smoothing is implemented with EWM(alpha=1/14).
+    candles = candles.copy()
+    delta = candles["close"].diff()
+    gain = delta.clip(lower=0.0)
+    loss = -delta.clip(upper=0.0)
+    avg_gain = gain.ewm(alpha=1/14, adjust=False, min_periods=14).mean()
+    avg_loss = loss.ewm(alpha=1/14, adjust=False, min_periods=14).mean()
+    rs = avg_gain / avg_loss.replace(0, float("nan"))
+    candles["rsi14"] = (100 - (100 / (1 + rs))).fillna(50.0)
+
     trades = []
     open_position = None
     pending_entry = None
@@ -182,8 +195,18 @@ def run_backtest(candles, r_target=1.5, max_hold_bars=60, trend_lookback=3,
 
         for direction in ("long", "short"):
             if detect_ema_pullback_rejection(window, direction, trend_lookback=trend_lookback):
+                signal_rsi = float(window["rsi14"].iloc[-1])
+                passes_rsi = True
+                if rsi_filter is not None:
+                    if direction == "long":
+                        lo, hi = rsi_filter["long"]
+                    else:
+                        lo, hi = rsi_filter["short"]
+                    passes_rsi = lo <= signal_rsi <= hi
+                if not passes_rsi:
+                    continue
                 stop_price = window["low"].iloc[-1] if direction == "long" else window["high"].iloc[-1]
-                pending_entry = {"direction": direction, "stop_price": stop_price}
+                pending_entry = {"direction": direction, "stop_price": stop_price, "signal_rsi14": signal_rsi}
                 break
 
     return pd.DataFrame(trades)
@@ -191,11 +214,12 @@ def run_backtest(candles, r_target=1.5, max_hold_bars=60, trend_lookback=3,
 
 def run_one_combo(candles, coin, r_target, max_hold_bars, trend_lookback,
                    momentum_checkpoint_bars=None, momentum_mfe_r_threshold=0.0,
-                   min_stop_distance_pct=None):
+                   min_stop_distance_pct=None, rsi_filter=None):
     trades = run_backtest(candles, r_target=r_target, max_hold_bars=max_hold_bars, trend_lookback=trend_lookback,
                            momentum_checkpoint_bars=momentum_checkpoint_bars,
                            momentum_mfe_r_threshold=momentum_mfe_r_threshold,
-                           min_stop_distance_pct=min_stop_distance_pct)
+                           min_stop_distance_pct=min_stop_distance_pct,
+                           rsi_filter=rsi_filter)
     if len(trades) == 0:
         return {"coin": coin, "r_target": r_target, "trend_lookback": trend_lookback,
                 "trades": 0, "win_rate": None, "gross_expected_r": None, "net_expected_r": None,
@@ -330,6 +354,22 @@ def _run_min_stop_task(args):
     return result
 
 
+def _run_rsi_task(args):
+    """Idea #18C RSI14 ablation on the economically viable subset.
+    The minimum stop floor is FIXED at 0.25% for every variant; only the
+    RSI eligibility rule changes. This keeps RSI as a clean marginal test.
+    rsi_filter=None is the control (no RSI gate).
+    """
+    candles, coin, r_target, max_hold_bars, trend_lookback, min_stop_pct, label, rsi_filter = args
+    result = run_one_combo(candles, coin, r_target, max_hold_bars, trend_lookback,
+                           min_stop_distance_pct=min_stop_pct, rsi_filter=rsi_filter)
+    result["rsi_variant"] = label
+    result["min_stop_pct"] = min_stop_pct
+    result["cost_pct_of_1r"] = (round(result["avg_cost_r"] * 100, 1)
+                                 if result.get("avg_cost_r") is not None else None)
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--coin", type=str, default="BTC")
@@ -342,6 +382,10 @@ def main():
                          help="Momentum-failure-exit ablation: control (no momentum check) vs "
                               "checkpoint in {3,6} minutes x required MFE in {>0R,0.1R,0.25R,0.5R}. "
                               "r_target/trend_lookback/max_hold_hours held fixed at their CLI values.")
+    parser.add_argument("--rsi-sweep", action="store_true",
+                         help="Idea #18C: RSI14 ablation with min-stop fixed at 0.25%%. "
+                              "Tests control, non-extreme RSI 30-70, directional "
+                              "long 50-70/short 30-50, and stricter long 55-70/short 30-45.")
     parser.add_argument("--min-stop-sweep", action="store_true",
                          help="Idea #18B: economic-viability / minimum stop-distance ablation. "
                               "Control (no floor) vs stop-distance floors in "
@@ -354,7 +398,8 @@ def main():
     start_date = now.date() - timedelta(days=args.days)
     fetch_end_time = now.isoformat()
 
-    mode = ("min-stop-sweep" if args.min_stop_sweep
+    mode = ("rsi-sweep" if args.rsi_sweep
+            else "min-stop-sweep" if args.min_stop_sweep
             else "momentum-sweep" if args.momentum_sweep
             else "hold-sweep" if args.sweep_all else "single")
     print(f"Idea #18 [{mode}]: EMA Pullback + VWAP | {args.coin} | 3m | "
@@ -441,6 +486,57 @@ def main():
             print(f"\nBest variant for {args.coin}: {best_label} -> ${best['total_pnl']:.2f} "
                   f"({best['trades']} trades, {best['win_rate']}% win rate, "
                   f"gross R={best['gross_expected_r']}, net R={best['net_expected_r']})")
+        return
+
+    if mode == "rsi-sweep":
+        # IDEA #18C: clean RSI14 ablation. Based on #18B, the economic gate
+        # is held fixed at >=0.25% for every row (689 trades and the strongest
+        # gross-R region in that sweep). No hold-time or momentum rule changes.
+        max_hold_bars = max(0, round(args.max_hold_hours * 60 / 3) - 1)
+        fixed_min_stop_pct = 0.25
+        variants = [
+            ("CONTROL_no_RSI", None),
+            ("RSI_30_70_non_extreme", {"long": (30.0, 70.0), "short": (30.0, 70.0)}),
+            ("RSI_directional_50_70__30_50", {"long": (50.0, 70.0), "short": (30.0, 50.0)}),
+            ("RSI_strict_55_70__30_45", {"long": (55.0, 70.0), "short": (30.0, 45.0)}),
+        ]
+        tasks = [
+            (candles_3m, args.coin, args.r_target, max_hold_bars, args.trend_lookback,
+             fixed_min_stop_pct, label, filt)
+            for label, filt in variants
+        ]
+        results = []
+        max_workers = min(len(tasks), os.cpu_count() or 1)
+        print(f"Running {len(tasks)} RSI14 variants in parallel ({max_workers} workers); "
+              f"min_stop fixed at >={fixed_min_stop_pct}%...")
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_run_rsi_task, task): task for task in tasks}
+            for future in as_completed(futures):
+                result = future.result()
+                results.append(result)
+                print(f"  {result['rsi_variant']} -> {result['trades']:5} trades | "
+                      f"win_rate={result['win_rate']} | gross_R={result['gross_expected_r']} | "
+                      f"avg_cost_R={result['avg_cost_r']} | net_R={result['net_expected_r']} | "
+                      f"PF={result['profit_factor']} | total_pnl={result['total_pnl']}")
+
+        order = {label: i for i, (label, _) in enumerate(variants)}
+        results_df = pd.DataFrame(results)
+        results_df["_order"] = results_df["rsi_variant"].map(order)
+        results_df = results_df.sort_values("_order").drop(columns="_order")
+        print_cols = [c for c in results_df.columns if c not in
+                      ("stop_distance_stats", "net_r_by_exit_reason", "exit_breakdown")]
+        print(f"\n=== RSI14 ABLATION (Idea #18C): {args.coin} "
+              f"(min_stop>={fixed_min_stop_pct}% FIXED, r_target={args.r_target}, "
+              f"trend_lookback={args.trend_lookback}, max_hold={args.max_hold_hours}h; "
+              f"{len(tasks)} variants incl. control, 1 fetch) ===")
+        print(results_df[print_cols].to_string(index=False))
+        valid = results_df.dropna(subset=["total_pnl"])
+        if len(valid):
+            best = valid.loc[valid["total_pnl"].idxmax()]
+            print(f"\nBest RSI variant for {args.coin}: {best['rsi_variant']} -> "
+                  f"${best['total_pnl']:.2f} ({best['trades']} trades, "
+                  f"{best['win_rate']}% win rate, gross R={best['gross_expected_r']}, "
+                  f"net R={best['net_expected_r']}, PF={best['profit_factor']})")
         return
 
     if mode == "min-stop-sweep":
