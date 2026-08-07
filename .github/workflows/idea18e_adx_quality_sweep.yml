@@ -27,7 +27,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r cloud-backtest/requirements.txt
 
+      - name: Verify Idea 18E file
+        run: |
+          test -f cloud-backtest/run_ema_pullback_backtest_adx_sweep.py
+          grep -q "ensure_adx_di_columns" cloud-backtest/run_ema_pullback_backtest_adx_sweep.py
+          echo "Corrected Idea 18E Python file detected."
+
       - name: Run Idea 18E ADX quality sweep
         working-directory: cloud-backtest
         run: |
-          python run_ema_pullback_backtest_adx_sweep.py --coin BTC --days ${{ inputs.days }} --adx-quality-sweep
+          python run_ema_pullback_backtest_adx_sweep.py --coin BTC --days "${{ inputs.days }}" --adx-quality-sweep
