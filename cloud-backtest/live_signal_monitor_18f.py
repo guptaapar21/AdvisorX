@@ -226,7 +226,8 @@ def main():
 
     for coin in coins:
         try:
-            candles_1m = fetch_coindcx_klines(coin, "1m", start_date.date().isoformat(), now.isoformat())
+            candles_1m = fetch_coindcx_klines(coin, "1m", start_date.date().isoformat(), now.isoformat(),
+                                               stagger_delay=False)
             candles_3m = resample_candles(candles_1m, 3)
             candles_3m = drop_still_forming_bucket(candles_3m, now)
             if len(candles_3m) < 60:
