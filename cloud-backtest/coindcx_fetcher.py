@@ -100,17 +100,41 @@ def fetch_coindcx_klines(symbol="BTC", interval="5m", start_time=None, end_time=
         # number alone.
         last_err = None
         resp = None
+        skip_chunk = False
         for attempt in range(3):
             try:
                 resp = requests.get(BASE, params=params, timeout=25)
                 resp.raise_for_status()
                 last_err = None
                 break
-            except (requests.exceptions.RequestException,) as e:
+            except requests.exceptions.HTTPError as e:
+                # 422 means CoinDCX considers this specific (pair, date-range)
+                # combination invalid - almost always because the instrument
+                # didn't exist yet at this point in the range (newly-listed
+                # commodities like XAU/XAG/CL/BZ/NATGAS/PAXG are the common
+                # case, but this also protects any future symbol). Retrying
+                # the exact same request 3 times can't fix an invalid range,
+                # so don't waste the retries - skip this chunk and move the
+                # cursor forward instead of crashing the whole fetch/job.
+                if resp is not None and resp.status_code == 422:
+                    print(f"    {symbol}: no data for this range yet (422 - likely before listing), "
+                          f"skipping chunk {pd.Timestamp(cursor, unit='ms')} -> "
+                          f"{pd.Timestamp(min(cursor + step_ms, end_ms), unit='ms')}")
+                    skip_chunk = True
+                    break
                 last_err = e
                 if attempt < 2:
                     print(f"    {symbol}: request {request_count+1} failed ({e}), retrying (attempt {attempt+2}/3)...")
                     time.sleep(2 * (attempt + 1) + random.uniform(0, 2))
+            except requests.exceptions.RequestException as e:
+                last_err = e
+                if attempt < 2:
+                    print(f"    {symbol}: request {request_count+1} failed ({e}), retrying (attempt {attempt+2}/3)...")
+                    time.sleep(2 * (attempt + 1) + random.uniform(0, 2))
+        if skip_chunk:
+            cursor += step_ms
+            time.sleep(0.3)
+            continue
         if last_err is not None:
             raise last_err
         rows = resp.json()
