@@ -1,0 +1,33 @@
+name: Idea 18E - ADX Threshold + Slope + DI (BTC)
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Backtest lookback in days"
+        required: false
+        default: "365"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r cloud-backtest/requirements.txt
+
+      - name: Run Idea 18E ADX quality sweep
+        working-directory: cloud-backtest
+        run: |
+          python run_ema_pullback_backtest_adx_sweep.py --coin BTC --days ${{ inputs.days }} --adx-quality-sweep
