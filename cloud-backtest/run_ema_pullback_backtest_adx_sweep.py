@@ -26,6 +26,7 @@ import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
+import numpy as np
 import pandas as pd
 
 from coindcx_fetcher import fetch_coindcx_klines, resample_candles
