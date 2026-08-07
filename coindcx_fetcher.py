@@ -100,17 +100,41 @@ def fetch_coindcx_klines(symbol="BTC", interval="5m", start_time=None, end_time=
         # number alone.
         last_err = None
         resp = None
+        skip_chunk = False
         for attempt in range(3):
             try:
                 resp = requests.get(BASE, params=params, timeout=25)
                 resp.raise_for_status()
                 last_err = None
                 break
-            except (requests.exceptions.RequestException,) as e:
+            except requests.exceptions.HTTPError as e:
+                # 422 means CoinDCX considers this specific (pair, date-range)
+                # combination invalid - almost always because the instrument
+                # didn't exist yet at this point in the range (newly-listed
+                # commodities like XAU/XAG/CL/BZ/NATGAS/PAXG are the common
+                # case, but this also protects any future symbol). Retrying
+                # the exact same request 3 times can't fix an invalid range,
+                # so don't waste the retries - skip this chunk and move the
+                # cursor forward instead of crashing the whole fetch/job.
+                if resp is not None and resp.status_code == 422:
+                    print(f"    {symbol}: no data for this range yet (422 - likely before listing), "
+                          f"skipping chunk {pd.Timestamp(cursor, unit='ms')} -> "
+                          f"{pd.Timestamp(min(cursor + step_ms, end_ms), unit='ms')}")
+                    skip_chunk = True
+                    break
                 last_err = e
                 if attempt < 2:
                     print(f"    {symbol}: request {request_count+1} failed ({e}), retrying (attempt {attempt+2}/3)...")
                     time.sleep(2 * (attempt + 1) + random.uniform(0, 2))
+            except requests.exceptions.RequestException as e:
+                last_err = e
+                if attempt < 2:
+                    print(f"    {symbol}: request {request_count+1} failed ({e}), retrying (attempt {attempt+2}/3)...")
+                    time.sleep(2 * (attempt + 1) + random.uniform(0, 2))
+        if skip_chunk:
+            cursor += step_ms
+            time.sleep(0.3)
+            continue
         if last_err is not None:
             raise last_err
         rows = resp.json()
@@ -149,9 +173,18 @@ def fetch_coindcx_klines(symbol="BTC", interval="5m", start_time=None, end_time=
 def resample_candles(base_candles, target_interval):
     """Resamples finer candles up to a coarser interval - e.g. 5m -> 1h -
     same aggregation logic as the live bot's aggregateCandles (first open,
-    last close, max high, min low, summed volume), using pandas resample."""
-    rule_map = {"5m": "5min", "15m": "15min", "1h": "1h", "4h": "4h", "1d": "1D"}
-    rule = rule_map[target_interval]
+    last close, max high, min low, summed volume), using pandas resample.
+
+    target_interval accepts either a legacy string key (backward
+    compatible: "5m","15m","1h","4h","1d") or a raw integer number of
+    minutes (e.g. 1, 3, 30) - added to test genuinely different timeframe
+    combinations (e.g. 1m/5m/15m or 3m/15m/30m instead of the fixed
+    5m/15m/1h), not just skip or cache the existing ones."""
+    legacy_rule_map = {"5m": "5min", "15m": "15min", "1h": "1h", "4h": "4h", "1d": "1D"}
+    if isinstance(target_interval, str):
+        rule = legacy_rule_map[target_interval]
+    else:
+        rule = f"{int(target_interval)}min"
     out = base_candles.resample(rule).agg({
         "open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum",
     })
