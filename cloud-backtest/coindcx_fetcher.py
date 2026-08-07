@@ -44,10 +44,14 @@ INTERVAL_MS = {
 
 
 def fetch_coindcx_klines(symbol="BTC", interval="5m", start_time=None, end_time=None, limit_per_call=1000,
-                          stagger_delay=True):
+                          stagger_delay=True, pair_override=None):
     """
     symbol: base symbol, e.g. "BTC" (builds the futures-style pair
     "B-{symbol}_USDT" - matches the live bot's own pair convention)
+    pair_override: use this exact pair string instead of the default
+    "B-{symbol}_USDT" - for a symbol confirmed NOT to work under that
+    default, to test one alternate format without touching behavior
+    for any other caller.
     interval: one of CoinDCX's documented intervals (1m, 5m, 15m, 30m, 1h,
     4h, 1d, ...)
     start_time / end_time: pandas.Timestamp-parseable or None (None
@@ -55,7 +59,7 @@ def fetch_coindcx_klines(symbol="BTC", interval="5m", start_time=None, end_time=
     Returns a DataFrame indexed by open_time, columns: open, high, low,
     close, volume
     """
-    pair = f"B-{symbol}_USDT"
+    pair = pair_override if pair_override else f"B-{symbol}_USDT"
 
     # GitHub Actions matrix jobs all start within the same second or two -
     # meaning many jobs' FIRST request naturally lands on CoinDCX at

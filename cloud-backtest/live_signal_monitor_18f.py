@@ -52,6 +52,25 @@ from coindcx_fetcher import fetch_coindcx_klines, resample_candles
 STATE_FILE = "live_monitor_state.json"
 FETCH_MINUTES_BACK = 3 * 500  # enough 1m candles for 3m resample + full EMA21/ADX14 warmup with real margin
 
+# BZ/BLESS/XAU/XAG/CL/NATGAS all failed under the default
+# B-{symbol}_USDT format. PAXG (a real crypto token, gold-backed)
+# succeeded under that same default format, which is real evidence
+# XAU/XAG/CL/NATGAS aren't a symbol-naming issue - they're very likely
+# a different CoinDCX product line entirely (synthetic commodity/CFD
+# contracts, not standard crypto futures), so no attempt is made to
+# guess an alternate for those four here.
+#
+# BZ/BLESS remain a more plausible symbol-format case since they're
+# real crypto tokens - but I don't have a specific, well-grounded
+# alternate string to propose (no live network access to verify
+# against, and no real basis to prefer one guessed prefix over
+# another). Rather than plug in a guess dressed up as a fix, this map
+# is left empty and ready to use: once you have the correct pair
+# string for either symbol (from CoinDCX support/docs, or by finding
+# it some other way), add it here as e.g. {"BZ": "<correct pair
+# string>"} and it will be used automatically.
+PAIR_OVERRIDES = {}
+
 
 def load_state():
     if os.path.exists(STATE_FILE):
@@ -227,7 +246,7 @@ def main():
     for coin in coins:
         try:
             candles_1m = fetch_coindcx_klines(coin, "1m", start_date.date().isoformat(), now.isoformat(),
-                                               stagger_delay=False)
+                                               stagger_delay=False, pair_override=PAIR_OVERRIDES.get(coin))
             candles_3m = resample_candles(candles_1m, 3)
             candles_3m = drop_still_forming_bucket(candles_3m, now)
             if len(candles_3m) < 60:
