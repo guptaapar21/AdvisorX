@@ -26,8 +26,8 @@ import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
-import numpy as np
 import pandas as pd
+import numpy as np
 
 from coindcx_fetcher import fetch_coindcx_klines, resample_candles
 from momentum_scalp import detect_ema_pullback_rejection
@@ -413,7 +413,8 @@ def run_structure_backtest(candles, coin, r_target_unused=1.5, trend_lookback=3,
                            stop_lookback=3, target_lookback=10,
                            min_structural_rr=1.0, checkpoint_minutes=9,
                            checkpoint_mode="hard", checkpoint_profit_buffer_cost_mult=1.0,
-                           final_max_hold_minutes=180, adx_filter_mode="level_only"):
+                           final_max_hold_minutes=180, adx_filter_mode="level_only",
+                           fee_rate=0.00059):
     """
     Idea #18D: structure-to-structure exit model.
 
@@ -456,7 +457,8 @@ def run_structure_backtest(candles, coin, r_target_unused=1.5, trend_lookback=3,
     dx = 100 * (pdi-mdi).abs() / (pdi+mdi).replace(0, float("nan"))
     candles["adx14"] = dx.ewm(alpha=1/14, adjust=False, min_periods=14).mean()
 
-    fee_rate = 0.00059  # preserve existing assumed taker fee per side (~0.118% round trip)
+    # Per-side execution fee. Default preserves the old crypto assumption.
+    # For CoinDCX low-fee commodity futures pass --fee-rate 0.0001 (0.01% per side).
     round_trip_fee_rate = 2 * fee_rate
     trades = []
     pending = None
@@ -672,7 +674,7 @@ def ensure_adx_di_columns(candles, period=14):
     return candles
 
 def _run_adx_quality_task(args):
-    candles, coin, adx_min, adx_filter_mode = args
+    candles, coin, adx_min, adx_filter_mode, fee_rate = args
     candles = ensure_adx_di_columns(candles)
     # Freeze the best Idea 18D structure:
     # target lookback=10, structural RR>=1.0, 3-bar swing SL,
@@ -688,8 +690,9 @@ def _run_adx_quality_task(args):
         checkpoint_minutes=6,
         checkpoint_mode="momentum",
         adx_filter_mode=adx_filter_mode,
+        fee_rate=fee_rate,
     )
-    r.update({"adx_min": adx_min, "adx_filter_mode": adx_filter_mode})
+    r.update({"adx_min": adx_min, "adx_filter_mode": adx_filter_mode, "fee_rate": fee_rate})
     return r
 
 
@@ -697,6 +700,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--coin", type=str, default="BTC")
     parser.add_argument("--days", type=int, default=365)
+    parser.add_argument("--fee-rate", type=float, default=0.00059,
+                        help="Per-side execution fee as decimal. Example: 0.0001 = 0.01%% per side.")
     parser.add_argument("--max-hold-hours", type=float, default=3.0)
     parser.add_argument("--r-target", type=float, default=1.5)
     parser.add_argument("--trend-lookback", type=int, default=3)
@@ -830,10 +835,11 @@ def main():
         print("ADX/DI columns ready:", required)
         thresholds = (20.0, 25.0, 30.0, 35.0, 40.0)
         modes = ("level_only", "di", "slope1", "slope3", "full_slope1", "full_slope3")
-        tasks = [(candles_3m, args.coin, threshold, filt)
+        tasks = [(candles_3m, args.coin, threshold, filt, args.fee_rate)
                  for threshold in thresholds for filt in modes]
 
         print(f"Running Idea #18E ADX quality sweep: {len(tasks)} variants")
+        print(f"Fee assumption: {args.fee_rate*100:.4f}% per side ({2*args.fee_rate*100:.4f}% round trip before other costs)")
         print("FIXED from best 18D: targetLB=10, structural RR>=1.0, "
               "3-bar swing SL, min-stop>=0.25%, 6m momentum checkpoint")
         print("ADX thresholds: 20, 25, 30, 35, 40")
