@@ -631,8 +631,48 @@ def _run_structure_task(args):
     })
     return r
 
+
+def ensure_adx_di_columns(candles, period=14):
+    """Guarantee ADX14, +DI14 and -DI14 on the exact dataframe used for the sweep."""
+    required = {"adx14", "plus_di14", "minus_di14"}
+    if required.issubset(candles.columns):
+        return candles
+
+    candles = candles.copy()
+    high = candles["high"].astype(float)
+    low = candles["low"].astype(float)
+    close = candles["close"].astype(float)
+
+    up_move = high.diff()
+    down_move = -low.diff()
+    plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+    minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+
+    prev_close = close.shift(1)
+    tr = pd.concat([
+        high - low,
+        (high - prev_close).abs(),
+        (low - prev_close).abs()
+    ], axis=1).max(axis=1)
+
+    atr = tr.ewm(alpha=1/period, adjust=False, min_periods=period).mean()
+    plus_sm = plus_dm.ewm(alpha=1/period, adjust=False, min_periods=period).mean()
+    minus_sm = minus_dm.ewm(alpha=1/period, adjust=False, min_periods=period).mean()
+
+    plus_di = 100.0 * plus_sm / atr.replace(0, np.nan)
+    minus_di = 100.0 * minus_sm / atr.replace(0, np.nan)
+    denom = (plus_di + minus_di).replace(0, np.nan)
+    dx = 100.0 * (plus_di - minus_di).abs() / denom
+
+    candles["plus_di14"] = plus_di
+    candles["minus_di14"] = minus_di
+    candles["adx14"] = dx.ewm(alpha=1/period, adjust=False, min_periods=period).mean()
+
+    return candles
+
 def _run_adx_quality_task(args):
     candles, coin, adx_min, adx_filter_mode = args
+    candles = ensure_adx_di_columns(candles)
     # Freeze the best Idea 18D structure:
     # target lookback=10, structural RR>=1.0, 3-bar swing SL,
     # min stop=0.25%, 6m momentum checkpoint.
@@ -781,6 +821,12 @@ def main():
         return
 
     if mode == "adx-quality-sweep":
+        candles_3m = ensure_adx_di_columns(candles_3m)
+        required = ["adx14", "plus_di14", "minus_di14"]
+        missing = [c for c in required if c not in candles_3m.columns]
+        if missing:
+            raise RuntimeError(f"Missing ADX/DI columns: {missing}")
+        print("ADX/DI columns ready:", required)
         thresholds = (20.0, 25.0, 30.0, 35.0, 40.0)
         modes = ("level_only", "di", "slope1", "slope3", "full_slope1", "full_slope3")
         tasks = [(candles_3m, args.coin, threshold, filt)
