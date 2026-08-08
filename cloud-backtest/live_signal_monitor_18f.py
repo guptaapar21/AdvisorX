@@ -164,9 +164,19 @@ def check_signal(candles, adx_min, adx_mode, trend_lookback=3,
 
     plus_di, minus_di = row["plus_di14"], row["minus_di14"]
     adx_prev1 = candles["adx14"].iloc[i - 1]
+    adx_prev2 = candles["adx14"].iloc[i - 2]
     adx_prev3 = candles["adx14"].iloc[i - 3]
     adx_rising_1 = adx > adx_prev1
+    adx_rising_2 = adx > adx_prev2
     adx_rising_3 = adx > adx_prev3
+    # Requires rising against BOTH the immediately preceding candle AND
+    # the one before that - directly closes the gap found in slope3
+    # (which only checks 3-candles-back and can pass at the exact top
+    # of an ADX peak, since "higher than 9 minutes ago" says nothing
+    # about whether it's still climbing right now). A candle where ADX
+    # has already started rolling over will fail adx_rising_1 even if
+    # adx_rising_3 is still technically true.
+    adx_rising_1_and_2 = adx_rising_1 and adx_rising_2
 
     ema9, ema21, vwap = row["ema9"], row["ema21"], row["vwap"]
     ema9_prev3 = candles["ema9"].iloc[i - 3]
@@ -195,6 +205,7 @@ def check_signal(candles, adx_min, adx_mode, trend_lookback=3,
     di_ok = (plus_di > minus_di) if direction == "long" else (minus_di > plus_di)
     mode_ok = {
         "level_only": True, "di": di_ok, "slope1": adx_rising_1, "slope3": adx_rising_3,
+        "slope1_2": adx_rising_1_and_2, "full_slope1_2": di_ok and adx_rising_1_and_2,
         "full_slope1": di_ok and adx_rising_1, "full_slope3": di_ok and adx_rising_3,
     }.get(adx_mode)
     if not mode_ok:
@@ -230,7 +241,8 @@ def main():
     parser.add_argument("--coins", type=str, default="BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX")
     parser.add_argument("--adx-min", type=float, default=25.0)
     parser.add_argument("--adx-mode", type=str, default="level_only",
-                         choices=["level_only", "di", "slope1", "slope3", "full_slope1", "full_slope3"])
+                         choices=["level_only", "di", "slope1", "slope3", "full_slope1", "full_slope3",
+                                  "slope1_2", "full_slope1_2"])
     parser.add_argument("--min-stop-pct", type=float, default=0.25)
     parser.add_argument("--target-lookback", type=int, default=10)
     parser.add_argument("--min-structural-rr", type=float, default=1.0)
