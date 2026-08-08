@@ -1,0 +1,19 @@
+name: Find Correct Symbols (diagnostic)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  find_symbols:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install the real coindcx package
+        run: pip install coindcx
+      - name: Search for correct pair strings
+        working-directory: cloud-backtest
+        run: python find_correct_symbols.py
