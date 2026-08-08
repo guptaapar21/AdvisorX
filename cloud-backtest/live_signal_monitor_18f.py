@@ -150,17 +150,29 @@ def check_signal(candles, adx_min, adx_mode, trend_lookback=3,
                   min_stop_distance_pct=0.25, target_lookback=10, min_structural_rr=1.0):
     """Evaluates the signal on the LAST row of `candles` (the caller is
     responsible for ensuring this is a real, fully-closed candle - see
-    drop_still_forming_bucket). Returns a signal dict or None."""
+    drop_still_forming_bucket).
+
+    Returns (signal_dict_or_None, diagnostics_dict). diagnostics always
+    reports every condition checked and whether it passed, so a "no
+    signal" outcome is never a black box - the exact blocking condition
+    is always visible, not just inferred or asserted."""
+    diag = {}
     i = len(candles) - 1
     if i < max(50, target_lookback + 2, trend_lookback + 2):
-        return None
+        diag["blocked_at"] = "not_enough_candles"
+        return None, diag
 
     row = candles.iloc[i]
     prev = candles.iloc[i - 1]
 
     adx = row["adx14"]
-    if pd.isna(adx) or adx < adx_min:
-        return None
+    adx_ok = not pd.isna(adx) and adx >= adx_min
+    diag["adx14"] = None if pd.isna(adx) else round(float(adx), 2)
+    diag["adx_min_required"] = adx_min
+    diag["adx_gate_passed"] = adx_ok
+    if not adx_ok:
+        diag["blocked_at"] = "adx_below_minimum"
+        return None, diag
 
     plus_di, minus_di = row["plus_di14"], row["minus_di14"]
     adx_prev1 = candles["adx14"].iloc[i - 1]
@@ -169,52 +181,89 @@ def check_signal(candles, adx_min, adx_mode, trend_lookback=3,
     adx_rising_1 = adx > adx_prev1
     adx_rising_2 = adx > adx_prev2
     adx_rising_3 = adx > adx_prev3
-    # Requires rising against BOTH the immediately preceding candle AND
-    # the one before that - directly closes the gap found in slope3
-    # (which only checks 3-candles-back and can pass at the exact top
-    # of an ADX peak, since "higher than 9 minutes ago" says nothing
-    # about whether it's still climbing right now). A candle where ADX
-    # has already started rolling over will fail adx_rising_1 even if
-    # adx_rising_3 is still technically true.
     adx_rising_1_and_2 = adx_rising_1 and adx_rising_2
+    diag["adx_rising_vs_1candle_ago"] = bool(adx_rising_1)
+    diag["adx_rising_vs_2candles_ago"] = bool(adx_rising_2)
+    diag["adx_rising_vs_3candles_ago"] = bool(adx_rising_3)
 
     ema9, ema21, vwap = row["ema9"], row["ema21"], row["vwap"]
     ema9_prev3 = candles["ema9"].iloc[i - 3]
     ema21_prev3 = candles["ema21"].iloc[i - 3]
     vwap_prev3 = candles["vwap"].iloc[i - 3]
 
-    long_trend = (ema9 > ema21 and ema9 > ema9_prev3 and ema21 >= ema21_prev3
-                  and vwap >= vwap_prev3 and row["close"] > vwap)
-    short_trend = (ema9 < ema21 and ema9 < ema9_prev3 and ema21 <= ema21_prev3
-                   and vwap <= vwap_prev3 and row["close"] < vwap)
+    long_trend_checks = {
+        "ema9_above_ema21": ema9 > ema21,
+        "ema9_rising_vs_3candles_ago": ema9 > ema9_prev3,
+        "ema21_not_falling_vs_3candles_ago": ema21 >= ema21_prev3,
+        "vwap_not_falling_vs_3candles_ago": vwap >= vwap_prev3,
+        "price_above_vwap": row["close"] > vwap,
+    }
+    short_trend_checks = {
+        "ema9_below_ema21": ema9 < ema21,
+        "ema9_falling_vs_3candles_ago": ema9 < ema9_prev3,
+        "ema21_not_rising_vs_3candles_ago": ema21 <= ema21_prev3,
+        "vwap_not_rising_vs_3candles_ago": vwap <= vwap_prev3,
+        "price_below_vwap": row["close"] < vwap,
+    }
+    long_trend = all(long_trend_checks.values())
+    short_trend = all(short_trend_checks.values())
+    diag["long_trend_checks"] = long_trend_checks
+    diag["short_trend_checks"] = short_trend_checks
+    diag["long_trend_passed"] = long_trend
+    diag["short_trend_passed"] = short_trend
 
     prev_falling = prev["close"] < prev["open"]
     prev_rising = prev["close"] > prev["open"]
     zone_lo, zone_hi = min(ema9, ema21), max(ema9, ema21)
     touched_zone = row["low"] <= zone_hi and row["high"] >= zone_lo
+    diag["touched_ema_zone"] = bool(touched_zone)
 
-    bullish_rejection = (touched_zone and row["close"] > row["open"] and row["close"] >= ema9
-                          and prev_falling and row["low"] >= prev["low"])
-    bearish_rejection = (touched_zone and row["close"] < row["open"] and row["close"] <= ema9
-                          and prev_rising and row["high"] <= prev["high"])
+    bullish_rejection_checks = {
+        "touched_zone": touched_zone,
+        "closed_green": row["close"] > row["open"],
+        "closed_at_or_above_ema9": row["close"] >= ema9,
+        "prior_candle_was_falling": prev_falling,
+        "low_did_not_undercut_prior_low": row["low"] >= prev["low"],
+    }
+    bearish_rejection_checks = {
+        "touched_zone": touched_zone,
+        "closed_red": row["close"] < row["open"],
+        "closed_at_or_below_ema9": row["close"] <= ema9,
+        "prior_candle_was_rising": prev_rising,
+        "high_did_not_overshoot_prior_high": row["high"] <= prev["high"],
+    }
+    bullish_rejection = all(bullish_rejection_checks.values())
+    bearish_rejection = all(bearish_rejection_checks.values())
+    diag["bullish_rejection_checks"] = bullish_rejection_checks
+    diag["bearish_rejection_checks"] = bearish_rejection_checks
 
     direction = "long" if (long_trend and bullish_rejection) else ("short" if (short_trend and bearish_rejection) else None)
+    diag["direction"] = direction
     if direction is None:
-        return None
+        diag["blocked_at"] = ("no_valid_trend" if not (long_trend or short_trend)
+                               else "trend_ok_but_no_rejection_candle")
+        return None, diag
 
     di_ok = (plus_di > minus_di) if direction == "long" else (minus_di > plus_di)
+    diag["di_direction_agrees"] = bool(di_ok)
     mode_ok = {
         "level_only": True, "di": di_ok, "slope1": adx_rising_1, "slope3": adx_rising_3,
         "slope1_2": adx_rising_1_and_2, "full_slope1_2": di_ok and adx_rising_1_and_2,
         "full_slope1": di_ok and adx_rising_1, "full_slope3": di_ok and adx_rising_3,
     }.get(adx_mode)
+    diag["adx_mode"] = adx_mode
+    diag["adx_mode_gate_passed"] = bool(mode_ok)
     if not mode_ok:
-        return None
+        diag["blocked_at"] = "adx_mode_gate_failed"
+        return None, diag
 
     stop = float(prev["low"]) if direction == "long" else float(prev["high"])
     target = prior_structure_target(candles, i, direction, target_lookback)
+    diag["stop"] = stop
+    diag["target"] = target
     if target is None:
-        return None
+        diag["blocked_at"] = "no_structural_target_found"
+        return None, diag
 
     # Real entry executes at the NEXT candle's open, which doesn't exist
     # yet - this uses the signal candle's own close as an estimate,
@@ -225,15 +274,30 @@ def check_signal(candles, adx_min, adx_mode, trend_lookback=3,
     reward = (target - estimated_entry) if direction == "long" else (estimated_entry - target)
     stop_pct = risk / estimated_entry * 100 if estimated_entry else 0
     rr = reward / risk if risk > 0 else -1
+    diag["estimated_entry"] = estimated_entry
+    diag["risk"] = round(risk, 6)
+    diag["reward"] = round(reward, 6)
+    diag["stop_pct"] = round(stop_pct, 3)
+    diag["rr"] = round(rr, 3)
+    diag["min_stop_distance_pct_required"] = min_stop_distance_pct
+    diag["min_structural_rr_required"] = min_structural_rr
 
-    if risk <= 0 or reward <= 0 or stop_pct < min_stop_distance_pct or rr < min_structural_rr:
-        return None
+    if risk <= 0 or reward <= 0:
+        diag["blocked_at"] = "non_positive_risk_or_reward"
+        return None, diag
+    if stop_pct < min_stop_distance_pct:
+        diag["blocked_at"] = "stop_too_tight"
+        return None, diag
+    if rr < min_structural_rr:
+        diag["blocked_at"] = "rr_below_minimum"
+        return None, diag
 
+    diag["blocked_at"] = None
     return {
         "direction": direction, "signal_time": candles.index[i], "estimated_entry": estimated_entry,
         "stop": stop, "target": target, "stop_pct": round(stop_pct, 3), "rr": round(rr, 2),
         "adx14": round(float(adx), 1),
-    }
+    }, diag
 
 
 def main():
@@ -266,11 +330,15 @@ def main():
                 continue
 
             candles_3m = compute_indicators(candles_3m)
-            signal = check_signal(candles_3m, args.adx_min, args.adx_mode, min_stop_distance_pct=args.min_stop_pct,
-                                   target_lookback=args.target_lookback, min_structural_rr=args.min_structural_rr)
+            signal, diag = check_signal(candles_3m, args.adx_min, args.adx_mode, min_stop_distance_pct=args.min_stop_pct,
+                                         target_lookback=args.target_lookback, min_structural_rr=args.min_structural_rr)
 
             if signal is None:
-                print(f"  {coin}: no signal")
+                print(f"  {coin}: no signal - blocked_at={diag.get('blocked_at')}")
+                for key, value in diag.items():
+                    if key == "blocked_at":
+                        continue
+                    print(f"    {key}: {value}")
                 continue
 
             signal_key = f"{coin}_{signal['signal_time'].isoformat()}"
