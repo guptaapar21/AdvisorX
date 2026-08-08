@@ -227,29 +227,17 @@ def process_coin(coin, candles_3m, candles_15m, coin_state):
     candle_time = str(candles_3m.index[-1])
     report = {"coin": coin, "candle_time": candle_time}
 
-    currently_qualified = coin_state.get("qualified_direction") is not None
-
-    if currently_qualified:
-        # Already qualified (whether or not a pullback is being
-        # tracked yet) - use the looser check so an ordinary pullback
-        # candle doesn't spuriously reset tracking. Confirmed directly:
-        # requiring the full strict check on every candle, including
-        # the very candle that FORMS the pullback, caused an ordinary,
-        # realistic pullback candle to spuriously disqualify a coin
-        # still in a genuinely valid uptrend.
-        tracked_direction = coin_state["qualified_direction"]
-        still_intact = check_trend_broadly_intact(candles_3m, candles_15m, tracked_direction)
-        new_direction = tracked_direction if still_intact else None
-        long_checks, short_checks = {}, {}
-        if new_direction is not None:
-            adx_val = round(float(row["adx14"]), 2) if not pd.isna(row["adx14"]) else None
-            (long_checks if new_direction == "long" else short_checks)["adx14"] = adx_val
-    else:
-        # Not currently qualified - apply the full, strict
-        # qualification check to decide whether to newly qualify.
-        long_ok, long_checks = check_trend_alignment(candles_3m, candles_15m, "long")
-        short_ok, short_checks = check_trend_alignment(candles_3m, candles_15m, "short")
-        new_direction = "long" if long_ok else ("short" if short_ok else None)
+    # Full strict check every single time, no exceptions - including
+    # while a pullback run is already being tracked. Reverted from an
+    # earlier looser design after direct evidence (a real chart showing
+    # ADX rising through several consecutive red candles in a genuine
+    # strong trend) that "still rising" is meaningful signal, not just
+    # noise - if ADX or EMA9 genuinely stalls during a pullback, that's
+    # treated as real evidence of weakening momentum, and the coin is
+    # correctly disqualified rather than continuing to be tracked.
+    long_ok, long_checks = check_trend_alignment(candles_3m, candles_15m, "long")
+    short_ok, short_checks = check_trend_alignment(candles_3m, candles_15m, "short")
+    new_direction = "long" if long_ok else ("short" if short_ok else None)
 
     current_direction = coin_state.get("qualified_direction")
     if new_direction != current_direction:
