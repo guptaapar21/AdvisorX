@@ -111,7 +111,24 @@ def fetch_coindcx_klines(symbol="BTC", interval="5m", start_time=None, end_time=
                 resp.raise_for_status()
                 last_err = None
                 break
-            except (requests.exceptions.RequestException,) as e:
+            except requests.exceptions.HTTPError as e:
+                # 422 = the API is deterministically rejecting this exact
+                # pair/interval/range combination - it will return the
+                # SAME 422 every single time, no matter how many times we
+                # ask. Retrying it isn't "trying again in case of a
+                # transient blip" - it's guaranteed to waste ~2-6s per
+                # retry for zero chance of a different outcome. Confirmed
+                # directly: a diagnostic script retrying 30 known-422
+                # combinations hit a workflow timeout from this exact
+                # waste. Other HTTP errors (5xx) can still be transient,
+                # so only 422 skips the retry loop.
+                if e.response is not None and e.response.status_code == 422:
+                    raise
+                last_err = e
+                if attempt < 2:
+                    print(f"    {symbol}: request {request_count+1} failed ({e}), retrying (attempt {attempt+2}/3)...")
+                    time.sleep(2 * (attempt + 1) + random.uniform(0, 2))
+            except requests.exceptions.RequestException as e:
                 last_err = e
                 if attempt < 2:
                     print(f"    {symbol}: request {request_count+1} failed ({e}), retrying (attempt {attempt+2}/3)...")
