@@ -1,0 +1,61 @@
+name: Trend Alignment Scanner (advisory only)
+
+on:
+  workflow_dispatch: {}
+  # Runs every 1 minute via an external cron-job.org job (same pattern
+  # as fastwatch.yml/idea18f_live_monitor.yml) - not GitHub's native
+  # scheduler, which is unreliable at this frequency and gets disabled
+  # on inactive repos.
+
+permissions:
+  contents: write
+
+concurrency:
+  group: trend-alignment-scanner
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+
+      - name: Run trend alignment scanner
+        working-directory: cloud-backtest
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: >
+          python trend_alignment_scanner.py
+          --coins BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX,HEI,BICO,HYPE,ZEC,ZBT,ADA,ACE,PAXG
+
+      - name: Persist scanner state
+        working-directory: cloud-backtest
+        run: |
+          git config user.name "coindcx-trend-scanner-bot"
+          git config user.email "actions@github.com"
+          git add trend_scanner_state.json
+          git diff --staged --quiet && exit 0
+          git commit -m "Update trend alignment scanner state [skip ci]"
+          for i in 1 2 3; do
+            if git push; then
+              exit 0
+            fi
+            echo "Push rejected (attempt $i), pulling and retrying..."
+            if git pull --rebase; then
+              continue
+            fi
+            git rebase --abort
+            git fetch origin main
+            git reset --soft origin/main
+            git add trend_scanner_state.json
+            git commit -m "Update trend alignment scanner state [skip ci]" --allow-empty
+          done
+          echo "Failed to push state after 3 attempts."
+          exit 1
