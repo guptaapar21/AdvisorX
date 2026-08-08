@@ -176,19 +176,48 @@ def check_trend_alignment(candles_3m, candles_15m, direction, trend_lookback=3):
     return all_passed, checks
 
 
-def check_trend_broadly_intact(candles_3m, direction):
-    """Looser check used ONLY while already tracking a pullback candle -
-    just confirms the basic EMA9/EMA21 relationship still holds, not the
-    full strict qualification bar (rising EMA9, rising ADX, etc). A real
-    pullback candle can legitimately flatten short-term EMA slope for a
-    candle or two without the underlying trend actually breaking down -
-    confirmed directly: re-requiring the full strict check every candle
-    caused an ordinary, realistic pullback candle to spuriously
-    disqualify a coin still in a genuinely valid uptrend."""
+def check_trend_broadly_intact(candles_3m, candles_15m, direction, adx_min=25, trend_lookback=3):
+    """Middle-ground check used while already tracking a pullback run -
+    re-verifies EVERYTHING the strict qualification check does (VWAP,
+    15m EMA9>EMA21 AND rising, 3m EMA9>EMA21, ADX level) on every single
+    candle, EXCLUDING TWO specific sub-conditions proven to spuriously
+    fail on an ordinary, healthy pullback candle:
+      - 3m EMA9 still rising (confirmed directly - a real pullback
+        candle flattens short-term EMA9 slope for that one candle even
+        in a genuinely valid uptrend)
+      - ADX still rising (confirmed directly - ADX dips slightly on an
+        ordinary pullback candle too, e.g. 97.01 -> 95.80 in one real
+        test - completely normal noise, not genuine breakdown)
+    Both were tested by actually re-including them and watching an
+    ordinary pullback candle spuriously disqualify a valid trend before
+    being excluded - not assumed safe to exclude.
+
+    ADX's LEVEL (not slope) is still checked - that's what caught the
+    real SOL case, where ADX collapsed well below the qualification
+    threshold while EMA9 (a lagging indicator) hadn't caught up yet."""
+    if len(candles_3m) < 30 or len(candles_15m) < trend_lookback + 5:
+        return False
+
     row3 = candles_3m.iloc[-1]
+    row15 = candles_15m.iloc[-1]
+    ema9_15_prev3 = candles_15m["ema9"].iloc[-(trend_lookback + 1)]
+    adx = row3["adx14"]
+
+    # ADX-still-rising is deliberately EXCLUDED here, same reasoning as
+    # 3m EMA9-rising - confirmed directly: ADX dips slightly on an
+    # ordinary pullback candle (97.01 -> 95.80 in one real test), which
+    # is completely normal noise, not genuine trend breakdown. The
+    # LEVEL floor (below) is what actually caught the real SOL problem
+    # and is kept; the SLOPE requirement is what caused this bug and is
+    # excluded, just like EMA9's slope requirement was.
+    if pd.isna(adx) or adx < adx_min:
+        return False
+
     if direction == "long":
-        return bool(row3["ema9"] > row3["ema21"])
-    return bool(row3["ema9"] < row3["ema21"])
+        return bool(row3["ema9"] > row3["ema21"] and row3["close"] > row3["vwap"]
+                     and row15["ema9"] > row15["ema21"] and row15["ema9"] > ema9_15_prev3)
+    return bool(row3["ema9"] < row3["ema21"] and row3["close"] < row3["vwap"]
+                and row15["ema9"] < row15["ema21"] and row15["ema9"] < ema9_15_prev3)
 
 
 def process_coin(coin, candles_3m, candles_15m, coin_state):
@@ -209,7 +238,7 @@ def process_coin(coin, candles_3m, candles_15m, coin_state):
         # realistic pullback candle to spuriously disqualify a coin
         # still in a genuinely valid uptrend.
         tracked_direction = coin_state["qualified_direction"]
-        still_intact = check_trend_broadly_intact(candles_3m, tracked_direction)
+        still_intact = check_trend_broadly_intact(candles_3m, candles_15m, tracked_direction)
         new_direction = tracked_direction if still_intact else None
         long_checks, short_checks = {}, {}
         if new_direction is not None:
