@@ -1,0 +1,94 @@
+name: Idea 19 - Breakout Entry + VWAP Extension (liquid coins)
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Lookback window in days"
+        required: false
+        default: "365"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        coin: [BTC, ETH, BNB, SOL, XRP, DOGE, ADA, LTC, LINK, TRX, AVAX]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+      - name: Run 24-combo ablation for ${{ matrix.coin }} (one fetch)
+        working-directory: cloud-backtest
+        run: >
+          python run_18f_breakout_vwap_backtest.py
+          --coin ${{ matrix.coin }}
+          --days ${{ inputs.days }}
+          --sweep-all
+      - name: Upload results CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: idea19-results-${{ matrix.coin }}
+          path: cloud-backtest/idea19_results_${{ matrix.coin }}.csv
+
+  # Combines all 11 coins' results into ONE place, so the person doesn't
+  # have to open 11 separate job logs and copy-paste each one by hand -
+  # this job depends on every matrix job finishing, downloads all their
+  # CSVs, concatenates them, and prints a single combined summary table.
+  summarize:
+    needs: run
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pandas
+        run: pip install pandas
+      - name: Download all results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: idea19-results-*
+          path: all_results
+          merge-multiple: true
+      - name: Combine and print one summary table
+        run: |
+          python3 -c "
+          import glob
+          import pandas as pd
+
+          files = sorted(glob.glob('all_results/*.csv'))
+          print(f'Found {len(files)} coin result files')
+
+          if not files:
+              print('No result files found - all coin jobs may have failed. Check the run job logs.')
+              raise SystemExit(1)
+
+          combined = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
+          print(f'\n=== COMBINED RESULTS: {combined[\"coin\"].nunique()} coins, {len(combined)} total rows ===')
+          print(combined.to_string(index=False))
+
+          combined.to_csv('idea19_all_coins_combined.csv', index=False)
+
+          print('\n=== BEST COMBO PER COIN (by total_pnl) ===')
+          valid = combined.dropna(subset=['total_pnl'])
+          if len(valid):
+              best_per_coin = valid.loc[valid.groupby('coin')['total_pnl'].idxmax()]
+              print(best_per_coin[['coin', 'label', 'trades', 'win_rate', 'net_r', 'total_pnl']].to_string(index=False))
+
+          print('\n=== OVERALL BEST COMBO ACROSS ALL COINS COMBINED (by summed total_pnl per label) ===')
+          if len(valid):
+              by_label = valid.groupby('label')['total_pnl'].sum().sort_values(ascending=False)
+              print(by_label.head(10).to_string())
+          "
+      - name: Upload combined summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: idea19-combined-summary
+          path: idea19_all_coins_combined.csv
