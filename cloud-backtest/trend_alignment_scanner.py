@@ -195,7 +195,8 @@ def process_coin(coin, candles_3m, candles_15m, coin_state):
     """Runs all 3 stages for one coin, mutating coin_state in place.
     Returns a dict of anything worth reporting this cycle, or None."""
     row = candles_3m.iloc[-1]
-    report = {"coin": coin}
+    candle_time = str(candles_3m.index[-1])
+    report = {"coin": coin, "candle_time": candle_time}
 
     currently_qualified = coin_state.get("qualified_direction") is not None
 
@@ -258,15 +259,21 @@ def process_coin(coin, candles_3m, candles_15m, coin_state):
         return report
 
     if in_pullback_run and is_reversal_candle:
-        # This is the reversal candle - the ONE thing this experiment
-        # measures. Report its RVOL, then reset - ready to detect the
-        # next fresh pullback-then-reversal sequence, if the trend
-        # persists. Nothing about the following candle is tracked.
+        # ROBUST DEDUP: even if the in_pullback_run flag-reset below
+        # somehow didn't land in time (a state-persistence timing
+        # issue - confirmed as the likely real cause after tracing the
+        # decision logic itself and finding it should already have
+        # prevented this), refuse to re-report the exact same candle
+        # twice. This check is independent of the flag reset, so it
+        # stays correct even if that specific write gets lost.
+        if coin_state.get("last_reversal_candle_time") == candle_time:
+            return None
         rvol = row.get("rvol")
         report["reversal_candle"] = True
         report["rvol"] = round(float(rvol), 2) if rvol is not None and not pd.isna(rvol) else None
         report["rvol_label"] = rvol_label(rvol)
         coin_state["in_pullback_run"] = False
+        coin_state["last_reversal_candle_time"] = candle_time
         return report
 
     # Neither a pullback candle nor (if mid-run) a reversal candle -
@@ -345,11 +352,12 @@ def main():
         if pullback_report:
             lines.append("\nPullback run in progress:")
             for r in pullback_report:
-                lines.append(f"  {r['coin']} {r['direction'].upper()}")
+                lines.append(f"  {r['coin']} {r['direction'].upper()} (as of candle {r['candle_time']})")
         if reversal_report:
             lines.append("\n\U0001F3AF Reversal candle formed - RVOL (for observation only, not an entry signal):")
             for r in reversal_report:
-                lines.append(f"  {r['coin']} {r['direction'].upper()} - RVOL: {r['rvol']} ({r['rvol_label']})")
+                lines.append(f"  {r['coin']} {r['direction'].upper()} - candle closed {r['candle_time']} - "
+                              f"RVOL: {r['rvol']} ({r['rvol_label']})")
         message = "\n".join(lines)
         print(f"\nSending Telegram message:\n{message}")
         send_telegram(message)
