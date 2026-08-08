@@ -67,3 +67,43 @@ for target in TARGETS:
         except Exception as e:
             print(f"  {interval}: FAILED - {e}")
 
+# THIRD TEST: a real alternate endpoint found in CoinDCX's own official
+# Futures API PDF documentation - /market_data/candlesticks, with
+# pair/from/to/resolution/pcode=f parameters, genuinely different from
+# the /market_data/candles endpoint used everywhere else in this
+# project. Documented specifically under the Futures API. Testing
+# directly rather than assuming it fixes anything - and testing BOTH
+# possible timestamp formats, since the documentation itself is
+# internally inconsistent (the parameter comment says "EPOCH timestamp
+# in seconds" but the sample value shown, 1707375997464, is 13 digits -
+# actually milliseconds, not seconds).
+print("\n" + "=" * 70)
+print("FUTURES CANDLESTICKS ENDPOINT TEST (newly found, different from /candles)")
+print("=" * 70)
+import requests as _requests
+
+CANDLESTICKS_URL = "https://public.coindcx.com/market_data/candlesticks"
+now_ms = int(now.timestamp() * 1000)
+start_ms_30d = int((now - timedelta(days=30)).timestamp() * 1000)
+now_s = int(now.timestamp())
+start_s_30d = int((now - timedelta(days=30)).timestamp())
+
+for target in TARGETS:
+    pair = f"B-{target}_USDT"
+    print(f"\n--- {target} ({pair}) ---")
+    for label, from_val, to_val in [
+        ("milliseconds (matches the doc's own sample value)", start_ms_30d, now_ms),
+        ("seconds (matches the doc's own comment text)", start_s_30d, now_s),
+    ]:
+        params = {"pair": pair, "from": from_val, "to": to_val, "resolution": "1", "pcode": "f"}
+        try:
+            resp = _requests.get(CANDLESTICKS_URL, params=params, timeout=25)
+            resp.raise_for_status()
+            data = resp.json()
+            n = len(data) if isinstance(data, list) else len(data.get("data", [])) if isinstance(data, dict) else "?"
+            print(f"  {label}: SUCCESS - response type {type(data).__name__}, ~{n} entries")
+            print(f"    Sample: {str(data)[:300]}")
+        except Exception as e:
+            print(f"  {label}: FAILED - {e}")
+
+
