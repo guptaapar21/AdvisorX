@@ -12,8 +12,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install the real coindcx package
-        run: pip install coindcx
+      - name: Install dependencies
+        run: pip install coindcx -r cloud-backtest/requirements.txt
       - name: Search for correct pair strings
         working-directory: cloud-backtest
         run: python find_correct_symbols.py
