@@ -372,23 +372,7 @@ def main():
         should_send = (now - last_sent_dt) >= timedelta(minutes=MESSAGE_INTERVAL_MINUTES)
 
     if should_send and (qualified_report or pullback_report or reversal_report):
-        # All candle_time values in one scan cycle come from the same
-        # fetch, so they're the same 3m boundary across coins - shown
-        # once at the top instead of repeated per-line. Converted from
-        # UTC (the raw candle index) to IST for direct readability -
-        # previously shown as raw UTC with no label, which looked
-        # "wrong" only because it was being silently compared against
-        # Telegram's own local-time message stamp.
-        all_reports = qualified_report + pullback_report + reversal_report
-        candle_times_utc = [pd.Timestamp(r["candle_time"]) for r in all_reports if r.get("candle_time")]
-        candle_time_ist = None
-        if candle_times_utc:
-            latest_utc = max(candle_times_utc)
-            candle_time_ist = (latest_utc + timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d %H:%M IST")
-
-        lines = ["\U0001F4CA Trend Alignment + Reversal RVOL Scanner"]
-        if candle_time_ist:
-            lines.append(f"As of candle: {candle_time_ist}\n")
+        lines = ["\U0001F4CA Trend Alignment + Reversal RVOL Scanner\n"]
         if qualified_report:
             lines.append("Qualified (trend-aligned, no pullback run yet):")
             for r in qualified_report:
@@ -397,11 +381,12 @@ def main():
         if pullback_report:
             lines.append("\nPullback run in progress:")
             for r in pullback_report:
-                lines.append(f"  {r['coin']} {r['direction'].upper()}")
+                lines.append(f"  {r['coin']} {r['direction'].upper()} (as of candle {r['candle_time']})")
         if reversal_report:
             lines.append("\n\U0001F3AF Reversal candle formed - RVOL (for observation only, not an entry signal):")
             for r in reversal_report:
-                lines.append(f"  {r['coin']} {r['direction'].upper()} - RVOL: {r['rvol']} ({r['rvol_label']})")
+                lines.append(f"  {r['coin']} {r['direction'].upper()} - candle closed {r['candle_time']} - "
+                              f"RVOL: {r['rvol']} ({r['rvol_label']})")
         message = "\n".join(lines)
         print(f"\nSending Telegram message:\n{message}")
         send_telegram(message)
