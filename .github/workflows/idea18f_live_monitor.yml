@@ -37,8 +37,8 @@ jobs:
         run: >
           python live_signal_monitor_18f.py
           --coins BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX,HEI,BICO,HYPE,ZEC,ZBT,ADA,ACE,PAXG
-          --adx-min 35
-          --adx-mode slope3
+          --adx-min 25
+          --adx-mode slope1_2
 
       - name: Persist alert-dedup state
         working-directory: cloud-backtest
