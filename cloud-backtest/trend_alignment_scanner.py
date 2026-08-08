@@ -53,13 +53,12 @@ import requests
 from coindcx_fetcher import fetch_coindcx_klines, resample_candles
 
 STATE_FILE = "trend_scanner_state.json"
-# 150 closed 15m candles is real, generous margin for stable
-# EMA21/ADX14 warmup - the original 500-candle margin (5.2 days of 1m
-# data) was far more than needed and, at 18 coins, made fetch time
-# alone (~1.9 min, measured directly) incompatible with genuine
-# 1-minute polling, since runs would queue up faster than they
-# complete. Trimmed to what's actually required.
-FETCH_MINUTES_BACK = 15 * 150
+# Trimmed from 150 to 100 15m candles after measuring the real fetch
+# cost at 18 coins - 150 candles needed 3 API requests/coin (2250 min
+# of 1m data), 100 needs only 2 (1500 min), saving ~14.4s across all 18
+# coins. Still 10x the bare minimum (10) actually checked in the code
+# below, real margin for EMA21/ADX14 to be stable, not just non-error.
+FETCH_MINUTES_BACK = 15 * 100
 MESSAGE_INTERVAL_MINUTES = 3
 
 
