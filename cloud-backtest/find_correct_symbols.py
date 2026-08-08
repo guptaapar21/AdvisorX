@@ -40,3 +40,30 @@ print("If a symbol shows no match above, it's not in CoinDCX's public active-ins
 print("list at all right now - that's real evidence it's either delisted, not yet listed,")
 print("or served through a completely separate product/endpoint (matches the pattern")
 print("already found: PAXG - a real crypto token - worked fine, XAU/XAG/CL/NATGAS did not).")
+
+# SECOND TEST, added after seeing a real DAILY chart for XAU with months
+# of genuine price history - that directly contradicts "not enough
+# history yet" as the explanation for the 1m fetch failures. New
+# hypothesis: these symbols may have real data at coarser resolutions
+# (1h, 1d) but genuinely no 1-MINUTE candle data at all - commodities-
+# style synthetic products may simply update too infrequently for
+# CoinDCX to generate 1m aggregates, even while daily/hourly data is
+# completely normal. Testing directly instead of guessing again.
+print("\n" + "=" * 70)
+print("INTERVAL TEST: does 1m specifically fail while coarser intervals work?")
+print("=" * 70)
+from coindcx_fetcher import fetch_coindcx_klines
+from datetime import datetime, timedelta, timezone
+
+now = datetime.now(timezone.utc)
+start_30d = (now - timedelta(days=30)).date().isoformat()
+
+for target in TARGETS:
+    print(f"\n--- {target} ---")
+    for interval in ["1m", "5m", "15m", "1h", "1d"]:
+        try:
+            candles = fetch_coindcx_klines(target, interval, start_30d, now.isoformat(), stagger_delay=False)
+            print(f"  {interval}: SUCCESS - {len(candles)} candles returned")
+        except Exception as e:
+            print(f"  {interval}: FAILED - {e}")
+
