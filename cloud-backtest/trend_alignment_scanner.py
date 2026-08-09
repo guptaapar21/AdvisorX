@@ -501,7 +501,10 @@ def main():
             for r in reversal_report:
                 pct = r.get("rvol_percentile")
                 rvol_display = f"{pct:.0f}th %ile" if pct is not None else r["rvol_label"]
-                lines.append(f"  {r['coin']} {r['direction'].upper()} - RVOL {r['rvol']} ({rvol_display})")
+                accel = r.get("adx14_accel")
+                accel_arrow = " \u2191" if accel and accel > 0.3 else (" \u2193" if accel and accel < -0.3 else "")
+                adx_str = f" - ADX {r['adx14']} ({r['adx14_delta']:+.1f}{accel_arrow})" if r.get("adx14") is not None else ""
+                lines.append(f"  {r['coin']} {r['direction'].upper()} - RVOL {r['rvol']} ({rvol_display}){adx_str}")
         message = "\n".join(lines)
 
         # Per-coin "View Chart" buttons for reversal-stage coins - the
@@ -509,13 +512,14 @@ def main():
         # supports URL buttons with no bot process needed to handle
         # them (unlike callback buttons, which would need a persistent
         # listener - this scanner is a one-shot script, not a running
-        # bot, so callback-driven buttons aren't feasible here). No
-        # verified CoinDCX web deep-link per coin was found, so this
-        # uses TradingView's stable public symbol URL pattern instead.
+        # bot, so callback-driven buttons aren't feasible here).
+        # Points to CoinDCX's own real futures page - confirmed live
+        # via direct fetch (not guessed), same B-{coin}_USDT pair
+        # naming already used internally by coindcx_fetcher.py.
         reply_markup = None
         if reversal_report:
             reply_markup = {"inline_keyboard": [
-                [{"text": f"\U0001F4C8 {r['coin']} chart", "url": f"https://www.tradingview.com/symbols/{r['coin']}USDT/"}]
+                [{"text": f"\U0001F4C8 {r['coin']} chart", "url": f"https://coindcx.com/futures/B-{r['coin']}_USDT"}]
                 for r in reversal_report
             ]}
 
