@@ -149,17 +149,41 @@ def check_trend_alignment(candles_3m, candles_15m, direction, trend_lookback=3):
     row3 = candles_3m.iloc[-1]
     ema9_prev3 = candles_3m["ema9"].iloc[-(trend_lookback + 1)]
     adx_prev1 = candles_3m["adx14"].iloc[-2]
+    adx_prev2 = candles_3m["adx14"].iloc[-3]
 
     row15 = candles_15m.iloc[-1]
     ema9_15_prev3 = candles_15m["ema9"].iloc[-(trend_lookback + 1)]
 
     adx = row3["adx14"]
-    if pd.isna(adx):
+    adx15 = row15["adx14"]
+    adx15_prev1 = candles_15m["adx14"].iloc[-2]
+    if pd.isna(adx) or pd.isna(adx_prev1) or pd.isna(adx_prev2):
         return False, {}
+    if pd.isna(adx15) or pd.isna(adx15_prev1):
+        return False, {}
+
+    # slope1_2: ADX must be rising vs BOTH the previous candle and the
+    # one before it. Ported from live_signal_monitor_18f.py, where a
+    # 1-bar-only check ("adx > adx_prev1") was found to pass at the
+    # exact peak of the ADX arc - the peak bar is still higher than the
+    # single bar before it. Requiring two consecutive rising bars
+    # filters a single spurious uptick off a dip. NOTE: this does NOT
+    # catch a clean, uninterrupted ADX climb that ends abruptly at its
+    # top (confirmed against a real XRP case) - on a straight rise,
+    # every bar beats both prior bars, so slope1_2 passes too.
+    adx_rising_1_and_2 = bool(adx > adx_prev1 and adx > adx_prev2)
 
     checks = {
         "adx14": round(float(adx), 2),
-        "adx_gate_passed": bool(adx >= 25 and adx > adx_prev1),
+        "adx_gate_passed": bool(adx >= 25 and adx_rising_1_and_2),
+        # 15m ADX must also be rising. ADX measures trend strength, not
+        # direction, so this is direction-agnostic and applies to both
+        # long and short. Single-bar comparison (vs the previous closed
+        # 15m bar) per spec - note this only updates once every 15
+        # minutes, so it holds the same value across five consecutive
+        # 3m scans. No floor is applied here, only slope.
+        "adx14_15m": round(float(adx15), 2),
+        "15m_adx_rising": bool(adx15 > adx15_prev1),
     }
 
     if direction == "long":
@@ -175,7 +199,7 @@ def check_trend_alignment(candles_3m, candles_15m, direction, trend_lookback=3):
         checks["15m_ema9_below_ema21"] = bool(row15["ema9"] < row15["ema21"])
         checks["15m_ema9_falling"] = bool(row15["ema9"] < ema9_15_prev3)
 
-    all_passed = all(v for k, v in checks.items() if k not in ("adx14",))
+    all_passed = all(v for k, v in checks.items() if k not in ("adx14", "adx14_15m"))
     return all_passed, checks
 
 
