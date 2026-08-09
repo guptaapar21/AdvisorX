@@ -176,14 +176,15 @@ def check_trend_alignment(candles_3m, candles_15m, direction, trend_lookback=3):
     checks = {
         "adx14": round(float(adx), 2),
         "adx_gate_passed": bool(adx >= 25 and adx_rising_1_and_2),
-        # 15m ADX must also be rising. ADX measures trend strength, not
-        # direction, so this is direction-agnostic and applies to both
-        # long and short. Single-bar comparison (vs the previous closed
-        # 15m bar) per spec - note this only updates once every 15
-        # minutes, so it holds the same value across five consecutive
-        # 3m scans. No floor is applied here, only slope.
+        # 15m ADX must be at/above 25 AND rising - floor matches the 3m
+        # gate. ADX measures trend strength, not direction, so this is
+        # direction-agnostic and applies to both long and short.
+        # Single-bar slope comparison (vs the previous closed 15m bar),
+        # not the 2-bar slope1_2 used on 3m - note this only updates
+        # once every 15 minutes, so it holds the same value across five
+        # consecutive 3m scans.
         "adx14_15m": round(float(adx15), 2),
-        "15m_adx_rising": bool(adx15 > adx15_prev1),
+        "15m_adx_gate_passed": bool(adx15 >= 25 and adx15 > adx15_prev1),
     }
 
     if direction == "long":
