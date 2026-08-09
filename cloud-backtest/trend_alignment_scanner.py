@@ -221,6 +221,15 @@ def check_trend_alignment(candles_3m, candles_15m, direction, trend_lookback=3):
         # ticking up". Separate from adx_rising_1_and_2 above, which
         # is the 2-bar slope1_2 gate used for qualify/disqualify.
         "adx14_delta": round(float(adx - adx_prev1), 2),
+        # Acceleration: delta of delta, candle-to-candle, no smoothing.
+        # acceleration = (ADX(now) - ADX(prev)) - (ADX(prev) - ADX(prev2))
+        # ADX can still be RISING every candle while this goes negative
+        # - each gain just gets smaller than the last one. That's a
+        # real early-warning signal distinct from the delta itself:
+        # e.g. deltas of +5, +6, +7, +4, +2 never once go negative, but
+        # acceleration turns negative starting at the +4 candle,
+        # flagging the stall before ADX itself ever turns down.
+        "adx14_accel": round(float((adx - adx_prev1) - (adx_prev1 - adx_prev2)), 2),
         "adx_gate_passed": bool(adx >= 25 and adx_rising_1_and_2),
         # 15m ADX must be at/above 25 AND rising - floor matches the 3m
         # gate. ADX measures trend strength, not direction, so this is
@@ -246,7 +255,7 @@ def check_trend_alignment(candles_3m, candles_15m, direction, trend_lookback=3):
         checks["15m_ema9_below_ema21"] = bool(row15["ema9"] < row15["ema21"])
         checks["15m_ema9_falling"] = bool(row15["ema9"] < ema9_15_prev3)
 
-    all_passed = all(v for k, v in checks.items() if k not in ("adx14", "adx14_delta", "adx14_15m"))
+    all_passed = all(v for k, v in checks.items() if k not in ("adx14", "adx14_delta", "adx14_accel", "adx14_15m"))
     return all_passed, checks
 
 
@@ -330,6 +339,7 @@ def process_coin(coin, candles_3m, candles_15m, coin_state, rvol_percentiles=Non
     report["direction"] = new_direction
     report["adx14"] = (long_checks if new_direction == "long" else short_checks).get("adx14")
     report["adx14_delta"] = (long_checks if new_direction == "long" else short_checks).get("adx14_delta")
+    report["adx14_accel"] = (long_checks if new_direction == "long" else short_checks).get("adx14_accel")
     report["newly_qualified"] = current_direction != new_direction
 
     # Stage 2 + 3, per the locked experiment spec: track a run of ONE
@@ -478,7 +488,9 @@ def main():
         if qualified_report:
             lines.append("\nQualified:")
             for r in qualified_report:
-                lines.append(f"  {r['coin']} {r['direction'].upper()} - ADX {r['adx14']} ({r['adx14_delta']:+.1f})"
+                accel = r.get("adx14_accel")
+                accel_arrow = " \u2191" if accel and accel > 0.3 else (" \u2193" if accel and accel < -0.3 else "")
+                lines.append(f"  {r['coin']} {r['direction'].upper()} - ADX {r['adx14']} ({r['adx14_delta']:+.1f}{accel_arrow})"
                               + (" \u2022 new" if r.get("newly_qualified") else ""))
         if pullback_report:
             lines.append("\nPullback:")
