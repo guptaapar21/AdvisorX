@@ -349,39 +349,26 @@ def main():
         except Exception as e:
             print(f"  {coin}: ERROR - {e}")
 
-    # Send only when the actual content differs from what was last
-    # sent - NOT on a timer. A 3-minute candle structurally cannot
-    # produce new information more than once every 3 minutes, no
-    # matter how often this scans (confirmed directly: a 1-minute
-    # timer-based gate was sending the exact same "qualified" list
-    # repeatedly for up to 3 consecutive polls, since the underlying
-    # candle hadn't actually changed - not new information, just noise
-    # from resending the same state). Comparing content directly means
-    # a message goes out the moment something real changes, with no
-    # artificial delay AND no repetition of unchanged state.
-    content_signature = sorted(
-        [(r["coin"], "qualified", r["direction"]) for r in qualified_report]
-        + [(r["coin"], "pullback", r["direction"]) for r in pullback_report]
-        + [(r["coin"], "reversal", r["direction"], r["candle_time"]) for r in reversal_report]
-    )
-    last_signature = state.get("last_content_signature")
-    has_content = bool(qualified_report or pullback_report or reversal_report)
-    should_send = has_content and content_signature != last_signature
+    # Send once per NEW 3-minute candle close, as long as there's any
+    # content at all - even if it's identical to the previous candle's
+    # report. Only skip sending if this candle genuinely has zero
+    # content (nothing qualified/tracked/reversed at all). Gated on
+    # candle_time specifically (not content equality) so a repeat,
+    # unchanged signal across a fresh candle still gets reported - the
+    # earlier content-equality design suppressed those on purpose,
+    # which is the opposite of what's wanted here.
+    all_reports = qualified_report + pullback_report + reversal_report
+    candle_times_utc = [pd.Timestamp(r["candle_time"]) for r in all_reports if r.get("candle_time")]
+    current_candle_time = str(max(candle_times_utc)) if candle_times_utc else None
+    has_content = bool(all_reports)
+    should_send = has_content and current_candle_time != state.get("last_sent_candle_time")
 
     if should_send:
-        # All candle_time values in one scan cycle come from the same
-        # fetch, so they're the same 3m boundary across coins - shown
-        # once at the top instead of repeated per-line. Converted from
-        # UTC (the raw candle index) to IST for direct readability -
-        # previously shown as raw UTC with no label, which looked
-        # "wrong" only because it was being silently compared against
-        # Telegram's own local-time message stamp.
-        all_reports = qualified_report + pullback_report + reversal_report
-        candle_times_utc = [pd.Timestamp(r["candle_time"]) for r in all_reports if r.get("candle_time")]
-        candle_time_ist = None
-        if candle_times_utc:
-            latest_utc = max(candle_times_utc)
-            candle_time_ist = (latest_utc + timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d %H:%M IST")
+        # Converted from UTC (the raw candle index) to IST for direct
+        # readability - previously shown as raw UTC with no label,
+        # which looked "wrong" only because it was being silently
+        # compared against Telegram's own local-time message stamp.
+        candle_time_ist = (max(candle_times_utc) + timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d %H:%M IST")
 
         lines = ["\U0001F4CA Trend Alignment + Reversal RVOL Scanner"]
         if candle_time_ist:
@@ -402,9 +389,10 @@ def main():
         message = "\n".join(lines)
         print(f"\nSending Telegram message:\n{message}")
         send_telegram(message)
-        state["last_content_signature"] = content_signature
+        state["last_sent_candle_time"] = current_candle_time
     else:
-        print(f"\nNot sending (has_content={has_content}, content_unchanged={content_signature == last_signature})")
+        print(f"\nNot sending (has_content={has_content}, "
+              f"same_candle_already_sent={current_candle_time == state.get('last_sent_candle_time')})")
 
     save_state(state)
 
