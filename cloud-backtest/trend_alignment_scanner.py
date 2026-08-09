@@ -45,6 +45,7 @@ Usage:
 import argparse
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
@@ -58,7 +59,10 @@ STATE_FILE = "trend_scanner_state.json"
 # of 1m data), 100 needs only 2 (1500 min), saving ~14.4s across all 18
 # coins. Still 10x the bare minimum (10) actually checked in the code
 # below, real margin for EMA21/ADX14 to be stable, not just non-error.
-FETCH_MINUTES_BACK = 15 * 100
+# Trimmed to 65 15m candles (975 min) - fits in exactly 1 API request
+# per coin instead of 2, still 4.6x ADX14's min_periods(14) warmup
+# requirement and 6.5x the hard minimum (10) checked in code below.
+FETCH_MINUTES_BACK = 15 * 65
 MESSAGE_INTERVAL_MINUTES = 1
 
 
@@ -317,13 +321,35 @@ def main():
     pullback_report = []
     reversal_report = []
 
+    def fetch_one(coin):
+        """Fetch + resample + drop the still-forming bucket - read-only,
+        no shared state touched, safe to run concurrently. Indicator
+        computation and process_coin (which mutates shared state) stay
+        sequential afterward - they're fast, local, and not worth the
+        added complexity/race risk of threading."""
+        candles_1m = fetch_coindcx_klines(coin, "1m", start.date().isoformat(), now.isoformat(), stagger_delay=False)
+        candles_3m = resample_candles(candles_1m, 3)
+        candles_15m = resample_candles(candles_1m, 15)
+        candles_3m = drop_still_forming_bucket(candles_3m, now, 3)
+        candles_15m = drop_still_forming_bucket(candles_15m, now, 15)
+        return coin, candles_3m, candles_15m
+
+    fetched = {}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {pool.submit(fetch_one, coin): coin for coin in coins}
+        for future in as_completed(futures):
+            coin = futures[future]
+            try:
+                _, candles_3m, candles_15m = future.result()
+                fetched[coin] = (candles_3m, candles_15m)
+            except Exception as e:
+                print(f"  {coin}: fetch failed ({e}), skipping")
+
     for coin in coins:
         try:
-            candles_1m = fetch_coindcx_klines(coin, "1m", start.date().isoformat(), now.isoformat(), stagger_delay=False)
-            candles_3m = resample_candles(candles_1m, 3)
-            candles_15m = resample_candles(candles_1m, 15)
-            candles_3m = drop_still_forming_bucket(candles_3m, now, 3)
-            candles_15m = drop_still_forming_bucket(candles_15m, now, 15)
+            if coin not in fetched:
+                continue
+            candles_3m, candles_15m = fetched[coin]
             if len(candles_3m) < 30 or len(candles_15m) < 10:
                 print(f"  {coin}: not enough closed candles yet, skipping")
                 continue
@@ -364,15 +390,20 @@ def main():
     should_send = has_content and current_candle_time != state.get("last_sent_candle_time")
 
     if should_send:
-        # Converted from UTC (the raw candle index) to IST for direct
-        # readability - previously shown as raw UTC with no label,
-        # which looked "wrong" only because it was being silently
-        # compared against Telegram's own local-time message stamp.
-        candle_time_ist = (max(candle_times_utc) + timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d %H:%M IST")
+        # Show both the candle's own start->close window AND the real
+        # detection time - a candle labeled "08:12" runs 08:12:00 to
+        # 08:14:59 and only becomes knowable at its close (08:15), so
+        # showing just the start time alone was being misread as the
+        # full delay. Both converted from UTC to IST for direct
+        # readability.
+        candle_start_utc = max(candle_times_utc)
+        candle_start_ist = candle_start_utc + timedelta(hours=5, minutes=30)
+        candle_close_ist = candle_start_ist + timedelta(minutes=3)
+        detected_ist = now + timedelta(hours=5, minutes=30)
 
         lines = ["\U0001F4CA Trend Alignment + Reversal RVOL Scanner"]
-        if candle_time_ist:
-            lines.append(f"As of candle: {candle_time_ist}\n")
+        lines.append(f"Candle: {candle_start_ist.strftime('%H:%M')} \u2192 closes {candle_close_ist.strftime('%H:%M')} IST")
+        lines.append(f"Detected: {detected_ist.strftime('%H:%M:%S')} IST\n")
         if qualified_report:
             lines.append("Qualified (trend-aligned, no pullback run yet):")
             for r in qualified_report:
