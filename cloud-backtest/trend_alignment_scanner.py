@@ -49,11 +49,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
+import numpy as np
 import requests
 
 from coindcx_fetcher import fetch_coindcx_klines, resample_candles
 
 STATE_FILE = "trend_scanner_state.json"
+RVOL_PERCENTILE_FILE = "rvol_percentiles.json"
 # Trimmed from 150 to 100 15m candles after measuring the real fetch
 # cost at 18 coins - 150 candles needed 3 API requests/coin (2250 min
 # of 1m data), 100 needs only 2 (1500 min), saving ~14.4s across all 18
@@ -78,13 +80,16 @@ def save_state(state):
         json.dump(state, f, indent=2, default=str)
 
 
-def send_telegram(text):
+def send_telegram(text, reply_markup=None):
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
         raise RuntimeError("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID env vars")
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    resp = requests.post(url, json={"chat_id": chat_id, "text": text}, timeout=15)
+    payload = {"chat_id": chat_id, "text": text}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    resp = requests.post(url, json=payload, timeout=15)
     resp.raise_for_status()
 
 
@@ -142,6 +147,41 @@ def rvol_label(rvol):
     return "very strong (possible exhaustion)"
 
 
+def load_rvol_percentiles():
+    """Reads the compact per-coin percentile file the separate
+    rvol_percentile_refresh.py script produces. Read-only here - the
+    live scanner never writes this file, only the daily refresh job
+    does, keeping every 1-minute run's git commit small regardless of
+    how much history backs the percentiles."""
+    if os.path.exists(RVOL_PERCENTILE_FILE):
+        try:
+            with open(RVOL_PERCENTILE_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
+
+
+def rvol_percentile_rank(rvol, coin_percentiles):
+    """Estimates which percentile of a coin's OWN historical RVOL
+    distribution the current value falls in, via linear interpolation
+    against the stored breakpoint grid. Returns None if this coin has
+    no stored history yet (backfill hasn't run for it) - caller should
+    fall back to the fixed-scale rvol_label in that case, not error."""
+    if coin_percentiles is None or rvol is None or pd.isna(rvol):
+        return None
+    grid = coin_percentiles.get("grid")
+    breakpoints = coin_percentiles.get("breakpoints")
+    if not grid or not breakpoints:
+        return None
+    # np.interp clamps at the edges: a value below the historical
+    # minimum reads as 0th percentile, above the historical maximum
+    # reads as 100th - not extrapolated beyond the observed range,
+    # which is the honest behavior for a value genuinely outside
+    # anything seen in the backfill window.
+    return round(float(np.interp(rvol, breakpoints, grid)), 1)
+
+
 def check_trend_alignment(candles_3m, candles_15m, direction, trend_lookback=3):
     if len(candles_3m) < 30 or len(candles_15m) < trend_lookback + 5:
         return False, {}
@@ -175,6 +215,12 @@ def check_trend_alignment(candles_3m, candles_15m, direction, trend_lookback=3):
 
     checks = {
         "adx14": round(float(adx), 2),
+        # Delta ADX: ADX(current) - ADX(previous), 1 bar - the raw
+        # magnitude, shown alongside the absolute value in Telegram so
+        # "ADX 31" can be read next to "rising sharply" vs "barely
+        # ticking up". Separate from adx_rising_1_and_2 above, which
+        # is the 2-bar slope1_2 gate used for qualify/disqualify.
+        "adx14_delta": round(float(adx - adx_prev1), 2),
         "adx_gate_passed": bool(adx >= 25 and adx_rising_1_and_2),
         # 15m ADX must be at/above 25 AND rising - floor matches the 3m
         # gate. ADX measures trend strength, not direction, so this is
@@ -200,7 +246,7 @@ def check_trend_alignment(candles_3m, candles_15m, direction, trend_lookback=3):
         checks["15m_ema9_below_ema21"] = bool(row15["ema9"] < row15["ema21"])
         checks["15m_ema9_falling"] = bool(row15["ema9"] < ema9_15_prev3)
 
-    all_passed = all(v for k, v in checks.items() if k not in ("adx14", "adx14_15m"))
+    all_passed = all(v for k, v in checks.items() if k not in ("adx14", "adx14_delta", "adx14_15m"))
     return all_passed, checks
 
 
@@ -248,9 +294,12 @@ def check_trend_broadly_intact(candles_3m, candles_15m, direction, adx_min=25, t
                 and row15["ema9"] < row15["ema21"] and row15["ema9"] < ema9_15_prev3)
 
 
-def process_coin(coin, candles_3m, candles_15m, coin_state):
+def process_coin(coin, candles_3m, candles_15m, coin_state, rvol_percentiles=None):
     """Runs all 3 stages for one coin, mutating coin_state in place.
-    Returns a dict of anything worth reporting this cycle, or None."""
+    Returns a dict of anything worth reporting this cycle, or None.
+    rvol_percentiles: the full {coin: {...}} dict from
+    load_rvol_percentiles(), or None to skip percentile ranking
+    entirely and use only the fixed-scale label."""
     row = candles_3m.iloc[-1]
     candle_time = str(candles_3m.index[-1])
     report = {"coin": coin, "candle_time": candle_time}
@@ -280,6 +329,7 @@ def process_coin(coin, candles_3m, candles_15m, coin_state):
 
     report["direction"] = new_direction
     report["adx14"] = (long_checks if new_direction == "long" else short_checks).get("adx14")
+    report["adx14_delta"] = (long_checks if new_direction == "long" else short_checks).get("adx14_delta")
     report["newly_qualified"] = current_direction != new_direction
 
     # Stage 2 + 3, per the locked experiment spec: track a run of ONE
@@ -317,6 +367,8 @@ def process_coin(coin, candles_3m, candles_15m, coin_state):
         report["reversal_candle"] = True
         report["rvol"] = round(float(rvol), 2) if rvol is not None and not pd.isna(rvol) else None
         report["rvol_label"] = rvol_label(rvol)
+        coin_percentiles = (rvol_percentiles or {}).get(coin)
+        report["rvol_percentile"] = rvol_percentile_rank(rvol, coin_percentiles)
         coin_state["in_pullback_run"] = False
         coin_state["last_reversal_candle_time"] = candle_time
         return report
@@ -339,6 +391,7 @@ def main():
     start = now - timedelta(minutes=FETCH_MINUTES_BACK)
     state = load_state()
     state.setdefault("coins", {})
+    rvol_percentiles = load_rvol_percentiles()
 
     print(f"Trend alignment + reversal RVOL scanner | coins={coins} | {now.isoformat()}")
 
@@ -383,7 +436,7 @@ def main():
             candles_15m = compute_indicators(candles_15m)
 
             coin_state = state["coins"].setdefault(coin, {"qualified_direction": None, "in_pullback_run": False})
-            result = process_coin(coin, candles_3m, candles_15m, coin_state)
+            result = process_coin(coin, candles_3m, candles_15m, coin_state, rvol_percentiles)
 
             if result is None:
                 print(f"  {coin}: not qualified")
@@ -415,36 +468,47 @@ def main():
     should_send = has_content and current_candle_time != state.get("last_sent_candle_time")
 
     if should_send:
-        # Show both the candle's own start->close window AND the real
-        # detection time - a candle labeled "08:12" runs 08:12:00 to
-        # 08:14:59 and only becomes knowable at its close (08:15), so
-        # showing just the start time alone was being misread as the
-        # full delay. Both converted from UTC to IST for direct
-        # readability.
         candle_start_utc = max(candle_times_utc)
         candle_start_ist = candle_start_utc + timedelta(hours=5, minutes=30)
         candle_close_ist = candle_start_ist + timedelta(minutes=3)
         detected_ist = now + timedelta(hours=5, minutes=30)
 
-        lines = ["\U0001F4CA Trend Alignment + Reversal RVOL Scanner"]
-        lines.append(f"Candle: {candle_start_ist.strftime('%H:%M')} \u2192 closes {candle_close_ist.strftime('%H:%M')} IST")
-        lines.append(f"Detected: {detected_ist.strftime('%H:%M:%S')} IST\n")
+        lines = [f"\U0001F4CA {candle_start_ist.strftime('%H:%M')}\u2192{candle_close_ist.strftime('%H:%M')} IST "
+                 f"(detected {detected_ist.strftime('%H:%M:%S')})"]
         if qualified_report:
-            lines.append("Qualified (trend-aligned, no pullback run yet):")
+            lines.append("\nQualified:")
             for r in qualified_report:
-                lines.append(f"  {r['coin']} {r['direction'].upper()} - ADX14: {r['adx14']}"
-                              + (" (newly qualified)" if r.get("newly_qualified") else ""))
+                lines.append(f"  {r['coin']} {r['direction'].upper()} - ADX {r['adx14']} ({r['adx14_delta']:+.1f})"
+                              + (" \u2022 new" if r.get("newly_qualified") else ""))
         if pullback_report:
-            lines.append("\nPullback run in progress:")
+            lines.append("\nPullback:")
             for r in pullback_report:
                 lines.append(f"  {r['coin']} {r['direction'].upper()}")
         if reversal_report:
-            lines.append("\n\U0001F3AF Reversal candle formed - RVOL (for observation only, not an entry signal):")
+            lines.append("\n\U0001F3AF Reversal:")
             for r in reversal_report:
-                lines.append(f"  {r['coin']} {r['direction'].upper()} - RVOL: {r['rvol']} ({r['rvol_label']})")
+                pct = r.get("rvol_percentile")
+                rvol_display = f"{pct:.0f}th %ile" if pct is not None else r["rvol_label"]
+                lines.append(f"  {r['coin']} {r['direction'].upper()} - RVOL {r['rvol']} ({rvol_display})")
         message = "\n".join(lines)
+
+        # Per-coin "View Chart" buttons for reversal-stage coins - the
+        # one genuinely interactive element available: Telegram Bot API
+        # supports URL buttons with no bot process needed to handle
+        # them (unlike callback buttons, which would need a persistent
+        # listener - this scanner is a one-shot script, not a running
+        # bot, so callback-driven buttons aren't feasible here). No
+        # verified CoinDCX web deep-link per coin was found, so this
+        # uses TradingView's stable public symbol URL pattern instead.
+        reply_markup = None
+        if reversal_report:
+            reply_markup = {"inline_keyboard": [
+                [{"text": f"\U0001F4C8 {r['coin']} chart", "url": f"https://www.tradingview.com/symbols/{r['coin']}USDT/"}]
+                for r in reversal_report
+            ]}
+
         print(f"\nSending Telegram message:\n{message}")
-        send_telegram(message)
+        send_telegram(message, reply_markup)
         state["last_sent_candle_time"] = current_candle_time
     else:
         print(f"\nNot sending (has_content={has_content}, "
