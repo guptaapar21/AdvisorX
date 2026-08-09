@@ -59,7 +59,7 @@ STATE_FILE = "trend_scanner_state.json"
 # coins. Still 10x the bare minimum (10) actually checked in the code
 # below, real margin for EMA21/ADX14 to be stable, not just non-error.
 FETCH_MINUTES_BACK = 15 * 100
-MESSAGE_INTERVAL_MINUTES = 1
+MESSAGE_INTERVAL_MINUTES = 3
 
 
 def load_state():
@@ -349,26 +349,16 @@ def main():
         except Exception as e:
             print(f"  {coin}: ERROR - {e}")
 
-    # Send only when the actual content differs from what was last
-    # sent - NOT on a timer. A 3-minute candle structurally cannot
-    # produce new information more than once every 3 minutes, no
-    # matter how often this scans (confirmed directly: a 1-minute
-    # timer-based gate was sending the exact same "qualified" list
-    # repeatedly for up to 3 consecutive polls, since the underlying
-    # candle hadn't actually changed - not new information, just noise
-    # from resending the same state). Comparing content directly means
-    # a message goes out the moment something real changes, with no
-    # artificial delay AND no repetition of unchanged state.
-    content_signature = sorted(
-        [(r["coin"], "qualified", r["direction"]) for r in qualified_report]
-        + [(r["coin"], "pullback", r["direction"]) for r in pullback_report]
-        + [(r["coin"], "reversal", r["direction"], r["candle_time"]) for r in reversal_report]
-    )
-    last_signature = state.get("last_content_signature")
-    has_content = bool(qualified_report or pullback_report or reversal_report)
-    should_send = has_content and content_signature != last_signature
+    # Decide whether it's time to actually send a Telegram message
+    last_sent = state.get("last_sent_at")
+    should_send = last_sent is None
+    if last_sent is not None:
+        last_sent_dt = datetime.fromisoformat(last_sent)
+        if last_sent_dt.tzinfo is None:
+            last_sent_dt = last_sent_dt.replace(tzinfo=timezone.utc)
+        should_send = (now - last_sent_dt) >= timedelta(minutes=MESSAGE_INTERVAL_MINUTES)
 
-    if should_send:
+    if should_send and (qualified_report or pullback_report or reversal_report):
         # All candle_time values in one scan cycle come from the same
         # fetch, so they're the same 3m boundary across coins - shown
         # once at the top instead of repeated per-line. Converted from
@@ -402,9 +392,10 @@ def main():
         message = "\n".join(lines)
         print(f"\nSending Telegram message:\n{message}")
         send_telegram(message)
-        state["last_content_signature"] = content_signature
+        state["last_sent_at"] = now.isoformat()
     else:
-        print(f"\nNot sending (has_content={has_content}, content_unchanged={content_signature == last_signature})")
+        print(f"\nNot sending yet (should_send={should_send}, "
+              f"has_content={bool(qualified_report or pullback_report or reversal_report)})")
 
     save_state(state)
 
