@@ -53,9 +53,11 @@ import numpy as np
 import requests
 
 from coindcx_fetcher import fetch_coindcx_klines, resample_candles
+from gemini_advisor import get_trade_suggestions_batch
 
 STATE_FILE = "trend_scanner_state.json"
 RVOL_PERCENTILE_FILE = "rvol_percentiles.json"
+DAILY_CANDLES_FILE = "daily_candles_30d.json"
 # Trimmed from 150 to 100 15m candles after measuring the real fetch
 # cost at 18 coins - 150 candles needed 3 API requests/coin (2250 min
 # of 1m data), 100 needs only 2 (1500 min), saving ~14.4s across all 18
@@ -64,6 +66,10 @@ RVOL_PERCENTILE_FILE = "rvol_percentiles.json"
 # Trimmed to 65 15m candles (975 min) - fits in exactly 1 API request
 # per coin instead of 2, still 4.6x ADX14's min_periods(14) warmup
 # requirement and 6.5x the hard minimum (10) checked in code below.
+# NOTE: the 24h multi-timeframe Gemini context does NOT need this
+# widened - it's fetched separately, only for reversal-stage coins,
+# in main()'s enrichment block below, keeping this routine per-cycle
+# fetch (which runs for all coins, every cycle) unaffected.
 FETCH_MINUTES_BACK = 15 * 65
 MESSAGE_INTERVAL_MINUTES = 1
 
@@ -104,34 +110,30 @@ def drop_still_forming_bucket(candles, now, bar_minutes):
     return candles
 
 
-def compute_indicators(candles):
+def compute_raw_stats(candles):
+    """Deliberately NOT the old compute_indicators - no ADX, no EMA
+    cross, no VWAP position. Those ARE the strategy-specific trend
+    logic this scanner used to pre-filter with, which is exactly what
+    the person asked to stop feeding Gemini - it should decide
+    everything itself from raw, generic, strategy-agnostic numbers.
+    Keeps ATR (a standard volatility measure, same formula as before -
+    it's a generic stat, not a directional verdict) and RVOL (volume
+    relative to recent average, also generic). Adds plain momentum:
+    raw % price change over a few lookback windows in candle counts,
+    not an indicator, just arithmetic."""
     candles = candles.copy()
-    candles["ema9"] = candles["close"].ewm(span=9, adjust=False).mean()
-    candles["ema21"] = candles["close"].ewm(span=21, adjust=False).mean()
-
-    typical = (candles["high"] + candles["low"] + candles["close"]) / 3.0
-    day = candles.index.floor("D")
-    pv = typical * candles["volume"]
-    candles["vwap"] = pv.groupby(day).cumsum() / candles["volume"].groupby(day).cumsum().replace(0, float("nan"))
 
     high, low, close = candles["high"], candles["low"], candles["close"]
-    up_move = high.diff()
-    down_move = -low.diff()
-    plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
-    minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
     prev_close = close.shift(1)
     tr = pd.concat([high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(axis=1)
-    atr14 = tr.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
-    plus_di14 = 100 * plus_dm.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean() / atr14.replace(0, float("nan"))
-    minus_di14 = 100 * minus_dm.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean() / atr14.replace(0, float("nan"))
-    dx = 100 * (plus_di14 - minus_di14).abs() / (plus_di14 + minus_di14).replace(0, float("nan"))
-    candles["adx14"] = dx.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+    candles["atr14"] = tr.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
 
-    # RVOL: current candle's volume relative to the PRIOR 20-candle
-    # average (shifted by 1 so the current candle's own volume never
-    # inflates its own denominator).
     candles["avg_volume_20"] = candles["volume"].rolling(20).mean().shift(1)
     candles["rvol"] = candles["volume"] / candles["avg_volume_20"].replace(0, float("nan"))
+
+    for n in (5, 20, 60):
+        candles[f"momentum_pct_{n}"] = (candles["close"] / candles["close"].shift(n) - 1) * 100
+
     return candles
 
 
@@ -162,6 +164,32 @@ def load_rvol_percentiles():
     return {}
 
 
+def candles_to_compact(candles):
+    """Same compact OHLCV dict format used throughout - one place so
+    every tier (3m/15m/1h/1d) serializes identically for the Gemini
+    payload."""
+    return [
+        {"t": str(idx), "o": round(float(r["open"]), 8), "h": round(float(r["high"]), 8),
+         "l": round(float(r["low"]), 8), "c": round(float(r["close"]), 8), "v": round(float(r["volume"]), 2)}
+        for idx, r in candles.iterrows()
+    ]
+
+
+def load_daily_candles_30d():
+    """Reads the compact per-coin 30-day daily-candle file the daily
+    refresh job produces (same script/schedule as RVOL percentiles,
+    extended to also fetch this). Read-only here, same reasoning as
+    load_rvol_percentiles - a 30-day historical pull is far too heavy
+    for the 1-minute live loop to do itself."""
+    if os.path.exists(DAILY_CANDLES_FILE):
+        try:
+            with open(DAILY_CANDLES_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
+
+
 def rvol_percentile_rank(rvol, coin_percentiles):
     """Estimates which percentile of a coin's OWN historical RVOL
     distribution the current value falls in, via linear interpolation
@@ -182,213 +210,33 @@ def rvol_percentile_rank(rvol, coin_percentiles):
     return round(float(np.interp(rvol, breakpoints, grid)), 1)
 
 
-def check_trend_alignment(candles_3m, candles_15m, direction, trend_lookback=3):
-    if len(candles_3m) < 30 or len(candles_15m) < trend_lookback + 5:
-        return False, {}
-
-    row3 = candles_3m.iloc[-1]
-    ema9_prev3 = candles_3m["ema9"].iloc[-(trend_lookback + 1)]
-    adx_prev1 = candles_3m["adx14"].iloc[-2]
-    adx_prev2 = candles_3m["adx14"].iloc[-3]
-
-    row15 = candles_15m.iloc[-1]
-    ema9_15_prev3 = candles_15m["ema9"].iloc[-(trend_lookback + 1)]
-
-    adx = row3["adx14"]
-    adx15 = row15["adx14"]
-    adx15_prev1 = candles_15m["adx14"].iloc[-2]
-    if pd.isna(adx) or pd.isna(adx_prev1) or pd.isna(adx_prev2):
-        return False, {}
-    if pd.isna(adx15) or pd.isna(adx15_prev1):
-        return False, {}
-
-    # slope1_2: ADX must be rising vs BOTH the previous candle and the
-    # one before it. Ported from live_signal_monitor_18f.py, where a
-    # 1-bar-only check ("adx > adx_prev1") was found to pass at the
-    # exact peak of the ADX arc - the peak bar is still higher than the
-    # single bar before it. Requiring two consecutive rising bars
-    # filters a single spurious uptick off a dip. NOTE: this does NOT
-    # catch a clean, uninterrupted ADX climb that ends abruptly at its
-    # top (confirmed against a real XRP case) - on a straight rise,
-    # every bar beats both prior bars, so slope1_2 passes too.
-    adx_rising_1_and_2 = bool(adx > adx_prev1 and adx > adx_prev2)
-
-    checks = {
-        "adx14": round(float(adx), 2),
-        # Delta ADX: ADX(current) - ADX(previous), 1 bar - the raw
-        # magnitude, shown alongside the absolute value in Telegram so
-        # "ADX 31" can be read next to "rising sharply" vs "barely
-        # ticking up". Separate from adx_rising_1_and_2 above, which
-        # is the 2-bar slope1_2 gate used for qualify/disqualify.
-        "adx14_delta": round(float(adx - adx_prev1), 2),
-        # Acceleration: delta of delta, candle-to-candle, no smoothing.
-        # acceleration = (ADX(now) - ADX(prev)) - (ADX(prev) - ADX(prev2))
-        # ADX can still be RISING every candle while this goes negative
-        # - each gain just gets smaller than the last one. That's a
-        # real early-warning signal distinct from the delta itself:
-        # e.g. deltas of +5, +6, +7, +4, +2 never once go negative, but
-        # acceleration turns negative starting at the +4 candle,
-        # flagging the stall before ADX itself ever turns down.
-        "adx14_accel": round(float((adx - adx_prev1) - (adx_prev1 - adx_prev2)), 2),
-        "adx_gate_passed": bool(adx >= 25 and adx_rising_1_and_2),
-        # 15m ADX must be at/above 25 AND rising - floor matches the 3m
-        # gate. ADX measures trend strength, not direction, so this is
-        # direction-agnostic and applies to both long and short.
-        # Single-bar slope comparison (vs the previous closed 15m bar),
-        # not the 2-bar slope1_2 used on 3m - note this only updates
-        # once every 15 minutes, so it holds the same value across five
-        # consecutive 3m scans.
-        "adx14_15m": round(float(adx15), 2),
-        "15m_adx_gate_passed": bool(adx15 >= 25 and adx15 > adx15_prev1),
-    }
-
-    if direction == "long":
-        checks["3m_ema9_above_ema21"] = bool(row3["ema9"] > row3["ema21"])
-        checks["3m_ema9_rising"] = bool(row3["ema9"] > ema9_prev3)
-        checks["3m_close_above_vwap"] = bool(row3["close"] > row3["vwap"])
-        checks["15m_ema9_above_ema21"] = bool(row15["ema9"] > row15["ema21"])
-        checks["15m_ema9_rising"] = bool(row15["ema9"] > ema9_15_prev3)
-    else:
-        checks["3m_ema9_below_ema21"] = bool(row3["ema9"] < row3["ema21"])
-        checks["3m_ema9_falling"] = bool(row3["ema9"] < ema9_prev3)
-        checks["3m_close_below_vwap"] = bool(row3["close"] < row3["vwap"])
-        checks["15m_ema9_below_ema21"] = bool(row15["ema9"] < row15["ema21"])
-        checks["15m_ema9_falling"] = bool(row15["ema9"] < ema9_15_prev3)
-
-    all_passed = all(v for k, v in checks.items() if k not in ("adx14", "adx14_delta", "adx14_accel", "adx14_15m"))
-    return all_passed, checks
-
-
-def check_trend_broadly_intact(candles_3m, candles_15m, direction, adx_min=25, trend_lookback=3):
-    """Middle-ground check used while already tracking a pullback run -
-    re-verifies EVERYTHING the strict qualification check does (VWAP,
-    15m EMA9>EMA21 AND rising, 3m EMA9>EMA21, ADX level) on every single
-    candle, EXCLUDING TWO specific sub-conditions proven to spuriously
-    fail on an ordinary, healthy pullback candle:
-      - 3m EMA9 still rising (confirmed directly - a real pullback
-        candle flattens short-term EMA9 slope for that one candle even
-        in a genuinely valid uptrend)
-      - ADX still rising (confirmed directly - ADX dips slightly on an
-        ordinary pullback candle too, e.g. 97.01 -> 95.80 in one real
-        test - completely normal noise, not genuine breakdown)
-    Both were tested by actually re-including them and watching an
-    ordinary pullback candle spuriously disqualify a valid trend before
-    being excluded - not assumed safe to exclude.
-
-    ADX's LEVEL (not slope) is still checked - that's what caught the
-    real SOL case, where ADX collapsed well below the qualification
-    threshold while EMA9 (a lagging indicator) hadn't caught up yet."""
-    if len(candles_3m) < 30 or len(candles_15m) < trend_lookback + 5:
-        return False
-
-    row3 = candles_3m.iloc[-1]
-    row15 = candles_15m.iloc[-1]
-    ema9_15_prev3 = candles_15m["ema9"].iloc[-(trend_lookback + 1)]
-    adx = row3["adx14"]
-
-    # ADX-still-rising is deliberately EXCLUDED here, same reasoning as
-    # 3m EMA9-rising - confirmed directly: ADX dips slightly on an
-    # ordinary pullback candle (97.01 -> 95.80 in one real test), which
-    # is completely normal noise, not genuine trend breakdown. The
-    # LEVEL floor (below) is what actually caught the real SOL problem
-    # and is kept; the SLOPE requirement is what caused this bug and is
-    # excluded, just like EMA9's slope requirement was.
-    if pd.isna(adx) or adx < adx_min:
-        return False
-
-    if direction == "long":
-        return bool(row3["ema9"] > row3["ema21"] and row3["close"] > row3["vwap"]
-                     and row15["ema9"] > row15["ema21"] and row15["ema9"] > ema9_15_prev3)
-    return bool(row3["ema9"] < row3["ema21"] and row3["close"] < row3["vwap"]
-                and row15["ema9"] < row15["ema21"] and row15["ema9"] < ema9_15_prev3)
-
-
-def process_coin(coin, candles_3m, candles_15m, coin_state, rvol_percentiles=None):
-    """Runs all 3 stages for one coin, mutating coin_state in place.
-    Returns a dict of anything worth reporting this cycle, or None.
-    rvol_percentiles: the full {coin: {...}} dict from
-    load_rvol_percentiles(), or None to skip percentile ranking
-    entirely and use only the fixed-scale label."""
+def build_coin_snapshot(coin, candles_3m, candles_15m, rvol_percentiles=None):
+    """Replaces the old staged process_coin entirely. No qualification,
+    no direction, no pass/fail, no pullback/reversal state machine -
+    just a flat snapshot of raw, descriptive data for this coin, every
+    single cycle, for every coin. All judgment - including whether
+    this coin is worth mentioning at all, and which direction it might
+    favor - is left to Gemini. No per-coin state is needed at all -
+    the candle-time dedup that decides whether to run this cycle at
+    all happens once, globally, in main(), before any of this runs."""
     row = candles_3m.iloc[-1]
     candle_time = str(candles_3m.index[-1])
-    report = {"coin": coin, "candle_time": candle_time}
 
-    # Full strict check every single time, no exceptions - including
-    # while a pullback run is already being tracked. Reverted from an
-    # earlier looser design after direct evidence (a real chart showing
-    # ADX rising through several consecutive red candles in a genuine
-    # strong trend) that "still rising" is meaningful signal, not just
-    # noise - if ADX or EMA9 genuinely stalls during a pullback, that's
-    # treated as real evidence of weakening momentum, and the coin is
-    # correctly disqualified rather than continuing to be tracked.
-    long_ok, long_checks = check_trend_alignment(candles_3m, candles_15m, "long")
-    short_ok, short_checks = check_trend_alignment(candles_3m, candles_15m, "short")
-    new_direction = "long" if long_ok else ("short" if short_ok else None)
-
-    current_direction = coin_state.get("qualified_direction")
-    if new_direction != current_direction:
-        # Trend context changed (including losing qualification) -
-        # discard any in-progress pullback run rather than carry it
-        # forward into a context it was never validated against.
-        coin_state["qualified_direction"] = new_direction
-        coin_state["in_pullback_run"] = False
-
-    if new_direction is None:
-        return None
-
-    report["direction"] = new_direction
-    report["adx14"] = (long_checks if new_direction == "long" else short_checks).get("adx14")
-    report["adx14_delta"] = (long_checks if new_direction == "long" else short_checks).get("adx14_delta")
-    report["adx14_accel"] = (long_checks if new_direction == "long" else short_checks).get("adx14_accel")
-    report["newly_qualified"] = current_direction != new_direction
-
-    # Stage 2 + 3, per the locked experiment spec: track a run of ONE
-    # OR MORE consecutive red candles (long case; mirrored for short).
-    # The first candle that breaks that run by closing the opposite
-    # color (green, for long) is the REVERSAL candle - report its RVOL
-    # and stop. Deliberately NOT implemented, per explicit instruction:
-    # no EMA9/21 touch requirement on the red or reversal candles, no
-    # breakout-of-high requirement, no entry/stop/target, no RVOL
-    # threshold, and nothing at all about the candle AFTER the
-    # reversal - that candle is for manual observation only.
-    pullback_color = "red" if new_direction == "long" else "green"
-    reversal_color = "green" if new_direction == "long" else "red"
-    is_pullback_candle = (row["close"] < row["open"]) if pullback_color == "red" else (row["close"] > row["open"])
-    is_reversal_candle = (row["close"] > row["open"]) if reversal_color == "green" else (row["close"] < row["open"])
-
-    in_pullback_run = coin_state.get("in_pullback_run", False)
-
-    if is_pullback_candle:
-        coin_state["in_pullback_run"] = True
-        report["pullback_run_active"] = True
-        return report
-
-    if in_pullback_run and is_reversal_candle:
-        # ROBUST DEDUP: even if the in_pullback_run flag-reset below
-        # somehow didn't land in time (a state-persistence timing
-        # issue - confirmed as the likely real cause after tracing the
-        # decision logic itself and finding it should already have
-        # prevented this), refuse to re-report the exact same candle
-        # twice. This check is independent of the flag reset, so it
-        # stays correct even if that specific write gets lost.
-        if coin_state.get("last_reversal_candle_time") == candle_time:
-            return None
-        rvol = row.get("rvol")
-        report["reversal_candle"] = True
-        report["rvol"] = round(float(rvol), 2) if rvol is not None and not pd.isna(rvol) else None
-        report["rvol_label"] = rvol_label(rvol)
-        coin_percentiles = (rvol_percentiles or {}).get(coin)
-        report["rvol_percentile"] = rvol_percentile_rank(rvol, coin_percentiles)
-        coin_state["in_pullback_run"] = False
-        coin_state["last_reversal_candle_time"] = candle_time
-        return report
-
-    # Neither a pullback candle nor (if mid-run) a reversal candle -
-    # e.g. a doji, or a candle matching neither color while not in a
-    # run yet. Per spec, only a genuine color flip after 1+ pullback
-    # candles counts as reversal - anything else just doesn't extend
-    # or resolve a run.
-    return report
+    rvol = row.get("rvol")
+    coin_percentiles = (rvol_percentiles or {}).get(coin)
+    snapshot = {
+        "coin": coin,
+        "candle_time": candle_time,
+        "close": round(float(row["close"]), 8),
+        "atr14_3m": round(float(row["atr14"]), 8) if not pd.isna(row.get("atr14", float("nan"))) else None,
+        "rvol": round(float(rvol), 2) if rvol is not None and not pd.isna(rvol) else None,
+        "rvol_label": rvol_label(rvol),
+        "rvol_percentile": rvol_percentile_rank(rvol, coin_percentiles),
+        "momentum_pct_5_3m": round(float(row["momentum_pct_5"]), 3) if not pd.isna(row.get("momentum_pct_5", float("nan"))) else None,
+        "momentum_pct_20_3m": round(float(row["momentum_pct_20"]), 3) if not pd.isna(row.get("momentum_pct_20", float("nan"))) else None,
+        "momentum_pct_60_3m": round(float(row["momentum_pct_60"]), 3) if not pd.isna(row.get("momentum_pct_60", float("nan"))) else None,
+    }
+    return snapshot
 
 
 def main():
@@ -398,29 +246,46 @@ def main():
 
     coins = [c.strip().upper() for c in args.coins.split(",")]
     now = datetime.now(timezone.utc)
-    start = now - timedelta(minutes=FETCH_MINUTES_BACK)
     state = load_state()
-    state.setdefault("coins", {})
+
+    # Compute the most recently CLOSED 3m candle's boundary purely
+    # from the clock - no network call needed, since 3m boundaries are
+    # deterministic (:00, :03, :06, ...). Skip the entire expensive
+    # fetch+Gemini flow if this candle was already processed last run.
+    # CONFIRMED REAL BUG this fixes: without this check, the full 24h
+    # fetch (23 coins x ~2 API requests, threaded) was running on
+    # EVERY 1-minute cycle regardless of whether a new candle actually
+    # existed - since a 3m candle only changes every 3 minutes, that
+    # meant roughly 3x more fetching than necessary, every single day.
+    forming_start = now.replace(second=0, microsecond=0) - timedelta(minutes=now.minute % 3)
+    expected_last_closed = forming_start - timedelta(minutes=3)
+    expected_candle_key = str(expected_last_closed)
+    if expected_candle_key == state.get("last_sent_candle_time"):
+        print(f"No new 3m candle yet (still {expected_candle_key}) - skipping fetch entirely")
+        return
+
+    # Single fetch window covers 24h - feeds ALL FOUR candle tiers
+    # (3m/15m/1h derived locally via resample, 1d from the daily
+    # refresh file) directly from one pull per coin, instead of the
+    # old design's two separate fetches (a trimmed ~16h main window
+    # plus a second dedicated 24h "enrichment" fetch). Every coin now
+    # needs the full tiered context every cycle - there's no more
+    # staged pre-filter deciding which few coins "deserve" it - so
+    # merging into one fetch avoids doubling the request count.
+    start = now - timedelta(hours=24)
     rvol_percentiles = load_rvol_percentiles()
+    daily_candles = load_daily_candles_30d()
 
-    print(f"Trend alignment + reversal RVOL scanner | coins={coins} | {now.isoformat()}")
-
-    qualified_report = []
-    pullback_report = []
-    reversal_report = []
+    print(f"Raw-data scanner (no pre-filtering - Gemini decides) | coins={coins} | {now.isoformat()}")
 
     def fetch_one(coin):
-        """Fetch + resample + drop the still-forming bucket - read-only,
-        no shared state touched, safe to run concurrently. Indicator
-        computation and process_coin (which mutates shared state) stay
-        sequential afterward - they're fast, local, and not worth the
-        added complexity/race risk of threading."""
-        candles_1m = fetch_coindcx_klines(coin, "1m", start.date().isoformat(), now.isoformat(), stagger_delay=False)
-        candles_3m = resample_candles(candles_1m, 3)
-        candles_15m = resample_candles(candles_1m, 15)
-        candles_3m = drop_still_forming_bucket(candles_3m, now, 3)
-        candles_15m = drop_still_forming_bucket(candles_15m, now, 15)
-        return coin, candles_3m, candles_15m
+        """One 24h pull per coin, all tiers derived locally from it -
+        read-only, safe to run concurrently."""
+        candles_1m = fetch_coindcx_klines(coin, "1m", start.isoformat(), now.isoformat(), stagger_delay=False)
+        candles_3m = drop_still_forming_bucket(resample_candles(candles_1m, 3), now, 3)
+        candles_15m = drop_still_forming_bucket(resample_candles(candles_1m, 15), now, 15)
+        candles_1h = drop_still_forming_bucket(resample_candles(candles_1m, 60), now, 60)
+        return coin, candles_3m, candles_15m, candles_1h
 
     fetched = {}
     with ThreadPoolExecutor(max_workers=4) as pool:
@@ -428,108 +293,96 @@ def main():
         for future in as_completed(futures):
             coin = futures[future]
             try:
-                _, candles_3m, candles_15m = future.result()
-                fetched[coin] = (candles_3m, candles_15m)
+                _, candles_3m, candles_15m, candles_1h = future.result()
+                fetched[coin] = (candles_3m, candles_15m, candles_1h)
             except Exception as e:
                 print(f"  {coin}: fetch failed ({e}), skipping")
 
+    snapshots = []
     for coin in coins:
         try:
             if coin not in fetched:
                 continue
-            candles_3m, candles_15m = fetched[coin]
-            if len(candles_3m) < 30 or len(candles_15m) < 10:
+            candles_3m, candles_15m, candles_1h = fetched[coin]
+            if len(candles_3m) < 65:
+                # 65, not 30 - confirmed directly that 30 let candles
+                # through with too little history for momentum_pct_60
+                # (needs 61+ candles), silently producing None for
+                # that field instead of either skipping or ensuring
+                # complete data. 65 gives real margin above 61.
                 print(f"  {coin}: not enough closed candles yet, skipping")
                 continue
 
-            candles_3m = compute_indicators(candles_3m)
-            candles_15m = compute_indicators(candles_15m)
+            candles_3m = compute_raw_stats(candles_3m)
+            snapshot = build_coin_snapshot(coin, candles_3m, candles_15m, rvol_percentiles)
 
-            coin_state = state["coins"].setdefault(coin, {"qualified_direction": None, "in_pullback_run": False})
-            result = process_coin(coin, candles_3m, candles_15m, coin_state, rvol_percentiles)
+            # Tiered candle context, same compact format throughout -
+            # 3m recent detail, 15m/1h progressively coarser, 1d from
+            # the daily-refreshed file (no live fetch cost for that
+            # tier at all).
+            snapshot["ctx_3m"] = candles_to_compact(candles_3m.tail(20))
+            snapshot["ctx_15m"] = candles_to_compact(candles_15m.tail(28))
+            snapshot["ctx_1h"] = candles_to_compact(candles_1h.tail(16))
+            snapshot["ctx_daily_30d"] = daily_candles.get(coin, [])
 
-            if result is None:
-                print(f"  {coin}: not qualified")
-                continue
-
-            print(f"  {coin}: {result}")
-            if result.get("reversal_candle"):
-                reversal_report.append(result)
-            elif result.get("pullback_run_active"):
-                pullback_report.append(result)
-            else:
-                qualified_report.append(result)
-
+            snapshots.append(snapshot)
+            print(f"  {coin}: close={snapshot['close']} rvol={snapshot['rvol']} "
+                  f"mom5={snapshot['momentum_pct_5_3m']}")
         except Exception as e:
             print(f"  {coin}: ERROR - {e}")
 
-    # Send once per NEW 3-minute candle close, as long as there's any
-    # content at all - even if it's identical to the previous candle's
-    # report. Only skip sending if this candle genuinely has zero
-    # content (nothing qualified/tracked/reversed at all). Gated on
-    # candle_time specifically (not content equality) so a repeat,
-    # unchanged signal across a fresh candle still gets reported - the
-    # earlier content-equality design suppressed those on purpose,
-    # which is the opposite of what's wanted here.
-    all_reports = qualified_report + pullback_report + reversal_report
-    candle_times_utc = [pd.Timestamp(r["candle_time"]) for r in all_reports if r.get("candle_time")]
+    # Gate on a genuinely NEW 3m candle, same pattern as before - but
+    # now covers ALL coins every cycle, not just ones a pre-filter
+    # decided were worth tracking. No pre-filtering means every coin's
+    # raw data goes to Gemini every new candle; Gemini alone decides
+    # whether anything is worth flagging.
+    candle_times_utc = [pd.Timestamp(s["candle_time"]) for s in snapshots if s.get("candle_time")]
     current_candle_time = str(max(candle_times_utc)) if candle_times_utc else None
-    has_content = bool(all_reports)
-    should_send = has_content and current_candle_time != state.get("last_sent_candle_time")
+    should_call_gemini = bool(snapshots) and current_candle_time != state.get("last_sent_candle_time")
 
-    if should_send:
-        candle_start_utc = max(candle_times_utc)
-        candle_start_ist = candle_start_utc + timedelta(hours=5, minutes=30)
-        candle_close_ist = candle_start_ist + timedelta(minutes=3)
-        detected_ist = now + timedelta(hours=5, minutes=30)
+    if not should_call_gemini:
+        print(f"\nNot calling Gemini (has_snapshots={bool(snapshots)}, "
+              f"same_candle_already_processed={current_candle_time == state.get('last_sent_candle_time')})")
+        save_state(state)
+        return
 
-        lines = [f"\U0001F4CA {candle_start_ist.strftime('%H:%M')}\u2192{candle_close_ist.strftime('%H:%M')} IST "
-                 f"(detected {detected_ist.strftime('%H:%M:%S')})"]
-        if qualified_report:
-            lines.append("\nQualified:")
-            for r in qualified_report:
-                accel = r.get("adx14_accel")
-                accel_arrow = " \u2191" if accel and accel > 0.3 else (" \u2193" if accel and accel < -0.3 else "")
-                lines.append(f"  {r['coin']} {r['direction'].upper()} - ADX {r['adx14']} ({r['adx14_delta']:+.1f}{accel_arrow})"
-                              + (" \u2022 new" if r.get("newly_qualified") else ""))
-        if pullback_report:
-            lines.append("\nPullback:")
-            for r in pullback_report:
-                lines.append(f"  {r['coin']} {r['direction'].upper()}")
-        if reversal_report:
-            lines.append("\n\U0001F3AF Reversal:")
-            for r in reversal_report:
-                pct = r.get("rvol_percentile")
-                rvol_display = f"{pct:.0f}th %ile" if pct is not None else r["rvol_label"]
-                accel = r.get("adx14_accel")
-                accel_arrow = " \u2191" if accel and accel > 0.3 else (" \u2193" if accel and accel < -0.3 else "")
-                adx_str = f" - ADX {r['adx14']} ({r['adx14_delta']:+.1f}{accel_arrow})" if r.get("adx14") is not None else ""
-                lines.append(f"  {r['coin']} {r['direction'].upper()} - RVOL {r['rvol']} ({rvol_display}){adx_str}")
-        message = "\n".join(lines)
+    # ONE Gemini call per cycle, covering ALL coins together - not
+    # staged, not one call per coin. Gemini may return an empty array
+    # if nothing across all coins looks worth mentioning - in which
+    # case nothing gets sent, matching the "don't spam" preference.
+    flagged = get_trade_suggestions_batch(snapshots)
 
-        # Per-coin "View Chart" buttons for reversal-stage coins - the
-        # one genuinely interactive element available: Telegram Bot API
-        # supports URL buttons with no bot process needed to handle
-        # them (unlike callback buttons, which would need a persistent
-        # listener - this scanner is a one-shot script, not a running
-        # bot, so callback-driven buttons aren't feasible here).
-        # Points to CoinDCX's own real futures page - confirmed live
-        # via direct fetch (not guessed), same B-{coin}_USDT pair
-        # naming already used internally by coindcx_fetcher.py.
-        reply_markup = None
-        if reversal_report:
-            reply_markup = {"inline_keyboard": [
-                [{"text": f"\U0001F4C8 {r['coin']} chart", "url": f"https://coindcx.com/futures/B-{r['coin']}_USDT"}]
-                for r in reversal_report
-            ]}
-
-        print(f"\nSending Telegram message:\n{message}")
-        send_telegram(message, reply_markup)
+    if not flagged:
+        print("\nGemini flagged nothing this cycle - not sending")
         state["last_sent_candle_time"] = current_candle_time
-    else:
-        print(f"\nNot sending (has_content={has_content}, "
-              f"same_candle_already_sent={current_candle_time == state.get('last_sent_candle_time')})")
+        save_state(state)
+        return
 
+    candle_start_utc = max(candle_times_utc)
+    candle_start_ist = candle_start_utc + timedelta(hours=5, minutes=30)
+    candle_close_ist = candle_start_ist + timedelta(minutes=3)
+    detected_ist = now + timedelta(hours=5, minutes=30)
+
+    lines = [f"\U0001F4CA {candle_start_ist.strftime('%H:%M')}\u2192{candle_close_ist.strftime('%H:%M')} IST "
+             f"(detected {detected_ist.strftime('%H:%M:%S')})\n"]
+    lines.append("\U0001F3AF Gemini flagged:")
+    for coin, g in flagged.items():
+        verdict = "TAKE" if g.get("take_trade") else "SKIP"
+        direction = (g.get("direction") or "?").upper()
+        lines.append(f"  {coin} {direction} [{verdict}]: {g.get('reasoning', '-')}")
+        lines.append(f"    Entry {g.get('entry_price')} | SL {g.get('stop_loss')} | Target {g.get('target_price')} | Amount \u20b9{g.get('trade_amount_inr')}")
+        if g.get("math_check_deviation_pct", 0) and g["math_check_deviation_pct"] > 15:
+            lines.append(f"    \u26a0 amount deviates {g['math_check_deviation_pct']}% from math check (\u20b9{g.get('math_check_trade_amount')})")
+    message = "\n".join(lines)
+
+    reply_markup = {"inline_keyboard": [
+        [{"text": f"\U0001F4C8 {coin} chart", "url": f"https://coindcx.com/futures/B-{coin}_USDT"}]
+        for coin in flagged
+    ]}
+
+    print(f"\nSending Telegram message:\n{message}")
+    send_telegram(message, reply_markup)
+    state["last_sent_candle_time"] = current_candle_time
     save_state(state)
 
 
