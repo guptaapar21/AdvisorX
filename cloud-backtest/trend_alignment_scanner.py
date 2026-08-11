@@ -53,7 +53,7 @@ import numpy as np
 import requests
 
 from coindcx_fetcher import fetch_coindcx_klines, resample_candles
-from gemini_advisor import get_trade_suggestions_batch
+from gemini_advisor import get_trade_suggestions_batch, TAKER_FEE_RATE
 
 STATE_FILE = "trend_scanner_state.json"
 RVOL_PERCENTILE_FILE = "rvol_percentiles.json"
@@ -166,7 +166,8 @@ def load_rvol_percentiles():
     return {}
 
 
-LEDGER_MAX_AGE_HOURS = 4  # entries older than this are pruned regardless of status
+LEDGER_MAX_AGE_HOURS = 26  # entries older than this are pruned regardless of status - covers the 24h scorecard window with 2h margin
+EXPIRY_HOURS = 2  # a pending trade that hasn't hit target or stop within this window is closed at current market price
 
 
 def resolve_ledger(ledger, fetched, now):
@@ -210,6 +211,13 @@ def resolve_ledger(ledger, fetched, now):
         direction = entry["direction"]
         target, stop = entry["target_price"], entry["stop_loss"]
         quantity = trade_amount / entry_price
+        # Round-trip fee (entry + exit), same rate already shown
+        # per-trade at flag time - confirmed as a real gap: the
+        # scorecard's realized_pnl_inr was previously gross, never
+        # deducting this, while the individual trade message already
+        # shows fee-adjusted net figures. Paid regardless of outcome,
+        # so it always makes the result worse, never better.
+        round_trip_fee = trade_amount * TAKER_FEE_RATE * 2
         for _, row in since.iterrows():
             if direction == "long":
                 target_hit = row["high"] >= target
@@ -223,39 +231,101 @@ def resolve_ledger(ledger, fetched, now):
                 # the stop, not the target - understating P&L is the
                 # safer direction to be wrong in here.
                 entry["status"] = "stop_hit"
-                entry["resolved_pnl"] = -entry["max_loss_this_trade_inr"]
+                entry["resolved_pnl"] = round(-entry["max_loss_this_trade_inr"] - round_trip_fee, 2)
                 entry["resolved_time"] = str(row.name)
                 break
             if target_hit:
                 entry["status"] = "target_hit"
-                entry["resolved_pnl"] = round(quantity * abs(target - entry_price), 2)
+                entry["resolved_pnl"] = round(quantity * abs(target - entry_price) - round_trip_fee, 2)
                 entry["resolved_time"] = str(row.name)
                 break
             if stop_hit:
                 entry["status"] = "stop_hit"
-                entry["resolved_pnl"] = -entry["max_loss_this_trade_inr"]
+                entry["resolved_pnl"] = round(-entry["max_loss_this_trade_inr"] - round_trip_fee, 2)
                 entry["resolved_time"] = str(row.name)
                 break
+        else:
+            # Loop completed without ever breaking - neither target
+            # nor stop was hit in any checked candle. If this trade
+            # has been pending longer than EXPIRY_HOURS, close it at
+            # the most recent known price (mark-to-market) rather than
+            # leaving it pending indefinitely - these are short-term,
+            # 3m-chart setups, not positions meant to be held for
+            # hours with no resolution. Given its own status rather
+            # than folded into target_hit/stop_hit - it never actually
+            # reached the real target or stop price, just happened to
+            # be up or down when the clock ran out, so counting it as
+            # a genuine target/stop hit would be misleading even
+            # though its P&L still counts toward REALIZED per explicit
+            # instruction.
+            age_hours = (now_naive - call_time).total_seconds() / 3600
+            if age_hours >= EXPIRY_HOURS:
+                last_price = float(since["close"].iloc[-1])
+                if direction == "long":
+                    pnl = quantity * (last_price - entry_price)
+                else:
+                    pnl = quantity * (entry_price - last_price)
+                entry["status"] = "expired"
+                entry["resolved_pnl"] = round(pnl - round_trip_fee, 2)
+                entry["resolved_time"] = str(since.index[-1])
+                print(f"  Ledger: {entry.get('coin')} {direction.upper()} expired after {age_hours:.1f}h, "
+                      f"closed at {last_price} (pnl={entry['resolved_pnl']})")
 
     cutoff = now_naive - timedelta(hours=LEDGER_MAX_AGE_HOURS)
     return [e for e in ledger if datetime.fromisoformat(e["time"]).replace(tzinfo=None) > cutoff]
 
 
-def compute_scorecard(ledger, now, window_hours=1):
-    """Real trades-in / target-hit / stop-hit / pending / net P&L over
-    the trailing window - computed from the ledger's actual resolved
-    outcomes, not asked of Gemini (which has no memory and no way to
-    verify this itself)."""
+def compute_scorecard(ledger, now, window_hours=1, current_prices=None):
+    """Real trades-in / target-hit / stop-hit / pending / P&L over the
+    trailing window - computed from the ledger's actual resolved
+    outcomes and current market prices, not asked of Gemini (which has
+    no memory and no way to verify either of these itself).
+
+    realized_pnl_inr: sum of P&L from trades that actually hit target
+    or stop - money already made or lost, not an estimate.
+
+    unrealized_pnl_inr: mark-to-market on still-PENDING positions -
+    what they would be worth if closed right now at current price.
+    This is a live estimate, not a locked-in outcome - a pending
+    position showing positive unrealized P&L can still go on to hit
+    its stop. Needs current_prices (a {coin: latest_close} dict, built
+    from data already fetched this cycle - no extra API calls);
+    without it, unrealized P&L simply is not computed rather than
+    guessed."""
     now_naive = now.replace(tzinfo=None) if now.tzinfo is not None else now
     cutoff = now_naive - timedelta(hours=window_hours)
     window = [e for e in ledger if datetime.fromisoformat(e["time"]).replace(tzinfo=None) > cutoff]
     target_hit = [e for e in window if e["status"] == "target_hit"]
     stop_hit = [e for e in window if e["status"] == "stop_hit"]
+    expired = [e for e in window if e["status"] == "expired"]
     pending = [e for e in window if e["status"] == "pending"]
-    net_pnl = round(sum(e.get("resolved_pnl", 0) for e in target_hit + stop_hit), 2)
+    abandoned_or_invalid = [e for e in window if e["status"] in ("abandoned", "invalid")]
+    # Expired trades' P&L counts toward realized (per explicit
+    # instruction) - closed at mark-to-market when the 2h window ran
+    # out, so it's a real, locked-in number, just not from genuinely
+    # touching the actual target/stop price.
+    realized_pnl = round(sum(e.get("resolved_pnl", 0) for e in target_hit + stop_hit + expired), 2)
+
+    unrealized_pnl = 0.0
+    if current_prices:
+        for entry in pending:
+            current_price = current_prices.get(entry["coin"])
+            entry_price = entry.get("entry_price")
+            trade_amount = entry.get("trade_amount_inr")
+            if not current_price or not entry_price or entry_price <= 0 or not trade_amount:
+                continue  # same validation standard as resolve_ledger - skip rather than guess on bad data
+            quantity = trade_amount / entry_price
+            if entry["direction"] == "long":
+                unrealized_pnl += quantity * (current_price - entry_price)
+            else:
+                unrealized_pnl += quantity * (entry_price - current_price)
+    unrealized_pnl = round(unrealized_pnl, 2)
+
     return {
         "total": len(window), "target_hit": len(target_hit), "stop_hit": len(stop_hit),
-        "pending": len(pending), "net_pnl_inr": net_pnl,
+        "expired": len(expired), "pending": len(pending), "abandoned_or_invalid": len(abandoned_or_invalid),
+        "realized_pnl_inr": realized_pnl,
+        "unrealized_pnl_inr": unrealized_pnl, "total_pnl_inr": round(realized_pnl + unrealized_pnl, 2),
     }
 
 
@@ -419,7 +489,8 @@ def main():
     # repeat-flag detection below.
     ledger = resolve_ledger(state.get("ledger", []), fetched, now)
     state["ledger"] = ledger
-    scorecard = compute_scorecard(ledger, now, window_hours=1)
+    current_prices = {coin: float(candles_3m["close"].iloc[-1]) for coin, (candles_3m, _, _) in fetched.items() if len(candles_3m)}
+    scorecard = compute_scorecard(ledger, now, window_hours=24, current_prices=current_prices)
 
     snapshots = []
     for coin in coins:
@@ -544,25 +615,38 @@ def main():
         # visibly, not silently suppressed, same principle as the
         # whipsaw warning above.
         if g.get("take_trade"):
+            opposite_direction = "short" if g.get("direction") == "long" else "long"
+            opposite = find_pending_same_direction(ledger, coin, opposite_direction, now)
+            if opposite is not None:
+                # Gemini flagged the OPPOSITE direction on a coin that
+                # already has a pending position - confirmed as a real
+                # gap: "HEI SHORT - Reversing prior long call" left the
+                # old HEI LONG sitting as "pending" forever, since the
+                # repeat-check only ever matched on SAME direction.
+                # Marked "abandoned" here rather than guessing at a
+                # mark-to-market P&L for it - honest about not knowing
+                # its real outcome, excluded from pending/win/loss
+                # counts either way.
+                opposite["status"] = "abandoned"
+                opposite["resolved_time"] = now.isoformat()
+                print(f"  Ledger: {coin} prior {opposite_direction.upper()} marked abandoned - reversed to {g.get('direction', '').upper()}")
+
             existing = find_pending_same_direction(ledger, coin, g.get("direction"), now)
             if existing is not None:
                 minutes_ago = (now.replace(tzinfo=None) - datetime.fromisoformat(existing["time"]).replace(tzinfo=None)).total_seconds() / 60
                 g["repeat_warning"] = f"already have a pending {g.get('direction', '').upper()} call on {coin} from {minutes_ago:.0f} min ago"
-                # UPDATE the existing open position with Gemini's
-                # refreshed levels, rather than appending a second
-                # entry - confirmed directly as a real bug: appending
-                # separately was inflating the scorecard's "pending"
-                # count with repeats (4 flags on 3 distinct
-                # opportunities showed "4 pending"), directly
-                # contradicting the repeat_warning shown on the same
-                # message. Original "time" is kept so duration/P&L
-                # tracking stays anchored to when the position
-                # genuinely opened, not when it was last reaffirmed.
-                existing["entry_price"] = g.get("entry_price")
-                existing["stop_loss"] = g.get("stop_loss")
-                existing["target_price"] = g.get("target_price")
-                existing["trade_amount_inr"] = g.get("trade_amount_inr")
-                existing["max_loss_this_trade_inr"] = g.get("max_loss_this_trade_inr")
+                # Do NOT rewrite entry_price/stop_loss/target_price -
+                # confirmed directly as a real bug: resolution scans
+                # candles from the ORIGINAL open time, but was checking
+                # them against whichever levels were most recently
+                # updated. A genuinely-hit ORIGINAL target could be
+                # silently missed if a later reaffirmation changed the
+                # target, since the resolution loop would then be
+                # comparing old candles against a target that didn't
+                # exist yet when those candles formed. The position
+                # stays anchored to the terms it actually opened under
+                # - only conviction is refreshed, since that's purely
+                # informational and doesn't affect resolution.
                 existing["conviction"] = g.get("conviction")
             else:
                 ledger.append({
@@ -581,12 +665,15 @@ def main():
     detected_ist = now + timedelta(hours=5, minutes=30)
 
     import html
-    net_pnl = scorecard["net_pnl_inr"]
-    pnl_str = f"+\u20b9{net_pnl}" if net_pnl >= 0 else f"-\u20b9{abs(net_pnl)}"
+    def fmt_pnl(v):
+        return f"+\u20b9{v}" if v >= 0 else f"-\u20b9{abs(v)}"
     lines = [f"\U0001F4CA {candle_start_ist.strftime('%H:%M')}\u2192{candle_close_ist.strftime('%H:%M')} IST "
              f"(detected {detected_ist.strftime('%H:%M:%S')})"]
-    lines.append(f"Last 1h: {scorecard['total']} calls \u2014 {scorecard['target_hit']} hit target, "
-                  f"{scorecard['stop_hit']} hit stop, {scorecard['pending']} pending \u2014 net {pnl_str}")
+    reversed_note = f", {scorecard['abandoned_or_invalid']} reversed/invalid" if scorecard["abandoned_or_invalid"] else ""
+    lines.append(f"Last 24h: {scorecard['total']} calls \u2014 {scorecard['target_hit']} hit target, "
+                  f"{scorecard['stop_hit']} hit stop, {scorecard['expired']} expired, {scorecard['pending']} pending{reversed_note}")
+    lines.append(f"Realized {fmt_pnl(scorecard['realized_pnl_inr'])} | Unrealized {fmt_pnl(scorecard['unrealized_pnl_inr'])} "
+                  f"| Total {fmt_pnl(scorecard['total_pnl_inr'])}")
     for coin, g in flagged.items():
         verdict = "TAKE" if g.get("take_trade") else "SKIP"
         direction = (g.get("direction") or "?").upper()

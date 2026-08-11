@@ -42,7 +42,11 @@ MAX_LOSS_RUPEES = 1500
 # potential profit even survives round-trip costs.
 TAKER_FEE_RATE = 0.00075
 
-SYSTEM_PROMPT = """Trade-scanning assistant for crypto futures on CoinDCX. You receive a JSON object with two parts every scan cycle (roughly every 3 minutes): "coins" - an array of ALL currently tracked coins, NOT pre-filtered by any trend/strength logic, and optionally "recent_performance_last_1h" - real, code-verified outcomes of your own recent calls (total flagged, how many actually hit target, how many hit stop, how many are still pending, and net INR result). This performance data is NOT something you tracked yourself - you have no memory between calls - it's computed independently from actual subsequent price action, so trust it completely; it is ground truth about how your recent judgment has actually performed, not a self-report. If recent performance has been poor (more stops than targets, negative net), that's a real reason to be MORE selective this cycle, not something to disregard because "this setup is different."
+SYSTEM_PROMPT = """Trade-scanning assistant for crypto futures on CoinDCX. You receive a JSON object with two parts every scan cycle (roughly every 3 minutes): "coins" - an array of ALL currently tracked coins, NOT pre-filtered by any trend/strength logic, and optionally "recent_performance_last_24h" - real, code-verified outcomes of your own recent calls over the trailing 24 hours. This performance data is NOT something you tracked yourself - you have no memory between calls - it's computed independently from actual subsequent price action and current market prices, so trust it completely; it is ground truth about how your recent judgment has actually performed, not a self-report.
+
+Fields in recent_performance_last_24h: total (all calls in the window), target_hit (genuinely reached the target price), stop_hit (genuinely reached the stop price), expired (never reached either within 2 hours, closed at whatever price it was at when the window ran out - a real but different kind of outcome than a clean target/stop hit), pending (still open, unresolved), abandoned_or_invalid (calls superseded by a later reversal on the same coin, or excluded due to malformed data - not a performance signal either way). realized_pnl_inr is money already locked in (target_hit + stop_hit + expired combined, net of round-trip fees). unrealized_pnl_inr is a live mark-to-market estimate on still-pending positions - not locked in, can still move either way. total_pnl_inr is both combined.
+
+If recent performance has been poor (more stops/expiries than targets, negative realized P&L), that's a real reason to be MORE selective this cycle, not something to disregard because "this setup is different."
 
 For each coin in "coins" you get only raw, descriptive data: latest close, ATR (volatility), RVOL and its percentile rank against that coin's own history, plain momentum (% price change over the last 5/20/60 3m candles - just arithmetic, not an indicator), and TIERED candle history at decreasing resolution the further back in time it goes - candles_3m_last_1h (full 3m detail, most recent hour), candles_15m_last_7h (next several hours), candles_1h_rest_of_24h (rest of the day), and candles_1d_last_30d (daily candles, 30-day context). No direction, trend verdict, or strategy signal is supplied, and no rule is given for which numbers should agree or how - that judgment, entirely, is yours to make.
 
@@ -90,7 +94,7 @@ def build_batch_prompt(signals, scorecard=None):
     should agree - just raw descriptive numbers, the tiered candle
     context, and (when available) this coin's own prior-call context
     so Gemini can genuinely self-correct rather than reason blind.
-    scorecard: optional aggregate stats over the trailing 1h -
+    scorecard: optional aggregate stats over the trailing 24h -
     computed deterministically by code, not something Gemini tracks
     or is asked to remember itself."""
     payload = []
@@ -115,7 +119,7 @@ def build_batch_prompt(signals, scorecard=None):
         payload.append(entry)
     wrapped = {"coins": payload}
     if scorecard:
-        wrapped["recent_performance_last_1h"] = scorecard
+        wrapped["recent_performance_last_24h"] = scorecard
     return json.dumps(wrapped)
 
 
