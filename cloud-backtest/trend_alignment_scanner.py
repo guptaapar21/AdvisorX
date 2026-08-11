@@ -261,21 +261,19 @@ def compute_scorecard(ledger, now, window_hours=1):
 
 def find_pending_same_direction(ledger, coin, direction, now):
     """Is there already an unresolved call on this exact coin+direction?
-    No time cutoff - "pending" status already means it hasn't hit
-    target or stop yet, regardless of how long ago it was flagged.
-    Confirmed directly as a real gap: an earlier version capped this
-    at 60 minutes, which meant a genuinely still-open position from 90
-    minutes ago was missed entirely - defeating the whole point of
-    this check for exactly the longest-running open positions, where
-    it matters most. (Ledger entries are pruned after
+    Returns the actual ledger entry (so the caller can update it in
+    place) or None. No time cutoff - "pending" status already means
+    it hasn't hit target or stop yet, regardless of how long ago it
+    was flagged. Confirmed directly as a real gap: an earlier version
+    capped this at 60 minutes, which meant a genuinely still-open
+    position from 90 minutes ago was missed entirely - defeating the
+    whole point of this check for exactly the longest-running open
+    positions, where it matters most. (Ledger entries are pruned after
     LEDGER_MAX_AGE_HOURS regardless of status, so this is naturally
     bounded without needing its own separate cutoff.)"""
-    now_naive = now.replace(tzinfo=None) if now.tzinfo is not None else now
     for entry in ledger:
         if entry["coin"] == coin and entry["direction"] == direction and entry["status"] == "pending":
-            entry_time = datetime.fromisoformat(entry["time"]).replace(tzinfo=None)
-            minutes_ago = (now_naive - entry_time).total_seconds() / 60
-            return round(minutes_ago, 1)
+            return entry
     return None
 
 
@@ -546,20 +544,34 @@ def main():
         # visibly, not silently suppressed, same principle as the
         # whipsaw warning above.
         if g.get("take_trade"):
-            pending_minutes = find_pending_same_direction(ledger, coin, g.get("direction"), now)
-            if pending_minutes is not None:
-                g["repeat_warning"] = f"already have a pending {g.get('direction', '').upper()} call on {coin} from {pending_minutes:.0f} min ago"
-            # Recorded regardless of repeat status - a genuine
-            # continuation call is still real information, just
-            # flagged so the person can judge whether it's fresh
-            # conviction or the same extended move re-described.
-            ledger.append({
-                "coin": coin, "direction": g.get("direction"),
-                "entry_price": g.get("entry_price"), "stop_loss": g.get("stop_loss"),
-                "target_price": g.get("target_price"), "trade_amount_inr": g.get("trade_amount_inr"),
-                "max_loss_this_trade_inr": g.get("max_loss_this_trade_inr"),
-                "conviction": g.get("conviction"), "status": "pending", "time": now.isoformat(),
-            })
+            existing = find_pending_same_direction(ledger, coin, g.get("direction"), now)
+            if existing is not None:
+                minutes_ago = (now.replace(tzinfo=None) - datetime.fromisoformat(existing["time"]).replace(tzinfo=None)).total_seconds() / 60
+                g["repeat_warning"] = f"already have a pending {g.get('direction', '').upper()} call on {coin} from {minutes_ago:.0f} min ago"
+                # UPDATE the existing open position with Gemini's
+                # refreshed levels, rather than appending a second
+                # entry - confirmed directly as a real bug: appending
+                # separately was inflating the scorecard's "pending"
+                # count with repeats (4 flags on 3 distinct
+                # opportunities showed "4 pending"), directly
+                # contradicting the repeat_warning shown on the same
+                # message. Original "time" is kept so duration/P&L
+                # tracking stays anchored to when the position
+                # genuinely opened, not when it was last reaffirmed.
+                existing["entry_price"] = g.get("entry_price")
+                existing["stop_loss"] = g.get("stop_loss")
+                existing["target_price"] = g.get("target_price")
+                existing["trade_amount_inr"] = g.get("trade_amount_inr")
+                existing["max_loss_this_trade_inr"] = g.get("max_loss_this_trade_inr")
+                existing["conviction"] = g.get("conviction")
+            else:
+                ledger.append({
+                    "coin": coin, "direction": g.get("direction"),
+                    "entry_price": g.get("entry_price"), "stop_loss": g.get("stop_loss"),
+                    "target_price": g.get("target_price"), "trade_amount_inr": g.get("trade_amount_inr"),
+                    "max_loss_this_trade_inr": g.get("max_loss_this_trade_inr"),
+                    "conviction": g.get("conviction"), "status": "pending", "time": now.isoformat(),
+                })
     state["call_history"] = call_history
     state["ledger"] = ledger
 
