@@ -247,6 +247,8 @@ def main():
     coins = [c.strip().upper() for c in args.coins.split(",")]
     now = datetime.now(timezone.utc)
     state = load_state()
+    if state.pop("recent_flags", None) is not None:  # orphaned key from before the rename to call_history
+        save_state(state)  # persist the cleanup now, not just in memory - this is the common early-exit path below
 
     # Compute the most recently CLOSED 3m candle's boundary purely
     # from the clock - no network call needed, since 3m boundaries are
@@ -316,6 +318,37 @@ def main():
             candles_3m = compute_raw_stats(candles_3m)
             snapshot = build_coin_snapshot(coin, candles_3m, candles_15m, rvol_percentiles)
 
+            # Prior-call context: Gemini's API has no memory between
+            # calls, so this is how it actually gets to see its own
+            # recent track record - not just "don't contradict
+            # yourself" as an instruction, but the real prior call and
+            # what price has genuinely done since, so it can judge
+            # whether that thesis is playing out or failing.
+            call_history = state.get("call_history", {}).get(coin, [])
+            if call_history:
+                last_call = call_history[-1]
+                minutes_since = (now - datetime.fromisoformat(last_call["time"])).total_seconds() / 60
+                prior_entry = last_call.get("entry_price")
+                if minutes_since <= 180 and prior_entry:  # only recent calls with a real entry price are usable context
+                    price_change_pct = round((snapshot["close"] - prior_entry) / prior_entry * 100, 3)
+                    # Explicit three-way check, not an equality trick -
+                    # confirmed directly that (pct>0)==(direction=="long")
+                    # incorrectly reported "favorable" for a SHORT call
+                    # at EXACTLY 0% change (no movement at all), while
+                    # correctly reporting "not favorable" for LONG at
+                    # the same 0% - an inconsistent, asymmetric bug.
+                    if last_call["direction"] == "long":
+                        favorable = price_change_pct > 0
+                    else:
+                        favorable = price_change_pct < 0
+                    snapshot["prior_call"] = {
+                        "direction": last_call["direction"],
+                        "take_trade": last_call["take_trade"],
+                        "minutes_ago": round(minutes_since, 1),
+                        "price_change_pct_since": price_change_pct,
+                        "moved_favorably": favorable,
+                    }
+
             # Tiered candle context, same compact format throughout -
             # 3m recent detail, 15m/1h progressively coarser, 1d from
             # the daily-refreshed file (no live fetch cost for that
@@ -358,6 +391,32 @@ def main():
         save_state(state)
         return
 
+    # Anti-whipsaw backstop: even with prior-call context now fed to
+    # Gemini (see the snapshot-building loop above), it could still
+    # reverse - the difference is it now does so WITH awareness of its
+    # own track record, not blindly. This stays as a visible check
+    # rather than being removed, since it costs nothing and catches
+    # anything that slips through regardless of context.
+    WHIPSAW_WINDOW_MINUTES = 15
+    call_history = state.get("call_history", {})
+    for coin, g in flagged.items():
+        history = call_history.get(coin, [])
+        if history:
+            prior = history[-1]
+            prior_time = datetime.fromisoformat(prior["time"])
+            minutes_since = (now - prior_time).total_seconds() / 60
+            if minutes_since <= WHIPSAW_WINDOW_MINUTES and prior["direction"] != g.get("direction"):
+                g["whipsaw_warning"] = (f"reverses {prior['direction'].upper()} call from "
+                                         f"{int(minutes_since)} min ago")
+        history.append({
+            "direction": g.get("direction"),
+            "entry_price": g.get("entry_price"),
+            "take_trade": g.get("take_trade"),
+            "time": now.isoformat(),
+        })
+        call_history[coin] = history[-5:]  # capped - last 5 calls per coin, not unbounded growth
+    state["call_history"] = call_history
+
     candle_start_utc = max(candle_times_utc)
     candle_start_ist = candle_start_utc + timedelta(hours=5, minutes=30)
     candle_close_ist = candle_start_ist + timedelta(minutes=3)
@@ -369,10 +428,16 @@ def main():
     for coin, g in flagged.items():
         verdict = "TAKE" if g.get("take_trade") else "SKIP"
         direction = (g.get("direction") or "?").upper()
-        lines.append(f"  {coin} {direction} [{verdict}]: {g.get('reasoning', '-')}")
-        lines.append(f"    Entry {g.get('entry_price')} | SL {g.get('stop_loss')} | Target {g.get('target_price')} | Amount \u20b9{g.get('trade_amount_inr')}")
-        if g.get("math_check_deviation_pct", 0) and g["math_check_deviation_pct"] > 15:
-            lines.append(f"    \u26a0 amount deviates {g['math_check_deviation_pct']}% from math check (\u20b9{g.get('math_check_trade_amount')})")
+        conviction = g.get("conviction")
+        lines.append(f"  {coin} {direction} [{verdict}] conviction {conviction}/10: {g.get('reasoning', '-')}")
+        if g.get("whipsaw_warning"):
+            lines.append(f"    \u26a0\ufe0f CONTRADICTS PRIOR CALL: {g['whipsaw_warning']}")
+        lines.append(f"    Entry {g.get('entry_price')} | SL {g.get('stop_loss')} | Target {g.get('target_price')}")
+        lines.append(f"    Amount \u20b9{g.get('trade_amount_inr')} (risking \u20b9{g.get('max_loss_this_trade_inr')} of \u20b91500 max, scaled to conviction)")
+        if g.get("fee_drag_pct") is not None:
+            lines.append(f"    Fees \u2248\u20b9{g.get('estimated_fee_inr')} ({g['fee_drag_pct']}% of \u20b9{g.get('gross_profit_at_target_inr')} gross target profit) \u2192 net \u20b9{g.get('net_profit_at_target_inr')}")
+        if g.get("fee_override"):
+            lines.append("    \u26a0 downgraded to SKIP - fees would consume most of the potential profit")
     message = "\n".join(lines)
 
     reply_markup = {"inline_keyboard": [
@@ -380,10 +445,26 @@ def main():
         for coin in flagged
     ]}
 
-    print(f"\nSending Telegram message:\n{message}")
-    send_telegram(message, reply_markup)
-    state["last_sent_candle_time"] = current_candle_time
+    # Persist call_history NOW, separately from the send-success state
+    # below - confirmed directly that send_telegram can raise with no
+    # try/except above it, and previously save_state was only called
+    # after the send, meaning a transient failure would crash the
+    # script and silently discard the call_history just computed -
+    # losing this cycle's self-tracking data exactly when a real
+    # failure occurs. Deliberately NOT marking last_sent_candle_time
+    # here though - that only gets set on CONFIRMED send success below,
+    # so a failed send still gets retried next cycle instead of the
+    # message being silently dropped forever.
     save_state(state)
+
+    print(f"\nSending Telegram message:\n{message}")
+    try:
+        send_telegram(message, reply_markup)
+        state["last_sent_candle_time"] = current_candle_time
+        save_state(state)
+    except Exception as e:
+        print(f"Telegram send failed ({e}) - call_history was already saved, "
+              f"this candle will be retried next cycle since last_sent_candle_time was not updated")
 
 
 if __name__ == "__main__":
