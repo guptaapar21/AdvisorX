@@ -578,9 +578,39 @@ def main():
     flagged = get_trade_suggestions_batch(snapshots, scorecard)
 
     if not flagged:
-        print("\nGemini flagged nothing this cycle - not sending")
-        state["last_sent_candle_time"] = current_candle_time
+        print("\nGemini flagged nothing this cycle - sending scorecard-only update")
+        # Persist ledger/call_history NOW, unconditionally - confirmed
+        # directly this was NOT actually saved earlier in this flow
+        # (only held in memory), so without this the Telegram send
+        # below failing would silently lose this cycle's ledger
+        # resolutions, same class of bug fixed for the flagged case
+        # a few rounds ago.
         save_state(state)
+
+        candle_start_utc = max(candle_times_utc)
+        candle_start_ist = candle_start_utc + timedelta(hours=5, minutes=30)
+        candle_close_ist = candle_start_ist + timedelta(minutes=3)
+        detected_ist = now + timedelta(hours=5, minutes=30)
+
+        def fmt_pnl(v):
+            return f"+\u20b9{v}" if v >= 0 else f"-\u20b9{abs(v)}"
+        lines = [f"\U0001F4CA {candle_start_ist.strftime('%H:%M')}\u2192{candle_close_ist.strftime('%H:%M')} IST "
+                 f"(detected {detected_ist.strftime('%H:%M:%S')})"]
+        reversed_note = f", {scorecard['abandoned_or_invalid']} reversed/invalid" if scorecard["abandoned_or_invalid"] else ""
+        lines.append(f"Last 24h: {scorecard['total']} calls \u2014 {scorecard['target_hit']} hit target, "
+                      f"{scorecard['stop_hit']} hit stop, {scorecard['expired']} expired, {scorecard['pending']} pending{reversed_note}")
+        lines.append(f"Realized {fmt_pnl(scorecard['realized_pnl_inr'])} | Unrealized {fmt_pnl(scorecard['unrealized_pnl_inr'])} "
+                      f"| Total {fmt_pnl(scorecard['total_pnl_inr'])}")
+        lines.append("\nNo new signals this cycle.")
+        message = "\n".join(lines)
+        print(f"\nSending Telegram message:\n{message}")
+        try:
+            send_telegram(message)
+            state["last_sent_candle_time"] = current_candle_time
+            save_state(state)
+        except Exception as e:
+            print(f"Telegram send failed ({e}) - ledger/call_history already saved above, "
+                  f"this candle will be retried next cycle since last_sent_candle_time was not updated")
         return
 
     # Anti-whipsaw backstop: even with prior-call context now fed to
