@@ -86,13 +86,15 @@ def save_state(state):
         json.dump(state, f, indent=2, default=str)
 
 
-def send_telegram(text, reply_markup=None):
+def send_telegram(text, reply_markup=None, parse_mode="HTML"):
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
         raise RuntimeError("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID env vars")
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
     if reply_markup:
         payload["reply_markup"] = reply_markup
     resp = requests.post(url, json=payload, timeout=15)
@@ -162,6 +164,119 @@ def load_rvol_percentiles():
         except (json.JSONDecodeError, OSError):
             return {}
     return {}
+
+
+LEDGER_MAX_AGE_HOURS = 4  # entries older than this are pruned regardless of status
+
+
+def resolve_ledger(ledger, fetched, now):
+    """Checks every still-pending ledger entry against real price
+    action since it was flagged - did target or stop actually get hit
+    first, chronologically? Uses candle data already fetched this
+    cycle (no extra API calls). An entry with neither touched yet
+    stays pending. Mutates and returns the ledger, pruning anything
+    older than LEDGER_MAX_AGE_HOURS regardless of status so it doesn't
+    grow unbounded."""
+    now_naive = now.replace(tzinfo=None) if now.tzinfo is not None else now
+    for entry in ledger:
+        if entry["status"] != "pending":
+            continue
+        # Validate BEFORE any arithmetic - confirmed directly as a
+        # real, serious risk: entry_price<=0 silently produces
+        # nonsensical P&L (a fake $0 "win", or a catastrophic
+        # -1,090,000 "loss" labeled as a win with a negative price),
+        # and a missing trade_amount_inr crashes this function with an
+        # uncaught TypeError - which, since this runs on the
+        # PERSISTED ledger every cycle, means one bad entry
+        # permanently breaks every future run until manually fixed.
+        # Marked "invalid" here instead - visible, excluded from the
+        # scorecard, and never retried since it can never resolve.
+        entry_price = entry.get("entry_price")
+        trade_amount = entry.get("trade_amount_inr")
+        if not entry_price or entry_price <= 0 or not trade_amount or trade_amount <= 0:
+            print(f"  Ledger WARNING: {entry.get('coin')} entry marked invalid "
+                  f"(entry_price={entry_price}, trade_amount_inr={trade_amount}) - excluding from resolution")
+            entry["status"] = "invalid"
+            continue
+
+        coin = entry["coin"]
+        if coin not in fetched:
+            continue
+        candles_3m, _, _ = fetched[coin]
+        call_time = datetime.fromisoformat(entry["time"]).replace(tzinfo=None)
+        since = candles_3m[candles_3m.index > call_time]
+        if since.empty:
+            continue
+        direction = entry["direction"]
+        target, stop = entry["target_price"], entry["stop_loss"]
+        quantity = trade_amount / entry_price
+        for _, row in since.iterrows():
+            if direction == "long":
+                target_hit = row["high"] >= target
+                stop_hit = row["low"] <= stop
+            else:
+                target_hit = row["low"] <= target
+                stop_hit = row["high"] >= stop
+            if target_hit and stop_hit:
+                # Both touched in the same candle - can't know which
+                # came first from OHLC alone. Treat conservatively as
+                # the stop, not the target - understating P&L is the
+                # safer direction to be wrong in here.
+                entry["status"] = "stop_hit"
+                entry["resolved_pnl"] = -entry["max_loss_this_trade_inr"]
+                entry["resolved_time"] = str(row.name)
+                break
+            if target_hit:
+                entry["status"] = "target_hit"
+                entry["resolved_pnl"] = round(quantity * abs(target - entry_price), 2)
+                entry["resolved_time"] = str(row.name)
+                break
+            if stop_hit:
+                entry["status"] = "stop_hit"
+                entry["resolved_pnl"] = -entry["max_loss_this_trade_inr"]
+                entry["resolved_time"] = str(row.name)
+                break
+
+    cutoff = now_naive - timedelta(hours=LEDGER_MAX_AGE_HOURS)
+    return [e for e in ledger if datetime.fromisoformat(e["time"]).replace(tzinfo=None) > cutoff]
+
+
+def compute_scorecard(ledger, now, window_hours=1):
+    """Real trades-in / target-hit / stop-hit / pending / net P&L over
+    the trailing window - computed from the ledger's actual resolved
+    outcomes, not asked of Gemini (which has no memory and no way to
+    verify this itself)."""
+    now_naive = now.replace(tzinfo=None) if now.tzinfo is not None else now
+    cutoff = now_naive - timedelta(hours=window_hours)
+    window = [e for e in ledger if datetime.fromisoformat(e["time"]).replace(tzinfo=None) > cutoff]
+    target_hit = [e for e in window if e["status"] == "target_hit"]
+    stop_hit = [e for e in window if e["status"] == "stop_hit"]
+    pending = [e for e in window if e["status"] == "pending"]
+    net_pnl = round(sum(e.get("resolved_pnl", 0) for e in target_hit + stop_hit), 2)
+    return {
+        "total": len(window), "target_hit": len(target_hit), "stop_hit": len(stop_hit),
+        "pending": len(pending), "net_pnl_inr": net_pnl,
+    }
+
+
+def find_pending_same_direction(ledger, coin, direction, now):
+    """Is there already an unresolved call on this exact coin+direction?
+    No time cutoff - "pending" status already means it hasn't hit
+    target or stop yet, regardless of how long ago it was flagged.
+    Confirmed directly as a real gap: an earlier version capped this
+    at 60 minutes, which meant a genuinely still-open position from 90
+    minutes ago was missed entirely - defeating the whole point of
+    this check for exactly the longest-running open positions, where
+    it matters most. (Ledger entries are pruned after
+    LEDGER_MAX_AGE_HOURS regardless of status, so this is naturally
+    bounded without needing its own separate cutoff.)"""
+    now_naive = now.replace(tzinfo=None) if now.tzinfo is not None else now
+    for entry in ledger:
+        if entry["coin"] == coin and entry["direction"] == direction and entry["status"] == "pending":
+            entry_time = datetime.fromisoformat(entry["time"]).replace(tzinfo=None)
+            minutes_ago = (now_naive - entry_time).total_seconds() / 60
+            return round(minutes_ago, 1)
+    return None
 
 
 def candles_to_compact(candles):
@@ -300,6 +415,14 @@ def main():
             except Exception as e:
                 print(f"  {coin}: fetch failed ({e}), skipping")
 
+    # Resolve every pending ledger entry against the candle data just
+    # fetched - no extra API calls needed, this reuses what's already
+    # in memory. Powers both the visible scorecard and the
+    # repeat-flag detection below.
+    ledger = resolve_ledger(state.get("ledger", []), fetched, now)
+    state["ledger"] = ledger
+    scorecard = compute_scorecard(ledger, now, window_hours=1)
+
     snapshots = []
     for coin in coins:
         try:
@@ -383,7 +506,7 @@ def main():
     # staged, not one call per coin. Gemini may return an empty array
     # if nothing across all coins looks worth mentioning - in which
     # case nothing gets sent, matching the "don't spam" preference.
-    flagged = get_trade_suggestions_batch(snapshots)
+    flagged = get_trade_suggestions_batch(snapshots, scorecard)
 
     if not flagged:
         print("\nGemini flagged nothing this cycle - not sending")
@@ -415,29 +538,66 @@ def main():
             "time": now.isoformat(),
         })
         call_history[coin] = history[-5:]  # capped - last 5 calls per coin, not unbounded growth
+
+        # Repeat-flag detection: is this coin+direction already an
+        # unresolved, pending call from earlier? Confirmed as a real
+        # pattern (HEI LONG flagged 5 times in 15 minutes with no
+        # acknowledgment any prior one was still open) - flagged
+        # visibly, not silently suppressed, same principle as the
+        # whipsaw warning above.
+        if g.get("take_trade"):
+            pending_minutes = find_pending_same_direction(ledger, coin, g.get("direction"), now)
+            if pending_minutes is not None:
+                g["repeat_warning"] = f"already have a pending {g.get('direction', '').upper()} call on {coin} from {pending_minutes:.0f} min ago"
+            # Recorded regardless of repeat status - a genuine
+            # continuation call is still real information, just
+            # flagged so the person can judge whether it's fresh
+            # conviction or the same extended move re-described.
+            ledger.append({
+                "coin": coin, "direction": g.get("direction"),
+                "entry_price": g.get("entry_price"), "stop_loss": g.get("stop_loss"),
+                "target_price": g.get("target_price"), "trade_amount_inr": g.get("trade_amount_inr"),
+                "max_loss_this_trade_inr": g.get("max_loss_this_trade_inr"),
+                "conviction": g.get("conviction"), "status": "pending", "time": now.isoformat(),
+            })
     state["call_history"] = call_history
+    state["ledger"] = ledger
 
     candle_start_utc = max(candle_times_utc)
     candle_start_ist = candle_start_utc + timedelta(hours=5, minutes=30)
     candle_close_ist = candle_start_ist + timedelta(minutes=3)
     detected_ist = now + timedelta(hours=5, minutes=30)
 
+    import html
+    net_pnl = scorecard["net_pnl_inr"]
+    pnl_str = f"+\u20b9{net_pnl}" if net_pnl >= 0 else f"-\u20b9{abs(net_pnl)}"
     lines = [f"\U0001F4CA {candle_start_ist.strftime('%H:%M')}\u2192{candle_close_ist.strftime('%H:%M')} IST "
-             f"(detected {detected_ist.strftime('%H:%M:%S')})\n"]
-    lines.append("\U0001F3AF Gemini flagged:")
+             f"(detected {detected_ist.strftime('%H:%M:%S')})"]
+    lines.append(f"Last 1h: {scorecard['total']} calls \u2014 {scorecard['target_hit']} hit target, "
+                  f"{scorecard['stop_hit']} hit stop, {scorecard['pending']} pending \u2014 net {pnl_str}")
     for coin, g in flagged.items():
         verdict = "TAKE" if g.get("take_trade") else "SKIP"
         direction = (g.get("direction") or "?").upper()
         conviction = g.get("conviction")
-        lines.append(f"  {coin} {direction} [{verdict}] conviction {conviction}/10: {g.get('reasoning', '-')}")
+        verdict_emoji = "\u2705" if verdict == "TAKE" else "\u26aa"
+        lines.append(f"\n{verdict_emoji} <b>{html.escape(coin)} {direction} \u2014 {verdict}</b> (conviction {conviction}/10)")
+        lines.append(html.escape(g.get("reasoning", "-")))
         if g.get("whipsaw_warning"):
-            lines.append(f"    \u26a0\ufe0f CONTRADICTS PRIOR CALL: {g['whipsaw_warning']}")
-        lines.append(f"    Entry {g.get('entry_price')} | SL {g.get('stop_loss')} | Target {g.get('target_price')}")
-        lines.append(f"    Amount \u20b9{g.get('trade_amount_inr')} (risking \u20b9{g.get('max_loss_this_trade_inr')} of \u20b91500 max, scaled to conviction)")
-        if g.get("fee_drag_pct") is not None:
-            lines.append(f"    Fees \u2248\u20b9{g.get('estimated_fee_inr')} ({g['fee_drag_pct']}% of \u20b9{g.get('gross_profit_at_target_inr')} gross target profit) \u2192 net \u20b9{g.get('net_profit_at_target_inr')}")
+            lines.append(f"\u26a0\ufe0f Contradicts prior call: {html.escape(g['whipsaw_warning'])}")
+        if g.get("repeat_warning"):
+            lines.append(f"\U0001F501 {html.escape(g['repeat_warning'])} - still unresolved, not a fresh signal")
+        lines.append(f"Entry {g.get('entry_price')} | SL {g.get('stop_loss')} | Target {g.get('target_price')}")
+        lines.append(f"Amount \u20b9{g.get('trade_amount_inr')} (risk \u20b9{g.get('max_loss_this_trade_inr')})")
+        # Fee math only shown when actually noteworthy - a healthy
+        # trade's fee breakdown is backup detail, not something that
+        # needs displaying every single time. Still ALWAYS computed
+        # and enforced (the fee_override check above runs regardless
+        # of whether this line is shown), just not always surfaced.
         if g.get("fee_override"):
-            lines.append("    \u26a0 downgraded to SKIP - fees would consume most of the potential profit")
+            lines.append(f"\u26a0 Downgraded to SKIP \u2014 fees (\u20b9{g.get('estimated_fee_inr')}) would eat "
+                          f"{g.get('fee_drag_pct')}% of the \u20b9{g.get('gross_profit_at_target_inr')} target profit")
+        elif g.get("fee_drag_pct", 0) and g["fee_drag_pct"] > 15:
+            lines.append(f"\u26a0 Fees \u2248{g['fee_drag_pct']}% of target profit (net \u20b9{g.get('net_profit_at_target_inr')})")
     message = "\n".join(lines)
 
     reply_markup = {"inline_keyboard": [

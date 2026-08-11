@@ -42,7 +42,9 @@ MAX_LOSS_RUPEES = 1500
 # potential profit even survives round-trip costs.
 TAKER_FEE_RATE = 0.00075
 
-SYSTEM_PROMPT = """Trade-scanning assistant for crypto futures on CoinDCX. You receive an ARRAY of ALL currently tracked coins, every single scan cycle (roughly every 3 minutes) - NOT pre-filtered by any trend/strength logic. For each coin you get only raw, descriptive data: latest close, ATR (volatility), RVOL and its percentile rank against that coin's own history, plain momentum (% price change over the last 5/20/60 3m candles - just arithmetic, not an indicator), and TIERED candle history at decreasing resolution the further back in time it goes - candles_3m_last_1h (full 3m detail, most recent hour), candles_15m_last_7h (next several hours), candles_1h_rest_of_24h (rest of the day), and candles_1d_last_30d (daily candles, 30-day context). No direction, trend verdict, or strategy signal is supplied, and no rule is given for which numbers should agree or how - that judgment, entirely, is yours to make.
+SYSTEM_PROMPT = """Trade-scanning assistant for crypto futures on CoinDCX. You receive a JSON object with two parts every scan cycle (roughly every 3 minutes): "coins" - an array of ALL currently tracked coins, NOT pre-filtered by any trend/strength logic, and optionally "recent_performance_last_1h" - real, code-verified outcomes of your own recent calls (total flagged, how many actually hit target, how many hit stop, how many are still pending, and net INR result). This performance data is NOT something you tracked yourself - you have no memory between calls - it's computed independently from actual subsequent price action, so trust it completely; it is ground truth about how your recent judgment has actually performed, not a self-report. If recent performance has been poor (more stops than targets, negative net), that's a real reason to be MORE selective this cycle, not something to disregard because "this setup is different."
+
+For each coin in "coins" you get only raw, descriptive data: latest close, ATR (volatility), RVOL and its percentile rank against that coin's own history, plain momentum (% price change over the last 5/20/60 3m candles - just arithmetic, not an indicator), and TIERED candle history at decreasing resolution the further back in time it goes - candles_3m_last_1h (full 3m detail, most recent hour), candles_15m_last_7h (next several hours), candles_1h_rest_of_24h (rest of the day), and candles_1d_last_30d (daily candles, 30-day context). No direction, trend verdict, or strategy signal is supplied, and no rule is given for which numbers should agree or how - that judgment, entirely, is yours to make.
 
 Only flag genuinely high-quality, high-conviction opportunities. Do not flag marginal, borderline, or small setups just because one number happens to look elevated - that produces noise, not useful signals. Flagging nothing is the correct, expected outcome most cycles; only flag when you'd actually stand behind it. take_trade: true is a higher bar than simply being worth mentioning - if you're flagging a coin mainly because something looks unusual but you're not genuinely confident, set take_trade: false and say so, rather than defaulting to true.
 
@@ -81,13 +83,16 @@ def get_gemini_keys():
     return list(dict.fromkeys(keys))  # de-duplicate, preserve order
 
 
-def build_batch_prompt(signals):
+def build_batch_prompt(signals, scorecard=None):
     """signals: list of raw coin snapshots from build_coin_snapshot -
     every tracked coin, every cycle, NOT pre-filtered. No direction,
     no trend verdict, no prescribed combination of which numbers
     should agree - just raw descriptive numbers, the tiered candle
     context, and (when available) this coin's own prior-call context
-    so Gemini can genuinely self-correct rather than reason blind."""
+    so Gemini can genuinely self-correct rather than reason blind.
+    scorecard: optional aggregate stats over the trailing 1h -
+    computed deterministically by code, not something Gemini tracks
+    or is asked to remember itself."""
     payload = []
     for s in signals:
         entry = {
@@ -108,7 +113,10 @@ def build_batch_prompt(signals):
         if s.get("prior_call"):
             entry["prior_call"] = s["prior_call"]
         payload.append(entry)
-    return json.dumps(payload)
+    wrapped = {"coins": payload}
+    if scorecard:
+        wrapped["recent_performance_last_1h"] = scorecard
+    return json.dumps(wrapped)
 
 
 def call_gemini_once(api_key, user_prompt):
@@ -232,14 +240,17 @@ def _compute_position_size(parsed):
     return parsed
 
 
-def get_trade_suggestions_batch(signals):
+def get_trade_suggestions_batch(signals, scorecard=None):
     """ONE Gemini call covering every signal given. Returns a dict
     {coin: suggestion}, keyed by the 'coin' field Gemini echoed back -
     matching by name rather than trusting array order, since a model
     could in principle reorder or drop an entry. Returns {} if signals
     is empty, no keys are configured, or every key fails - callers
     should treat a missing coin key as 'no suggestion available',
-    never as an implicit skip/take decision."""
+    never as an implicit skip/take decision. scorecard: optional dict
+    from compute_scorecard - real trades-in/target-hit/stop-hit/net-P&L
+    over the trailing window, computed deterministically by code (not
+    asked of Gemini, which has no memory and no way to verify it)."""
     if not signals:
         return {}
     keys = get_gemini_keys()
@@ -247,7 +258,7 @@ def get_trade_suggestions_batch(signals):
         print("  Gemini: no keys configured (GEMINI_API_KEYS), skipping batch suggestion")
         return {}
 
-    user_prompt = build_batch_prompt(signals)
+    user_prompt = build_batch_prompt(signals, scorecard)
     expected_coins = {s["coin"] for s in signals}
     last_error = None
 
