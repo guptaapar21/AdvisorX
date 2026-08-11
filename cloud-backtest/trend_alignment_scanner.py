@@ -45,6 +45,8 @@ Usage:
 import argparse
 import json
 import os
+import tempfile
+import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
@@ -53,7 +55,7 @@ import numpy as np
 import requests
 
 from coindcx_fetcher import fetch_coindcx_klines, resample_candles
-from gemini_advisor import get_trade_suggestions_batch, TAKER_FEE_RATE
+from gemini_advisor import get_trade_suggestions_batch, TAKER_FEE_RATE, USDT_INR_RATE
 
 VALID_POSITION_ACTIONS = {"hold", "exit_now", "tighten_stop", "move_target"}
 
@@ -76,16 +78,57 @@ FETCH_MINUTES_BACK = 15 * 65
 MESSAGE_INTERVAL_MINUTES = 1
 
 
+STATE_BACKUP_FILE = STATE_FILE + ".bak"
+
 def load_state():
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE) as f:
-            return json.load(f)
+    for path in (STATE_FILE, STATE_BACKUP_FILE):
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"  State WARNING: unable to load {path}: {e}")
     return {"coins": {}, "last_sent_at": None}
 
 
 def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2, default=str)
+    """Atomically persist scanner state so a killed write cannot corrupt it."""
+    directory = os.path.dirname(os.path.abspath(STATE_FILE)) or "."
+    fd, temp_path = tempfile.mkstemp(prefix=".trend_scanner_state_", suffix=".tmp", dir=directory, text=True)
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(state, f, indent=2, default=str)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.path.exists(STATE_FILE):
+            try:
+                shutil.copy2(STATE_FILE, STATE_BACKUP_FILE)
+            except OSError as e:
+                print(f"  State WARNING: backup copy failed ({e}); continuing with atomic replacement")
+        os.replace(temp_path, STATE_FILE)
+    except Exception:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+        raise
+
+
+def utc_datetime(value):
+    """Parse persisted timestamps and normalize them to timezone-aware UTC."""
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        dt = datetime.fromisoformat(str(value))
+    if dt.tzinfo is None:
+        # Legacy state was written as UTC-naive; interpret it as UTC.
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def now_utc():
+    return datetime.now(timezone.utc)
 
 
 def send_telegram(text, reply_markup=None, parse_mode="HTML"):
@@ -106,10 +149,12 @@ def send_telegram(text, reply_markup=None, parse_mode="HTML"):
 def drop_still_forming_bucket(candles, now, bar_minutes):
     if len(candles) == 0:
         return candles
-    if now.tzinfo is not None:
-        now = now.replace(tzinfo=None)
+    # CoinDCX resampled indexes are UTC-naive. Keep persisted/application
+    # timestamps timezone-aware, but compare against this data index as
+    # UTC-naive at the boundary.
+    now_naive_utc = utc_datetime(now).replace(tzinfo=None)
     last_bucket_start = candles.index[-1]
-    if last_bucket_start + pd.Timedelta(minutes=bar_minutes) > now:
+    if last_bucket_start + pd.Timedelta(minutes=bar_minutes) > now_naive_utc:
         return candles.iloc[:-1]
     return candles
 
@@ -180,7 +225,7 @@ def resolve_ledger(ledger, fetched, now):
     stays pending. Mutates and returns the ledger, pruning anything
     older than LEDGER_MAX_AGE_HOURS regardless of status so it doesn't
     grow unbounded."""
-    now_naive = now.replace(tzinfo=None) if now.tzinfo is not None else now
+    now_utc_value = utc_datetime(now)
     for entry in ledger:
         if entry["status"] != "pending":
             continue
@@ -196,7 +241,7 @@ def resolve_ledger(ledger, fetched, now):
         # scorecard, and never retried since it can never resolve.
         entry_price = entry.get("entry_price")
         trade_amount = entry.get("trade_amount_inr")
-        if not entry_price or entry_price <= 0 or not trade_amount or trade_amount <= 0:
+        if not entry_price or entry_price <= 0 or not trade_amount or trade_amount <= 0 or USDT_INR_RATE <= 0:
             print(f"  Ledger WARNING: {entry.get('coin')} entry marked invalid "
                   f"(entry_price={entry_price}, trade_amount_inr={trade_amount}) - excluding from resolution")
             entry["status"] = "invalid"
@@ -206,7 +251,7 @@ def resolve_ledger(ledger, fetched, now):
         if coin not in fetched:
             continue
         candles_3m, _, _ = fetched[coin]
-        call_time = datetime.fromisoformat(entry["time"]).replace(tzinfo=None)
+        call_time = utc_datetime(entry["time"])
         # If Gemini has since revised the stop/target (tighten_stop /
         # move_target), only apply the CURRENT stop/target to candles
         # from the revision onward - never retroactively, since the
@@ -215,20 +260,18 @@ def resolve_ledger(ledger, fetched, now):
         # (otherwise this entry wouldn't still be pending).
         effective_start = call_time
         if entry.get("revised_at"):
-            revised_at = datetime.fromisoformat(entry["revised_at"]).replace(tzinfo=None)
+            revised_at = utc_datetime(entry["revised_at"])
             effective_start = max(call_time, revised_at)
-        since = candles_3m[candles_3m.index > effective_start]
+        candle_start = effective_start.replace(tzinfo=None)
+        since = candles_3m[candles_3m.index > candle_start]
         if since.empty:
             continue
         direction = entry["direction"]
         target, stop = entry["target_price"], entry["stop_loss"]
-        quantity = trade_amount / entry_price
-        # Round-trip fee (entry + exit), same rate already shown
-        # per-trade at flag time - confirmed as a real gap: the
-        # scorecard's realized_pnl_inr was previously gross, never
-        # deducting this, while the individual trade message already
-        # shows fee-adjusted net figures. Paid regardless of outcome,
-        # so it always makes the result worse, never better.
+        quantity = trade_amount / (entry_price * USDT_INR_RATE) if USDT_INR_RATE > 0 else None
+        # trade_amount_inr is the INR notional. Quantity is coin units;
+        # P&L is converted from USDT to INR using the same explicit FX rate
+        # used during sizing.
         round_trip_fee = trade_amount * TAKER_FEE_RATE * 2
         for _, row in since.iterrows():
             if direction == "long":
@@ -243,17 +286,19 @@ def resolve_ledger(ledger, fetched, now):
                 # the stop, not the target - understating P&L is the
                 # safer direction to be wrong in here.
                 entry["status"] = "stop_hit"
-                entry["resolved_pnl"] = round(-entry["max_loss_this_trade_inr"] - round_trip_fee, 2)
+                stop_loss_inr = quantity * abs(stop - entry_price) * USDT_INR_RATE
+                entry["resolved_pnl"] = round(-stop_loss_inr - round_trip_fee, 2)
                 entry["resolved_time"] = str(row.name)
                 break
             if target_hit:
                 entry["status"] = "target_hit"
-                entry["resolved_pnl"] = round(quantity * abs(target - entry_price) - round_trip_fee, 2)
+                entry["resolved_pnl"] = round(quantity * abs(target - entry_price) * USDT_INR_RATE - round_trip_fee, 2)
                 entry["resolved_time"] = str(row.name)
                 break
             if stop_hit:
                 entry["status"] = "stop_hit"
-                entry["resolved_pnl"] = round(-entry["max_loss_this_trade_inr"] - round_trip_fee, 2)
+                stop_loss_inr = quantity * abs(stop - entry_price) * USDT_INR_RATE
+                entry["resolved_pnl"] = round(-stop_loss_inr - round_trip_fee, 2)
                 entry["resolved_time"] = str(row.name)
                 break
         else:
@@ -270,21 +315,21 @@ def resolve_ledger(ledger, fetched, now):
             # a genuine target/stop hit would be misleading even
             # though its P&L still counts toward REALIZED per explicit
             # instruction.
-            age_hours = (now_naive - call_time).total_seconds() / 3600
+            age_hours = (now_utc_value - call_time).total_seconds() / 3600
             if age_hours >= EXPIRY_HOURS:
                 last_price = float(since["close"].iloc[-1])
                 if direction == "long":
-                    pnl = quantity * (last_price - entry_price)
+                    pnl = quantity * (last_price - entry_price) * USDT_INR_RATE
                 else:
-                    pnl = quantity * (entry_price - last_price)
+                    pnl = quantity * (entry_price - last_price) * USDT_INR_RATE
                 entry["status"] = "expired"
                 entry["resolved_pnl"] = round(pnl - round_trip_fee, 2)
                 entry["resolved_time"] = str(since.index[-1])
                 print(f"  Ledger: {entry.get('coin')} {direction.upper()} expired after {age_hours:.1f}h, "
                       f"closed at {last_price} (pnl={entry['resolved_pnl']})")
 
-    cutoff = now_naive - timedelta(hours=LEDGER_MAX_AGE_HOURS)
-    return [e for e in ledger if datetime.fromisoformat(e["time"]).replace(tzinfo=None) > cutoff]
+    cutoff = now_utc_value - timedelta(hours=LEDGER_MAX_AGE_HOURS)
+    return [e for e in ledger if utc_datetime(e["time"]) > cutoff]
 
 
 def compute_scorecard(ledger, now, window_hours=1, current_prices=None):
@@ -304,9 +349,9 @@ def compute_scorecard(ledger, now, window_hours=1, current_prices=None):
     from data already fetched this cycle - no extra API calls);
     without it, unrealized P&L simply is not computed rather than
     guessed."""
-    now_naive = now.replace(tzinfo=None) if now.tzinfo is not None else now
-    cutoff = now_naive - timedelta(hours=window_hours)
-    window = [e for e in ledger if datetime.fromisoformat(e["time"]).replace(tzinfo=None) > cutoff]
+    now_utc_value = utc_datetime(now)
+    cutoff = now_utc_value - timedelta(hours=window_hours)
+    window = [e for e in ledger if utc_datetime(e["time"]) > cutoff]
     target_hit = [e for e in window if e["status"] == "target_hit"]
     stop_hit = [e for e in window if e["status"] == "stop_hit"]
     expired = [e for e in window if e["status"] == "expired"]
@@ -330,13 +375,15 @@ def compute_scorecard(ledger, now, window_hours=1, current_prices=None):
             current_price = current_prices.get(entry["coin"])
             entry_price = entry.get("entry_price")
             trade_amount = entry.get("trade_amount_inr")
-            if not current_price or not entry_price or entry_price <= 0 or not trade_amount:
+            if not current_price or not entry_price or entry_price <= 0 or not trade_amount or USDT_INR_RATE <= 0:
                 continue  # same validation standard as resolve_ledger - skip rather than guess on bad data
-            quantity = trade_amount / entry_price
+            quantity = trade_amount / (entry_price * USDT_INR_RATE) if USDT_INR_RATE > 0 else None
+            if quantity is None:
+                continue
             if entry["direction"] == "long":
-                unrealized_pnl += quantity * (current_price - entry_price)
+                unrealized_pnl += quantity * (current_price - entry_price) * USDT_INR_RATE
             else:
-                unrealized_pnl += quantity * (entry_price - current_price)
+                unrealized_pnl += quantity * (entry_price - current_price) * USDT_INR_RATE
     unrealized_pnl = round(unrealized_pnl, 2)
 
     return {
@@ -357,7 +404,7 @@ def build_open_position_context(ledger, current_prices, now):
     trade_amount_inr, same validation standard as resolve_ledger -
     Gemini should never be asked to review a position built on
     already-invalid data."""
-    now_naive = now.replace(tzinfo=None) if now.tzinfo is not None else now
+    now_utc_value = utc_datetime(now)
     positions = []
     for entry in ledger:
         if entry["status"] != "pending":
@@ -366,16 +413,18 @@ def build_open_position_context(ledger, current_prices, now):
         current_price = current_prices.get(coin)
         entry_price = entry.get("entry_price")
         trade_amount = entry.get("trade_amount_inr")
-        if not current_price or not entry_price or entry_price <= 0 or not trade_amount:
+        if not current_price or not entry_price or entry_price <= 0 or not trade_amount or USDT_INR_RATE <= 0:
             continue
-        quantity = trade_amount / entry_price
+        quantity = trade_amount / (entry_price * USDT_INR_RATE) if USDT_INR_RATE > 0 else None
         direction = entry["direction"]
+        if quantity is None:
+            continue
         if direction == "long":
-            unrealized_pnl = quantity * (current_price - entry_price)
+            unrealized_pnl = quantity * (current_price - entry_price) * USDT_INR_RATE
         else:
-            unrealized_pnl = quantity * (entry_price - current_price)
-        call_time = datetime.fromisoformat(entry["time"]).replace(tzinfo=None)
-        minutes_open = round((now_naive - call_time).total_seconds() / 60, 1)
+            unrealized_pnl = quantity * (entry_price - current_price) * USDT_INR_RATE
+        call_time = utc_datetime(entry["time"])
+        minutes_open = round((now_utc_value - call_time).total_seconds() / 60, 1)
         positions.append({
             "coin": coin,
             "direction": direction,
@@ -400,7 +449,7 @@ def apply_position_updates(ledger, position_updates, current_prices, now):
     defaults to holding - same behavior as an explicit "hold", just
     silent, since a missing entry is a Gemini-response gap, not a
     signal."""
-    now_naive = now.replace(tzinfo=None) if now.tzinfo is not None else now
+    now_utc_value = utc_datetime(now)
     summaries = []
     for entry in ledger:
         if entry["status"] != "pending":
@@ -410,6 +459,11 @@ def apply_position_updates(ledger, position_updates, current_prices, now):
         if not update:
             continue
         action = update.get("action")
+        update_direction = update.get("direction")
+        if update_direction and update_direction != entry.get("direction"):
+            print(f"  Gemini: position update for {coin} rejected - direction mismatch "
+                  f"({update_direction} vs open {entry.get('direction')})")
+            continue
         if action not in VALID_POSITION_ACTIONS:
             print(f"  Gemini: unrecognized position action '{action}' for {coin}, treating as hold")
             continue
@@ -420,15 +474,15 @@ def apply_position_updates(ledger, position_updates, current_prices, now):
             current_price = current_prices.get(coin)
             entry_price = entry.get("entry_price")
             trade_amount = entry.get("trade_amount_inr")
-            if not current_price or not entry_price or entry_price <= 0 or not trade_amount:
-                print(f"  Gemini: exit_now for {coin} skipped - missing/invalid price or trade data")
+            if not current_price or not entry_price or entry_price <= 0 or not trade_amount or USDT_INR_RATE <= 0:
+                print(f"  Gemini: exit_now for {coin} skipped - missing/invalid price, trade data, or FX rate")
                 continue
-            quantity = trade_amount / entry_price
+            quantity = trade_amount / (entry_price * USDT_INR_RATE)
             round_trip_fee = trade_amount * TAKER_FEE_RATE * 2
             if entry["direction"] == "long":
-                pnl = quantity * (current_price - entry_price)
+                pnl = quantity * (current_price - entry_price) * USDT_INR_RATE
             else:
-                pnl = quantity * (entry_price - current_price)
+                pnl = quantity * (entry_price - current_price) * USDT_INR_RATE
             entry["status"] = "gemini_exit"
             entry["resolved_pnl"] = round(pnl - round_trip_fee, 2)
             entry["resolved_time"] = now.isoformat()
@@ -444,6 +498,18 @@ def apply_position_updates(ledger, position_updates, current_prices, now):
             if new_stop is None:
                 print(f"  Gemini: tighten_stop for {coin} missing updated_stop_loss, ignoring")
                 continue
+            current_price = current_prices.get(coin)
+            old_stop = entry.get("stop_loss")
+            if not current_price or old_stop is None or new_stop <= 0:
+                print(f"  Gemini: tighten_stop for {coin} rejected - invalid price/stop")
+                continue
+            if entry["direction"] == "long":
+                valid = old_stop <= new_stop < current_price
+            else:
+                valid = current_price < new_stop <= old_stop
+            if not valid:
+                print(f"  Gemini: tighten_stop for {coin} rejected - new stop does not tighten safely")
+                continue
             entry["stop_loss"] = new_stop
             entry["revised_at"] = now.isoformat()
             summaries.append({"coin": coin, "direction": entry["direction"], "action": "tighten_stop",
@@ -454,6 +520,18 @@ def apply_position_updates(ledger, position_updates, current_prices, now):
             new_target = update.get("updated_target_price")
             if new_target is None:
                 print(f"  Gemini: move_target for {coin} missing updated_target_price, ignoring")
+                continue
+            current_price = current_prices.get(coin)
+            old_target = entry.get("target_price")
+            if not current_price or old_target is None or new_target <= 0:
+                print(f"  Gemini: move_target for {coin} rejected - invalid price/target")
+                continue
+            if entry["direction"] == "long":
+                valid = new_target > current_price
+            else:
+                valid = new_target < current_price
+            if not valid:
+                print(f"  Gemini: move_target for {coin} rejected - target is on wrong side of current price")
                 continue
             entry["target_price"] = new_target
             entry["revised_at"] = now.isoformat()
@@ -562,7 +640,7 @@ def main():
     args = parser.parse_args()
 
     coins = [c.strip().upper() for c in args.coins.split(",")]
-    now = datetime.now(timezone.utc)
+    now = now_utc()
     state = load_state()
     if state.pop("recent_flags", None) is not None:  # orphaned key from before the rename to call_history
         save_state(state)  # persist the cleanup now, not just in memory - this is the common early-exit path below
@@ -653,7 +731,7 @@ def main():
             call_history = state.get("call_history", {}).get(coin, [])
             if call_history:
                 last_call = call_history[-1]
-                minutes_since = (now - datetime.fromisoformat(last_call["time"])).total_seconds() / 60
+                minutes_since = (now - utc_datetime(last_call["time"])).total_seconds() / 60
                 prior_entry = last_call.get("entry_price")
                 if minutes_since <= 180 and prior_entry:  # only recent calls with a real entry price are usable context
                     price_change_pct = round((snapshot["close"] - prior_entry) / prior_entry * 100, 3)
@@ -679,10 +757,13 @@ def main():
             # 3m recent detail, 15m/1h progressively coarser, 1d from
             # the daily-refreshed file (no live fetch cost for that
             # tier at all).
+            # Keep the full tracked universe, but cap historical context so
+            # the batch request scales predictably with coin count and does
+            # not bury the latest 3m candles in the middle of a huge prompt.
             snapshot["ctx_3m"] = candles_to_compact(candles_3m.tail(20))
-            snapshot["ctx_15m"] = candles_to_compact(candles_15m.tail(28))
-            snapshot["ctx_1h"] = candles_to_compact(candles_1h.tail(16))
-            snapshot["ctx_daily_30d"] = daily_candles.get(coin, [])
+            snapshot["ctx_15m"] = candles_to_compact(candles_15m.tail(20))
+            snapshot["ctx_1h"] = candles_to_compact(candles_1h.tail(12))
+            snapshot["ctx_daily_30d"] = daily_candles.get(coin, [])[-20:]
 
             snapshots.append(snapshot)
             print(f"  {coin}: close={snapshot['close']} rvol={snapshot['rvol']} "
@@ -719,7 +800,15 @@ def main():
     # matching the "don't spam" preference. position_updates is
     # reviewed regardless, since managing existing risk isn't
     # optional the way flagging a new entry is.
-    flagged, position_updates = get_trade_suggestions_batch(snapshots, scorecard, open_positions)
+    gemini_ok, flagged, position_updates = get_trade_suggestions_batch(snapshots, scorecard, open_positions)
+
+    if not gemini_ok:
+        # Gemini outage is NOT equivalent to a successful "no signal" result.
+        # Keep this candle unacknowledged so the next workflow run can retry.
+        state["ledger"] = ledger
+        save_state(state)
+        print("  Gemini unavailable/invalid this cycle - candle remains unacknowledged for retry")
+        return
 
     # Apply hold/exit_now/tighten_stop/move_target decisions to the
     # ledger BEFORE recomputing the scorecard, so anything closed via
@@ -782,7 +871,7 @@ def main():
         history = call_history.get(coin, [])
         if history:
             prior = history[-1]
-            prior_time = datetime.fromisoformat(prior["time"])
+            prior_time = utc_datetime(prior["time"])
             minutes_since = (now - prior_time).total_seconds() / 60
             if minutes_since <= WHIPSAW_WINDOW_MINUTES and prior["direction"] != g.get("direction"):
                 g["whipsaw_warning"] = (f"reverses {prior['direction'].upper()} call from "
@@ -820,7 +909,7 @@ def main():
 
             existing = find_pending_same_direction(ledger, coin, g.get("direction"), now)
             if existing is not None:
-                minutes_ago = (now.replace(tzinfo=None) - datetime.fromisoformat(existing["time"]).replace(tzinfo=None)).total_seconds() / 60
+                minutes_ago = (utc_datetime(now) - utc_datetime(existing["time"])).total_seconds() / 60
                 g["repeat_warning"] = f"already have a pending {g.get('direction', '').upper()} call on {coin} from {minutes_ago:.0f} min ago"
                 # Do NOT rewrite entry_price/stop_loss/target_price -
                 # confirmed directly as a real bug: resolution scans
@@ -840,6 +929,7 @@ def main():
                     "coin": coin, "direction": g.get("direction"),
                     "entry_price": g.get("entry_price"), "stop_loss": g.get("stop_loss"),
                     "target_price": g.get("target_price"), "trade_amount_inr": g.get("trade_amount_inr"),
+                    "quantity": g.get("quantity"),
                     "max_loss_this_trade_inr": g.get("max_loss_this_trade_inr"),
                     "conviction": g.get("conviction"), "status": "pending", "time": now.isoformat(),
                     # Persisted so a later cycle's open-position review

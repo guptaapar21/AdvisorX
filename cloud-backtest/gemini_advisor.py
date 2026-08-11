@@ -29,7 +29,7 @@ import time
 import requests
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
-GEMINI_TIMEOUT_SECONDS = 45  # longer than the single-signal version's 30s - one call now covers multiple coins' worth of candle data
+GEMINI_TIMEOUT_SECONDS = 30  # longer than the single-signal version's 30s - one call now covers multiple coins' worth of candle data
 MAX_LOSS_RUPEES = 1500
 # CoinDCX standard futures taker fee - confirmed directly from
 # coindcx.com's own blog (not a third-party estimate), checked August
@@ -40,7 +40,14 @@ MAX_LOSS_RUPEES = 1500
 # that might not get filled in time. Re-verify if CoinDCX changes
 # pricing - this directly affects whether a low-conviction trade's
 # potential profit even survives round-trip costs.
-TAKER_FEE_RATE = 0.00075
+TAKER_FEE_RATE = float(os.environ.get("TAKER_FEE_RATE", "0.00075"))
+# Crypto futures prices/contract values are quoted in USDT, while the
+# risk budget and user-facing amounts are INR. Never silently assume a
+# 1:1 conversion. Configure this explicitly in the workflow environment.
+USDT_INR_RATE = float(os.environ.get("USDT_INR_RATE", "0"))
+MAX_NOTIONAL_INR = float(os.environ.get("MAX_NOTIONAL_INR", "100000"))
+MIN_RR = float(os.environ.get("MIN_RR", "1.5"))
+MAX_STOP_PCT = float(os.environ.get("MAX_STOP_PCT", "0.08"))
 
 SYSTEM_PROMPT = """Trade-scanning assistant for crypto futures on CoinDCX. You receive a JSON object with up to three parts every scan cycle (roughly every 3 minutes): "coins" - an array of ALL currently tracked coins, NOT pre-filtered by any trend/strength logic, "open_positions" - trades you (a prior call, not this one - you have no memory) previously flagged that are still open and unresolved, needing a hold/exit/adjust decision this cycle, and optionally "recent_performance_last_24h" - real, code-verified outcomes of your own recent calls over the trailing 24 hours. This performance data is NOT something you tracked yourself - you have no memory between calls - it's computed independently from actual subsequent price action and current market prices, so trust it completely; it is ground truth about how your recent judgment has actually performed, not a self-report.
 
@@ -194,15 +201,50 @@ def _normalize_item(item):
     return normalized
 
 
+def _validate_trade_geometry(parsed):
+    """Deterministic safety gate for Gemini's proposed trade levels.
+
+    Gemini supplies judgment; Python owns the non-negotiable geometry.
+    Returns (ok, reason)."""
+    direction = parsed.get("direction")
+    entry = parsed.get("entry_price")
+    stop = parsed.get("stop_loss")
+    target = parsed.get("target_price")
+
+    if direction not in {"long", "short"}:
+        return False, "invalid direction"
+    if any(v is None for v in (entry, stop, target)):
+        return False, "entry/stop/target missing"
+    if any(not isinstance(v, (int, float)) or not (v > 0) for v in (entry, stop, target)):
+        return False, "entry/stop/target must be positive numbers"
+
+    if direction == "long":
+        if not (stop < entry < target):
+            return False, "LONG requires stop < entry < target"
+    else:
+        if not (target < entry < stop):
+            return False, "SHORT requires target < entry < stop"
+
+    stop_pct = abs(entry - stop) / entry
+    if stop_pct > MAX_STOP_PCT:
+        return False, f"stop distance {stop_pct:.2%} exceeds MAX_STOP_PCT {MAX_STOP_PCT:.2%}"
+
+    reward = abs(target - entry)
+    risk = abs(entry - stop)
+    rr = reward / risk if risk > 0 else 0
+    if rr < MIN_RR:
+        return False, f"risk/reward {rr:.2f} below MIN_RR {MIN_RR:.2f}"
+
+    return True, "ok"
+
+
 def _compute_position_size(parsed):
-    """Position size is calculated here, not by Gemini - it no longer
-    even attempts trade_amount_inr. Directly addresses a real design
-    flaw: previously every flagged trade was sized to the SAME full
-    max loss regardless of how confident Gemini actually was, which
-    doesn't make sense as risk management - a marginal, low-conviction
-    flag was risking exactly as much capital as a high-conviction one.
-    Now risk scales with Gemini's own stated conviction (1-10): a
-    conviction of 3 risks 30% of MAX_LOSS_RUPEES, not the full amount."""
+    """Convert INR risk into crypto quantity using an explicit USDT/INR rate.
+
+    Risk is always calculated in INR, quantity is in coin units, and
+    notional/fees are converted back to INR. If the FX rate is not configured,
+    the trade is forced to SKIP rather than silently using a wrong unit.
+    """
     conviction = parsed.get("conviction")
     try:
         conviction = int(conviction)
@@ -214,53 +256,57 @@ def _compute_position_size(parsed):
         conviction = 1
     parsed["conviction"] = conviction
 
-    entry = parsed.get("entry_price")
-    stop = parsed.get("stop_loss")
-    max_loss_this_trade = round(MAX_LOSS_RUPEES * conviction / 10, 2)
-    parsed["max_loss_this_trade_inr"] = max_loss_this_trade
+    max_loss_inr = round(MAX_LOSS_RUPEES * conviction / 10, 2)
+    parsed["max_loss_this_trade_inr"] = max_loss_inr
 
-    trade_amount_inr = None
-    if entry is not None and stop is not None and entry != stop:
-        # quantity (units) needed so a stop-loss hit loses
-        # ~max_loss_this_trade, converted to the rupee position size
-        # by multiplying by entry price - not the quantity number
-        # itself. Confirmed directly in an earlier round: quantity
-        # alone (e.g. ~375,000 units) is not a rupee amount; the real
-        # position size is quantity * entry.
-        quantity = max_loss_this_trade / abs(entry - stop)
-        trade_amount_inr = round(quantity * entry, 2)
-    parsed["trade_amount_inr"] = trade_amount_inr
+    ok, reason = _validate_trade_geometry(parsed)
+    if not ok:
+        parsed["take_trade"] = False
+        parsed["risk_validation_error"] = reason
+        parsed["trade_amount_inr"] = None
+        print(f"  Risk gate: {parsed.get('coin')} forced to SKIP - {reason}")
+        return parsed
 
-    # Fee-drag check: does the potential profit even survive real
-    # transaction costs? This is EXACTLY the recurring pattern that
-    # has killed every backtested idea in this project's history -
-    # "gross positive, net negative due to fees" - and low-conviction
-    # trades are the most exposed, since a small position size can
-    # mean the round-trip fee eats most or all of a modest profit
-    # target regardless of whether the direction call is even right.
-    # CoinDCX's own published standard futures taker fee is 0.075%
-    # (confirmed directly from coindcx.com) - applied on BOTH entry
-    # and exit since a fast intraday reversal trade needs immediate
-    # fills, not resting limit orders that might not get filled.
-    target = parsed.get("target_price")
-    if entry is not None and target is not None and trade_amount_inr and quantity:
-        gross_profit_inr = round(quantity * abs(target - entry), 2)
-        round_trip_fee_inr = round(trade_amount_inr * TAKER_FEE_RATE * 2, 2)
-        net_profit_inr = round(gross_profit_inr - round_trip_fee_inr, 2)
-        parsed["gross_profit_at_target_inr"] = gross_profit_inr
-        parsed["estimated_fee_inr"] = round_trip_fee_inr
-        parsed["net_profit_at_target_inr"] = net_profit_inr
-        if gross_profit_inr > 0:
-            fee_drag_pct = round(round_trip_fee_inr / gross_profit_inr * 100, 1)
-            parsed["fee_drag_pct"] = fee_drag_pct
-            if fee_drag_pct > 50 and parsed.get("take_trade"):
-                print(f"  Fee check: {parsed.get('coin')} take_trade forced to False - "
-                      f"round-trip fees (\u20b9{round_trip_fee_inr}) would consume {fee_drag_pct}% "
-                      f"of the \u20b9{gross_profit_inr} gross profit at target")
-                parsed["take_trade"] = False
-                parsed["fee_override"] = True
+    if USDT_INR_RATE <= 0:
+        parsed["take_trade"] = False
+        parsed["risk_validation_error"] = "USDT_INR_RATE is not configured"
+        parsed["trade_amount_inr"] = None
+        print(f"  Risk gate: {parsed.get('coin')} forced to SKIP - USDT_INR_RATE is not configured")
+        return parsed
+
+    entry = float(parsed["entry_price"])
+    stop = float(parsed["stop_loss"])
+    target = float(parsed["target_price"])
+    risk_per_unit_inr = abs(entry - stop) * USDT_INR_RATE
+    quantity = max_loss_inr / risk_per_unit_inr
+    trade_amount_inr = quantity * entry * USDT_INR_RATE
+    parsed["quantity"] = quantity
+    parsed["trade_amount_inr"] = round(trade_amount_inr, 2)
+
+    if trade_amount_inr > MAX_NOTIONAL_INR:
+        parsed["take_trade"] = False
+        parsed["risk_validation_error"] = (
+            f"notional ₹{trade_amount_inr:,.2f} exceeds MAX_NOTIONAL_INR ₹{MAX_NOTIONAL_INR:,.2f}"
+        )
+        print(f"  Risk gate: {parsed.get('coin')} forced to SKIP - {parsed['risk_validation_error']}")
+
+    gross_profit_inr = quantity * abs(target - entry) * USDT_INR_RATE
+    round_trip_fee_inr = trade_amount_inr * TAKER_FEE_RATE * 2
+    net_profit_inr = gross_profit_inr - round_trip_fee_inr
+    parsed["gross_profit_at_target_inr"] = round(gross_profit_inr, 2)
+    parsed["estimated_fee_inr"] = round(round_trip_fee_inr, 2)
+    parsed["net_profit_at_target_inr"] = round(net_profit_inr, 2)
+
+    if gross_profit_inr > 0:
+        fee_drag_pct = round(round_trip_fee_inr / gross_profit_inr * 100, 1)
+        parsed["fee_drag_pct"] = fee_drag_pct
+        if fee_drag_pct > 50 and parsed.get("take_trade"):
+            parsed["take_trade"] = False
+            parsed["fee_override"] = True
+            parsed["risk_validation_error"] = "round-trip fees exceed 50% of gross target profit"
+            print(f"  Fee check: {parsed.get('coin')} forced to SKIP - fees consume {fee_drag_pct}% of target profit")
+
     return parsed
-
 
 def _normalize_position_update(item):
     """Same coercion purpose as _normalize_item, for the smaller
@@ -295,17 +341,18 @@ def get_trade_suggestions_batch(signals, scorecard=None, open_positions=None):
     still treat a missing coin key as 'no update available' (default
     to holding), never as an implicit exit.
 
-    Returns ({}, {}) if signals is empty, no keys are configured, or
-    every key fails. scorecard: optional dict from compute_scorecard -
+    Returns (success, new_signals, position_updates). success=False means
+    Gemini was unavailable/invalid and the caller must not treat that as
+    a successful no-signal cycle. scorecard: optional dict from compute_scorecard -
     real trades-in/target-hit/stop-hit/net-P&L over the trailing
     window, computed deterministically by code (not asked of Gemini,
     which has no memory and no way to verify it)."""
     if not signals:
-        return {}, {}
+        return True, {}, {}
     keys = get_gemini_keys()
     if not keys:
         print("  Gemini: no keys configured (GEMINI_API_KEYS), skipping batch suggestion")
-        return {}, {}
+        return False, {}, {}
 
     user_prompt = build_batch_prompt(signals, scorecard, open_positions)
     expected_coins = {s["coin"] for s in signals}
@@ -313,8 +360,9 @@ def get_trade_suggestions_batch(signals, scorecard=None, open_positions=None):
     last_error = None
 
     # Overall time budget across ALL key attempts combined - not just
-    # a per-key timeout. Confirmed directly: 12 keys x 45s each could
-    # take up to 540s (9 min) worst case, dangerously close to this
+    # a per-key timeout. With a 30s per-call timeout, the 90s budget
+    # permits up to three full attempts before stopping key rotation.
+    # This prevents a transient outage from consuming the workflow timeout.
     # workflow's 10-minute total timeout. A hard GH Actions kill at
     # that point skips save_state entirely, which is exactly the
     # failure mode the send/save-ordering fix elsewhere was built to
@@ -401,7 +449,7 @@ def get_trade_suggestions_batch(signals, scorecard=None, open_positions=None):
             # is normal, not a sign of a failed/incomplete response.
             print(f"  Gemini: flagged {len(result)} of {len(expected_coins)} coins this cycle, "
                   f"reviewed {len(position_updates)} of {len(expected_position_coins)} open positions")
-            return result, position_updates
+            return True, result, position_updates
         except json.JSONDecodeError as e:
             last_error = f"unparseable JSON: {e}"
             continue
@@ -412,4 +460,4 @@ def get_trade_suggestions_batch(signals, scorecard=None, open_positions=None):
             continue
 
     print(f"  Gemini: all {len(keys)} key(s) failed for batch call - {last_error}")
-    return {}, {}
+    return False, {}, {}
