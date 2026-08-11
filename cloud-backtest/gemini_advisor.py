@@ -42,7 +42,9 @@ MAX_LOSS_RUPEES = 1500
 # potential profit even survives round-trip costs.
 TAKER_FEE_RATE = 0.00075
 
-SYSTEM_PROMPT = """Trade-scanning assistant for crypto futures on CoinDCX. You receive a JSON object with two parts every scan cycle (roughly every 3 minutes): "coins" - an array of ALL currently tracked coins, NOT pre-filtered by any trend/strength logic, and optionally "recent_performance_last_24h" - real, code-verified outcomes of your own recent calls over the trailing 24 hours. This performance data is NOT something you tracked yourself - you have no memory between calls - it's computed independently from actual subsequent price action and current market prices, so trust it completely; it is ground truth about how your recent judgment has actually performed, not a self-report.
+SYSTEM_PROMPT = """Trade-scanning assistant for crypto futures on CoinDCX. You receive a JSON object with up to three parts every scan cycle (roughly every 3 minutes): "coins" - an array of ALL currently tracked coins, NOT pre-filtered by any trend/strength logic, "open_positions" - trades you (a prior call, not this one - you have no memory) previously flagged that are still open and unresolved, needing a hold/exit/adjust decision this cycle, and optionally "recent_performance_last_24h" - real, code-verified outcomes of your own recent calls over the trailing 24 hours. This performance data is NOT something you tracked yourself - you have no memory between calls - it's computed independently from actual subsequent price action and current market prices, so trust it completely; it is ground truth about how your recent judgment has actually performed, not a self-report.
+
+Each entry in "open_positions" gives you: coin, direction, the entry/stop/target it was opened with, your own original reasoning for that call (verbatim, so you can judge whether that thesis still holds), how many minutes it's been open, current price, and current unrealized P&L in INR. This is a genuinely different judgment from scanning "coins" for new setups: here you're asking "is my original thesis still valid, given what price has actually done since" - not "is this a good entry right now."
 
 Fields in recent_performance_last_24h: total (all calls in the window), target_hit (genuinely reached the target price), stop_hit (genuinely reached the stop price), expired (never reached either within 2 hours, closed at whatever price it was at when the window ran out - a real but different kind of outcome than a clean target/stop hit), pending (still open, unresolved), abandoned_or_invalid (calls superseded by a later reversal on the same coin, or excluded due to malformed data - not a performance signal either way). realized_pnl_inr is money already locked in (target_hit + stop_hit + expired combined, net of round-trip fees). unrealized_pnl_inr is a live mark-to-market estimate on still-pending positions - not locked in, can still move either way. total_pnl_inr is both combined.
 
@@ -66,8 +68,16 @@ Do NOT compute trade_amount_inr yourself - position sizing is calculated separat
 
 No backtested win-rate exists for any of this - it's your independent judgment on raw data, not a validated edge.
 
-Respond with ONLY a JSON array - empty if nothing this cycle meets your own bar for quality, containing only the coins worth mentioning otherwise, no markdown fences, no other text:
-[{{"coin": "string", "direction": "long"|"short", "take_trade": bool, "conviction": integer, "reasoning": "string", "entry_price": number, "stop_loss": number, "target_price": number}}, ...]""".format(max_loss=MAX_LOSS_RUPEES)
+For each entry in "open_positions" you get, decide one action:
+1. "hold" - thesis still looks valid, no change. Leave updated_stop_loss/updated_target_price null.
+2. "exit_now" - thesis has broken down (invalidated by what price/candles have actually done since entry, not just "it hasn't hit target yet") - this closes the position immediately at current market price, code-side, the moment you return this. Only use this when you'd genuinely rather be flat than keep holding - it is a real, immediate exit, not a soft warning.
+3. "tighten_stop" - thesis still valid but you want to reduce risk; give updated_stop_loss (updated_target_price can stay null).
+4. "move_target" - thesis still valid but you want to adjust the profit objective; give updated_target_price (updated_stop_loss can stay null).
+Always include reasoning for the action, referencing what's actually changed since entry (or explicitly that nothing has and it's still holding). Do not use exit_now or tighten_stop just because a position is currently at a small unrealized loss - that's normal noise, not thesis invalidation; use it only when the specific reason you entered no longer holds.
+
+Respond with ONLY a JSON object, no markdown fences, no other text, in this exact shape:
+{{"new_signals": [{{"coin": "string", "direction": "long"|"short", "take_trade": bool, "conviction": integer, "reasoning": "string", "entry_price": number, "stop_loss": number, "target_price": number}}, ...], "position_updates": [{{"coin": "string", "direction": "long"|"short", "action": "hold"|"exit_now"|"tighten_stop"|"move_target", "updated_stop_loss": number|null, "updated_target_price": number|null, "reasoning": "string"}}, ...]}}
+new_signals is empty if nothing this cycle meets your own bar for quality (the normal case). position_updates must include exactly one entry for every coin given in "open_positions" - never omit one, since a missing entry there means it silently keeps whatever it already has with no signal either way.""".format(max_loss=MAX_LOSS_RUPEES)
 
 
 def get_gemini_keys():
@@ -87,7 +97,7 @@ def get_gemini_keys():
     return list(dict.fromkeys(keys))  # de-duplicate, preserve order
 
 
-def build_batch_prompt(signals, scorecard=None):
+def build_batch_prompt(signals, scorecard=None, open_positions=None):
     """signals: list of raw coin snapshots from build_coin_snapshot -
     every tracked coin, every cycle, NOT pre-filtered. No direction,
     no trend verdict, no prescribed combination of which numbers
@@ -96,7 +106,13 @@ def build_batch_prompt(signals, scorecard=None):
     so Gemini can genuinely self-correct rather than reason blind.
     scorecard: optional aggregate stats over the trailing 24h -
     computed deterministically by code, not something Gemini tracks
-    or is asked to remember itself."""
+    or is asked to remember itself. open_positions: optional list of
+    dicts (from build_open_position_context in the caller) - the
+    still-pending ledger entries Gemini itself previously flagged,
+    given back with their original entry/stop/target/reasoning plus
+    current price/P&L so Gemini can judge whether to hold, exit, or
+    adjust - a genuinely separate decision from scanning "coins" for
+    fresh setups."""
     payload = []
     for s in signals:
         entry = {
@@ -118,6 +134,8 @@ def build_batch_prompt(signals, scorecard=None):
             entry["prior_call"] = s["prior_call"]
         payload.append(entry)
     wrapped = {"coins": payload}
+    if open_positions:
+        wrapped["open_positions"] = open_positions
     if scorecard:
         wrapped["recent_performance_last_24h"] = scorecard
     return json.dumps(wrapped)
@@ -244,26 +262,54 @@ def _compute_position_size(parsed):
     return parsed
 
 
-def get_trade_suggestions_batch(signals, scorecard=None):
-    """ONE Gemini call covering every signal given. Returns a dict
-    {coin: suggestion}, keyed by the 'coin' field Gemini echoed back -
-    matching by name rather than trusting array order, since a model
-    could in principle reorder or drop an entry. Returns {} if signals
-    is empty, no keys are configured, or every key fails - callers
-    should treat a missing coin key as 'no suggestion available',
-    never as an implicit skip/take decision. scorecard: optional dict
-    from compute_scorecard - real trades-in/target-hit/stop-hit/net-P&L
-    over the trailing window, computed deterministically by code (not
-    asked of Gemini, which has no memory and no way to verify it)."""
+def _normalize_position_update(item):
+    """Same coercion purpose as _normalize_item, for the smaller
+    position_updates schema: action as a bare lowercase string
+    (guards against 'Exit_Now' / 'EXIT_NOW' silently failing an exact
+    equality check downstream), updated_stop_loss/updated_target_price
+    as floats or None."""
+    normalized = dict(item)
+    if normalized.get("action"):
+        normalized["action"] = str(normalized["action"]).strip().lower()
+    if normalized.get("direction"):
+        normalized["direction"] = str(normalized["direction"]).strip().lower()
+    for field in ("updated_stop_loss", "updated_target_price"):
+        val = normalized.get(field)
+        normalized[field] = float(val) if val not in (None, "", "null") else None
+    return normalized
+
+
+def get_trade_suggestions_batch(signals, scorecard=None, open_positions=None):
+    """ONE Gemini call covering every signal given, PLUS a hold/exit/
+    adjust review of every still-open position handed in via
+    open_positions. Returns (new_signals, position_updates) - two
+    dicts keyed by the 'coin' field Gemini echoed back, matching by
+    name rather than trusting array order, since a model could in
+    principle reorder or drop an entry.
+
+    new_signals: {coin: suggestion} for fresh setups from "coins" -
+    same shape/meaning as this function returned before open-position
+    review existed.
+    position_updates: {coin: update} for entries from open_positions -
+    always expected to cover every coin passed in, but callers should
+    still treat a missing coin key as 'no update available' (default
+    to holding), never as an implicit exit.
+
+    Returns ({}, {}) if signals is empty, no keys are configured, or
+    every key fails. scorecard: optional dict from compute_scorecard -
+    real trades-in/target-hit/stop-hit/net-P&L over the trailing
+    window, computed deterministically by code (not asked of Gemini,
+    which has no memory and no way to verify it)."""
     if not signals:
-        return {}
+        return {}, {}
     keys = get_gemini_keys()
     if not keys:
         print("  Gemini: no keys configured (GEMINI_API_KEYS), skipping batch suggestion")
-        return {}
+        return {}, {}
 
-    user_prompt = build_batch_prompt(signals, scorecard)
+    user_prompt = build_batch_prompt(signals, scorecard, open_positions)
     expected_coins = {s["coin"] for s in signals}
+    expected_position_coins = {p["coin"] for p in open_positions} if open_positions else set()
     last_error = None
 
     # Overall time budget across ALL key attempts combined - not just
@@ -290,13 +336,26 @@ def get_trade_suggestions_batch(signals, scorecard=None):
             text = text.strip()
             if text.startswith("```"):
                 text = text.strip("`").lstrip("json").strip()
-            parsed_list = json.loads(text)
-            if not isinstance(parsed_list, list):
-                last_error = f"expected a JSON array, got {type(parsed_list).__name__}"
+            parsed = json.loads(text)
+
+            # Backward-compat: a bare array (the pre-open-position-
+            # review response shape) is treated as new_signals only,
+            # with no position_updates - so an old/misbehaving model
+            # response doesn't hard-fail the whole cycle.
+            if isinstance(parsed, list):
+                new_signals_raw, position_updates_raw = parsed, []
+            elif isinstance(parsed, dict):
+                new_signals_raw = parsed.get("new_signals", [])
+                position_updates_raw = parsed.get("position_updates", [])
+                if not isinstance(new_signals_raw, list) or not isinstance(position_updates_raw, list):
+                    last_error = "new_signals/position_updates were not arrays"
+                    continue
+            else:
+                last_error = f"expected a JSON object or array, got {type(parsed).__name__}"
                 continue
 
             result = {}
-            for item in parsed_list:
+            for item in new_signals_raw:
                 coin = item.get("coin")
                 if coin not in expected_coins:
                     print(f"  Gemini: response included unexpected coin '{coin}', ignoring")
@@ -316,13 +375,33 @@ def get_trade_suggestions_batch(signals, scorecard=None):
                     print(f"  Gemini: skipping malformed item for '{coin}' ({e})")
                     continue
 
-            # No "missing coins" warning here - Gemini is EXPECTED to
-            # omit most coins every cycle under this design (only
-            # flagging ones worth mentioning), so an empty or partial
-            # result relative to the full input list is normal, not a
-            # sign of a failed/incomplete response.
-            print(f"  Gemini: flagged {len(result)} of {len(expected_coins)} coins this cycle")
-            return result
+            position_updates = {}
+            for item in position_updates_raw:
+                coin = item.get("coin")
+                if coin not in expected_position_coins:
+                    print(f"  Gemini: position update for unexpected coin '{coin}', ignoring")
+                    continue
+                try:
+                    position_updates[coin] = _normalize_position_update(item)
+                except (TypeError, ValueError) as e:
+                    print(f"  Gemini: skipping malformed position update for '{coin}' ({e})")
+                    continue
+            missing_positions = expected_position_coins - set(position_updates)
+            if missing_positions:
+                # Not fatal - caller defaults a missing coin to "hold"
+                # - but surfaced since the prompt explicitly asks for
+                # one entry per open position and a gap here is worth
+                # knowing about.
+                print(f"  Gemini: no position update returned for {sorted(missing_positions)}, defaulting to hold")
+
+            # No "missing coins" warning for new_signals - Gemini is
+            # EXPECTED to omit most coins every cycle under this
+            # design (only flagging ones worth mentioning), so an
+            # empty or partial result relative to the full input list
+            # is normal, not a sign of a failed/incomplete response.
+            print(f"  Gemini: flagged {len(result)} of {len(expected_coins)} coins this cycle, "
+                  f"reviewed {len(position_updates)} of {len(expected_position_coins)} open positions")
+            return result, position_updates
         except json.JSONDecodeError as e:
             last_error = f"unparseable JSON: {e}"
             continue
@@ -333,4 +412,4 @@ def get_trade_suggestions_batch(signals, scorecard=None):
             continue
 
     print(f"  Gemini: all {len(keys)} key(s) failed for batch call - {last_error}")
-    return {}
+    return {}, {}

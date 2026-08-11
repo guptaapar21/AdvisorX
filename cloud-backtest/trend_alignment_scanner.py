@@ -55,6 +55,8 @@ import requests
 from coindcx_fetcher import fetch_coindcx_klines, resample_candles
 from gemini_advisor import get_trade_suggestions_batch, TAKER_FEE_RATE
 
+VALID_POSITION_ACTIONS = {"hold", "exit_now", "tighten_stop", "move_target"}
+
 STATE_FILE = "trend_scanner_state.json"
 RVOL_PERCENTILE_FILE = "rvol_percentiles.json"
 DAILY_CANDLES_FILE = "daily_candles_30d.json"
@@ -205,7 +207,17 @@ def resolve_ledger(ledger, fetched, now):
             continue
         candles_3m, _, _ = fetched[coin]
         call_time = datetime.fromisoformat(entry["time"]).replace(tzinfo=None)
-        since = candles_3m[candles_3m.index > call_time]
+        # If Gemini has since revised the stop/target (tighten_stop /
+        # move_target), only apply the CURRENT stop/target to candles
+        # from the revision onward - never retroactively, since the
+        # levels in effect on earlier candles were the original ones,
+        # and those already didn't trigger in prior cycles' checks
+        # (otherwise this entry wouldn't still be pending).
+        effective_start = call_time
+        if entry.get("revised_at"):
+            revised_at = datetime.fromisoformat(entry["revised_at"]).replace(tzinfo=None)
+            effective_start = max(call_time, revised_at)
+        since = candles_3m[candles_3m.index > effective_start]
         if since.empty:
             continue
         direction = entry["direction"]
@@ -298,13 +310,19 @@ def compute_scorecard(ledger, now, window_hours=1, current_prices=None):
     target_hit = [e for e in window if e["status"] == "target_hit"]
     stop_hit = [e for e in window if e["status"] == "stop_hit"]
     expired = [e for e in window if e["status"] == "expired"]
+    # gemini_exit: closed early on Gemini's own hold/exit review of an
+    # open position (thesis judged invalidated), not because target,
+    # stop, or the 2h expiry clock was actually touched - a third,
+    # distinct kind of resolution alongside target/stop/expiry.
+    gemini_exit = [e for e in window if e["status"] == "gemini_exit"]
     pending = [e for e in window if e["status"] == "pending"]
     abandoned_or_invalid = [e for e in window if e["status"] in ("abandoned", "invalid")]
-    # Expired trades' P&L counts toward realized (per explicit
-    # instruction) - closed at mark-to-market when the 2h window ran
-    # out, so it's a real, locked-in number, just not from genuinely
-    # touching the actual target/stop price.
-    realized_pnl = round(sum(e.get("resolved_pnl", 0) for e in target_hit + stop_hit + expired), 2)
+    # Expired and gemini_exit trades' P&L counts toward realized (per
+    # explicit instruction) - closed at mark-to-market (at the 2h
+    # clock or at Gemini's exit call, respectively), so it's a real,
+    # locked-in number, just not from genuinely touching the actual
+    # target/stop price.
+    realized_pnl = round(sum(e.get("resolved_pnl", 0) for e in target_hit + stop_hit + expired + gemini_exit), 2)
 
     unrealized_pnl = 0.0
     if current_prices:
@@ -323,10 +341,126 @@ def compute_scorecard(ledger, now, window_hours=1, current_prices=None):
 
     return {
         "total": len(window), "target_hit": len(target_hit), "stop_hit": len(stop_hit),
-        "expired": len(expired), "pending": len(pending), "abandoned_or_invalid": len(abandoned_or_invalid),
+        "expired": len(expired), "gemini_exit": len(gemini_exit), "pending": len(pending),
+        "abandoned_or_invalid": len(abandoned_or_invalid),
         "realized_pnl_inr": realized_pnl,
         "unrealized_pnl_inr": unrealized_pnl, "total_pnl_inr": round(realized_pnl + unrealized_pnl, 2),
     }
+
+
+def build_open_position_context(ledger, current_prices, now):
+    """Builds the 'open_positions' payload sent back to Gemini: every
+    still-pending ledger entry whose coin has fresh data this cycle,
+    with its original entry/stop/target/reasoning (so Gemini can judge
+    whether ITS OWN thesis still holds) plus current price and live
+    unrealized P&L. Skips entries missing a usable entry_price/
+    trade_amount_inr, same validation standard as resolve_ledger -
+    Gemini should never be asked to review a position built on
+    already-invalid data."""
+    now_naive = now.replace(tzinfo=None) if now.tzinfo is not None else now
+    positions = []
+    for entry in ledger:
+        if entry["status"] != "pending":
+            continue
+        coin = entry["coin"]
+        current_price = current_prices.get(coin)
+        entry_price = entry.get("entry_price")
+        trade_amount = entry.get("trade_amount_inr")
+        if not current_price or not entry_price or entry_price <= 0 or not trade_amount:
+            continue
+        quantity = trade_amount / entry_price
+        direction = entry["direction"]
+        if direction == "long":
+            unrealized_pnl = quantity * (current_price - entry_price)
+        else:
+            unrealized_pnl = quantity * (entry_price - current_price)
+        call_time = datetime.fromisoformat(entry["time"]).replace(tzinfo=None)
+        minutes_open = round((now_naive - call_time).total_seconds() / 60, 1)
+        positions.append({
+            "coin": coin,
+            "direction": direction,
+            "entry_price": entry_price,
+            "stop_loss": entry.get("stop_loss"),
+            "target_price": entry.get("target_price"),
+            "original_reasoning": entry.get("reasoning"),
+            "minutes_open": minutes_open,
+            "current_price": current_price,
+            "unrealized_pnl_inr": round(unrealized_pnl, 2),
+        })
+    return positions
+
+
+def apply_position_updates(ledger, position_updates, current_prices, now):
+    """Applies Gemini's hold/exit_now/tighten_stop/move_target
+    decisions to the matching pending ledger entries in place. Returns
+    a list of {coin, action, reasoning, ...} summaries for the
+    Telegram message - separate from the ledger mutation itself so the
+    message-building code doesn't need to re-derive what changed.
+    A coin with no update returned (missing from position_updates)
+    defaults to holding - same behavior as an explicit "hold", just
+    silent, since a missing entry is a Gemini-response gap, not a
+    signal."""
+    now_naive = now.replace(tzinfo=None) if now.tzinfo is not None else now
+    summaries = []
+    for entry in ledger:
+        if entry["status"] != "pending":
+            continue
+        coin = entry["coin"]
+        update = position_updates.get(coin)
+        if not update:
+            continue
+        action = update.get("action")
+        if action not in VALID_POSITION_ACTIONS:
+            print(f"  Gemini: unrecognized position action '{action}' for {coin}, treating as hold")
+            continue
+        if action == "hold":
+            continue
+
+        if action == "exit_now":
+            current_price = current_prices.get(coin)
+            entry_price = entry.get("entry_price")
+            trade_amount = entry.get("trade_amount_inr")
+            if not current_price or not entry_price or entry_price <= 0 or not trade_amount:
+                print(f"  Gemini: exit_now for {coin} skipped - missing/invalid price or trade data")
+                continue
+            quantity = trade_amount / entry_price
+            round_trip_fee = trade_amount * TAKER_FEE_RATE * 2
+            if entry["direction"] == "long":
+                pnl = quantity * (current_price - entry_price)
+            else:
+                pnl = quantity * (entry_price - current_price)
+            entry["status"] = "gemini_exit"
+            entry["resolved_pnl"] = round(pnl - round_trip_fee, 2)
+            entry["resolved_time"] = now.isoformat()
+            entry["exit_reasoning"] = update.get("reasoning")
+            summaries.append({"coin": coin, "direction": entry["direction"], "action": "exit_now",
+                               "reasoning": update.get("reasoning"), "pnl": entry["resolved_pnl"]})
+            print(f"  Gemini: {coin} {entry['direction'].upper()} closed early (exit_now) at {current_price}, "
+                  f"pnl={entry['resolved_pnl']}")
+            continue
+
+        if action == "tighten_stop":
+            new_stop = update.get("updated_stop_loss")
+            if new_stop is None:
+                print(f"  Gemini: tighten_stop for {coin} missing updated_stop_loss, ignoring")
+                continue
+            entry["stop_loss"] = new_stop
+            entry["revised_at"] = now.isoformat()
+            summaries.append({"coin": coin, "direction": entry["direction"], "action": "tighten_stop",
+                               "reasoning": update.get("reasoning"), "new_stop_loss": new_stop})
+            continue
+
+        if action == "move_target":
+            new_target = update.get("updated_target_price")
+            if new_target is None:
+                print(f"  Gemini: move_target for {coin} missing updated_target_price, ignoring")
+                continue
+            entry["target_price"] = new_target
+            entry["revised_at"] = now.isoformat()
+            summaries.append({"coin": coin, "direction": entry["direction"], "action": "move_target",
+                               "reasoning": update.get("reasoning"), "new_target_price": new_target})
+            continue
+    return summaries
 
 
 def find_pending_same_direction(ledger, coin, direction, now):
@@ -571,14 +705,33 @@ def main():
         save_state(state)
         return
 
-    # ONE Gemini call per cycle, covering ALL coins together - not
-    # staged, not one call per coin. Gemini may return an empty array
-    # if nothing across all coins looks worth mentioning - in which
-    # case nothing gets sent, matching the "don't spam" preference.
-    flagged = get_trade_suggestions_batch(snapshots, scorecard)
+    # Open positions (still-pending ledger entries) get reviewed in
+    # the SAME Gemini call as fresh coins - a genuinely separate
+    # judgment ("is my thesis still valid" vs "is this a good new
+    # entry"), but one API call, same budget reasoning as the batching
+    # of coins itself.
+    open_positions = build_open_position_context(ledger, current_prices, now)
 
-    if not flagged:
-        print("\nGemini flagged nothing this cycle - sending scorecard-only update")
+    # ONE Gemini call per cycle, covering ALL coins plus ALL open
+    # positions together - not staged, not one call per coin/position.
+    # new_signals may come back empty if nothing across all coins
+    # looks worth mentioning - in which case no fresh call gets sent,
+    # matching the "don't spam" preference. position_updates is
+    # reviewed regardless, since managing existing risk isn't
+    # optional the way flagging a new entry is.
+    flagged, position_updates = get_trade_suggestions_batch(snapshots, scorecard, open_positions)
+
+    # Apply hold/exit_now/tighten_stop/move_target decisions to the
+    # ledger BEFORE recomputing the scorecard, so anything closed via
+    # exit_now this cycle is already reflected in the numbers sent to
+    # the user (and fed to Gemini again next cycle).
+    position_summaries = apply_position_updates(ledger, position_updates, current_prices, now)
+    if position_summaries:
+        scorecard = compute_scorecard(ledger, now, window_hours=24, current_prices=current_prices)
+    state["ledger"] = ledger
+
+    if not flagged and not position_summaries:
+        print("\nGemini flagged nothing and made no position changes this cycle - sending scorecard-only update")
         # Persist ledger/call_history NOW, unconditionally - confirmed
         # directly this was NOT actually saved earlier in this flow
         # (only held in memory), so without this the Telegram send
@@ -598,10 +751,14 @@ def main():
                  f"(detected {detected_ist.strftime('%H:%M:%S')})"]
         reversed_note = f", {scorecard['abandoned_or_invalid']} reversed/invalid" if scorecard["abandoned_or_invalid"] else ""
         lines.append(f"Last 24h: {scorecard['total']} calls \u2014 {scorecard['target_hit']} hit target, "
-                      f"{scorecard['stop_hit']} hit stop, {scorecard['expired']} expired, {scorecard['pending']} pending{reversed_note}")
+                      f"{scorecard['stop_hit']} hit stop, {scorecard['expired']} expired, "
+                      f"{scorecard.get('gemini_exit', 0)} closed by Gemini, {scorecard['pending']} pending{reversed_note}")
         lines.append(f"Realized {fmt_pnl(scorecard['realized_pnl_inr'])} | Unrealized {fmt_pnl(scorecard['unrealized_pnl_inr'])} "
                       f"| Total {fmt_pnl(scorecard['total_pnl_inr'])}")
-        lines.append("\nNo new signals this cycle.")
+        if open_positions:
+            lines.append(f"\nNo new signals this cycle - tracking {len(open_positions)} open position(s), all holding.")
+        else:
+            lines.append("\nNo new signals this cycle.")
         message = "\n".join(lines)
         print(f"\nSending Telegram message:\n{message}")
         try:
@@ -685,6 +842,12 @@ def main():
                     "target_price": g.get("target_price"), "trade_amount_inr": g.get("trade_amount_inr"),
                     "max_loss_this_trade_inr": g.get("max_loss_this_trade_inr"),
                     "conviction": g.get("conviction"), "status": "pending", "time": now.isoformat(),
+                    # Persisted so a later cycle's open-position review
+                    # (build_open_position_context) can hand Gemini its
+                    # own original reasoning back - without this it has
+                    # no way to judge whether its own thesis still
+                    # holds, since it has no memory between calls.
+                    "reasoning": g.get("reasoning"),
                 })
     state["call_history"] = call_history
     state["ledger"] = ledger
@@ -701,9 +864,29 @@ def main():
              f"(detected {detected_ist.strftime('%H:%M:%S')})"]
     reversed_note = f", {scorecard['abandoned_or_invalid']} reversed/invalid" if scorecard["abandoned_or_invalid"] else ""
     lines.append(f"Last 24h: {scorecard['total']} calls \u2014 {scorecard['target_hit']} hit target, "
-                  f"{scorecard['stop_hit']} hit stop, {scorecard['expired']} expired, {scorecard['pending']} pending{reversed_note}")
+                  f"{scorecard['stop_hit']} hit stop, {scorecard['expired']} expired, "
+                  f"{scorecard.get('gemini_exit', 0)} closed by Gemini, {scorecard['pending']} pending{reversed_note}")
     lines.append(f"Realized {fmt_pnl(scorecard['realized_pnl_inr'])} | Unrealized {fmt_pnl(scorecard['unrealized_pnl_inr'])} "
                   f"| Total {fmt_pnl(scorecard['total_pnl_inr'])}")
+
+    # Position management this cycle - exits/adjustments on positions
+    # Gemini itself flagged earlier, shown separately from fresh
+    # new_signals below since it's a different kind of update (managing
+    # existing risk, not proposing a new trade).
+    if position_summaries:
+        lines.append("\n\U0001F4CB Position updates:")
+        for ps in position_summaries:
+            direction = (ps.get("direction") or "?").upper()
+            if ps["action"] == "exit_now":
+                lines.append(f"\U0001F6AA <b>{html.escape(ps['coin'])} {direction} \u2014 CLOSED</b> "
+                              f"({fmt_pnl(ps.get('pnl', 0))})")
+            elif ps["action"] == "tighten_stop":
+                lines.append(f"\U0001F53B <b>{html.escape(ps['coin'])} {direction}</b> \u2014 stop tightened to {ps.get('new_stop_loss')}")
+            elif ps["action"] == "move_target":
+                lines.append(f"\U0001F3AF <b>{html.escape(ps['coin'])} {direction}</b> \u2014 target moved to {ps.get('new_target_price')}")
+            if ps.get("reasoning"):
+                lines.append(html.escape(ps["reasoning"]))
+
     for coin, g in flagged.items():
         verdict = "TAKE" if g.get("take_trade") else "SKIP"
         direction = (g.get("direction") or "?").upper()
@@ -729,9 +912,10 @@ def main():
             lines.append(f"\u26a0 Fees \u2248{g['fee_drag_pct']}% of target profit (net \u20b9{g.get('net_profit_at_target_inr')})")
     message = "\n".join(lines)
 
+    chart_coins = list(flagged) + [ps["coin"] for ps in position_summaries if ps["coin"] not in flagged]
     reply_markup = {"inline_keyboard": [
         [{"text": f"\U0001F4C8 {coin} chart", "url": f"https://coindcx.com/futures/B-{coin}_USDT"}]
-        for coin in flagged
+        for coin in chart_coins
     ]}
 
     # Persist call_history NOW, separately from the send-success state
