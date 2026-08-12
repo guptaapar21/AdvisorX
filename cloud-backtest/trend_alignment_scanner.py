@@ -182,6 +182,16 @@ def compute_raw_stats(candles):
 
     for n in (5, 20, 60):
         candles[f"momentum_pct_{n}"] = (candles["close"] / candles["close"].shift(n) - 1) * 100
+        candles[f"momentum_accel_{n}"] = candles[f"momentum_pct_{n}"] - candles[f"momentum_pct_{n}"].shift(3)
+
+    # Candle anatomy: body/wick/range geometry and close location.
+    candle_range = (candles["high"] - candles["low"]).replace(0, np.nan)
+    candles["candle_range_pct"] = candle_range / candles["open"].replace(0, np.nan) * 100
+    candles["upper_wick_pct"] = (candles["high"] - candles[["open", "close"]].max(axis=1)) / candles["open"].replace(0, np.nan) * 100
+    candles["lower_wick_pct"] = (candles[["open", "close"]].min(axis=1) - candles["low"]) / candles["open"].replace(0, np.nan) * 100
+    candles["body_to_range"] = (candles["close"] - candles["open"]).abs() / candle_range
+    candles["close_location_in_range"] = (candles["close"] - candles["low"]) / candle_range
+    candles["volume_acceleration_3"] = candles["volume"] / candles["volume"].rolling(3).mean().shift(1).replace(0, np.nan)
 
     return candles
 
@@ -318,6 +328,33 @@ def _break_events(df, labelled, lookback=80):
     return events[-8:]
 
 
+def _break_followthrough(df, events, bars=5):
+    """Measure what happened AFTER each confirmed structural break.
+    This is descriptive only: it never creates a trade direction.
+    """
+    out=[]
+    for ev in events[-5:]:
+        bt=pd.Timestamp(ev["break_time"])
+        after=df[df.index>bt].head(bars)
+        if after.empty:
+            ev2=dict(ev); ev2.update({"followthrough_bars":0,"followthrough_close_pct":None,"followthrough_volume_avg_ratio":None})
+            out.append(ev2); continue
+        entry=float(ev["break_close"])
+        direction=ev["direction"]
+        last_close=float(after["close"].iloc[-1])
+        close_move=(last_close-entry)/entry*100
+        if direction=="bearish": close_move=-close_move
+        prior_vol=df.loc[df.index<=bt,"volume"].tail(20).mean()
+        avg_follow_vol=float(after["volume"].mean()) if len(after) else None
+        ev2=dict(ev); ev2.update({
+            "followthrough_bars":int(len(after)),
+            "followthrough_close_pct":round(close_move,3),
+            "followthrough_volume_avg_ratio":round(avg_follow_vol/prior_vol,2) if prior_vol and avg_follow_vol else None,
+        })
+        out.append(ev2)
+    return out
+
+
 def _range_context(df, labelled):
     if len(df) < 30:
         return {"candidate":False}
@@ -404,6 +441,7 @@ def _tf_structure(df, label, pivot_left=2, pivot_right=2):
     for ev in events:
         if st["bias"]=="bullish" and ev["direction"]=="bearish": ev["type"]="CHoCH"
         elif st["bias"]=="bearish" and ev["direction"]=="bullish": ev["type"]="CHoCH"
+    events = _break_followthrough(d, events, bars=5)
     last=d.iloc[-1]
     ema9=float(last["ema9"]) if not pd.isna(last["ema9"]) else None
     ema21=float(last["ema21"]) if not pd.isna(last["ema21"]) else None
@@ -442,6 +480,15 @@ def _tf_structure(df, label, pivot_left=2, pivot_right=2):
         "volume_ratio_vs_prior20":round(vol_ratio,2) if vol_ratio is not None else None,
         "adx_slope_3bars":round(adx_slope,2) if adx_slope is not None else None,
         "exhaustion_flags":exhaustion,
+        "momentum_acceleration_5":_safe_float(d["momentum_accel_5"].iloc[-1]) if "momentum_accel_5" in d else None,
+        "momentum_acceleration_20":_safe_float(d["momentum_accel_20"].iloc[-1]) if "momentum_accel_20" in d else None,
+        "candle_body_pct":round(abs(float(last["close"])-float(last["open"])) / float(last["open"])*100,3) if float(last["open"]) else None,
+        "candle_range_pct":round((float(last["high"])-float(last["low"])) / float(last["open"])*100,3) if float(last["open"]) else None,
+        "upper_wick_pct":round((float(last["high"])-max(float(last["open"]),float(last["close"]))) / float(last["open"])*100,3) if float(last["open"]) else None,
+        "lower_wick_pct":round((min(float(last["open"]),float(last["close"]))-float(last["low"])) / float(last["open"])*100,3) if float(last["open"]) else None,
+        "body_to_range":_safe_float(d["body_to_range"].iloc[-1]) if "body_to_range" in d else None,
+        "close_location_in_range":_safe_float(d["close_location_in_range"].iloc[-1]) if "close_location_in_range" in d else None,
+        "volume_acceleration_3":_safe_float(d["volume_acceleration_3"].iloc[-1]) if "volume_acceleration_3" in d else None,
     }
 
 
@@ -824,7 +871,14 @@ def build_coin_snapshot(coin, candles_3m, candles_15m, candles_1h=None, rvol_per
         "atr14_3m": _safe_float(row.get("atr14")),"rvol": _safe_float(rvol),"rvol_label":rvol_label(rvol),
         "rvol_percentile":rvol_percentile_rank(rvol,coin_percentiles),
         "momentum_pct_5_3m":_safe_float(row.get("momentum_pct_5")),"momentum_pct_20_3m":_safe_float(row.get("momentum_pct_20")),"momentum_pct_60_3m":_safe_float(row.get("momentum_pct_60")),
+        "momentum_acceleration_5_3m":_safe_float(row.get("momentum_accel_5")),"momentum_acceleration_20_3m":_safe_float(row.get("momentum_accel_20")),
         "candle_body_pct":round(abs(float(row["close"])-float(row["open"]))/float(row["open"])*100,3) if float(row["open"]) else None,
+        "candle_range_pct":round((float(row["high"])-float(row["low"]))/float(row["open"])*100,3) if float(row["open"]) else None,
+        "upper_wick_pct":round((float(row["high"])-max(float(row["open"]),float(row["close"]))) / float(row["open"])*100,3) if float(row["open"]) else None,
+        "lower_wick_pct":round((min(float(row["open"]),float(row["close"]))-float(row["low"])) / float(row["open"])*100,3) if float(row["open"]) else None,
+        "body_to_range":_safe_float(row.get("body_to_range")),
+        "close_location_in_range":_safe_float(row.get("close_location_in_range")),
+        "volume_acceleration_3":_safe_float(row.get("volume_acceleration_3")),
         "candle_direction":"green" if float(row["close"])>float(row["open"]) else ("red" if float(row["close"])<float(row["open"]) else "doji"),
         "market_structure":structure,
         "ctx_3m":candles_to_compact(candles_3m.tail(40)),
@@ -876,6 +930,26 @@ def _build_message(candle_start_utc,now,scorecard,scan_stats=None,stale=None,pos
             if g.get('take_trade'): lines.append(f"Amount ₹{g.get('trade_amount_inr')} (risk ₹{g.get('max_loss_this_trade_inr')})")
     if not flagged and not position_summaries and not stale: lines.append("\nNo new signals this cycle.")
     return "\n".join(lines)
+
+
+def build_market_context(snapshots):
+    """Cross-coin context built only from already-fetched snapshots.
+    No extra API calls. BTC is treated as the reference market only, never as
+    an automatic trade direction. Breadth describes how broad the current move is.
+    """
+    btc=next((s for s in snapshots if s.get("coin")=="BTC"),None)
+    if btc:
+        btc_m5=btc.get("momentum_pct_5_3m"); btc_m20=btc.get("momentum_pct_20_3m"); btc_m60=btc.get("momentum_pct_60_3m")
+        btc_regime=btc.get("market_structure",{}).get("market_regime")
+    else:
+        btc_m5=btc_m20=btc_m60=None; btc_regime=None
+    valid=[s for s in snapshots if s.get("momentum_pct_20_3m") is not None]
+    positive=sum(1 for s in valid if s["momentum_pct_20_3m"]>0)
+    negative=sum(1 for s in valid if s["momentum_pct_20_3m"]<0)
+    return {
+        "btc_reference": {"regime":btc_regime,"momentum_pct_5_3m":btc_m5,"momentum_pct_20_3m":btc_m20,"momentum_pct_60_3m":btc_m60},
+        "breadth": {"coins_with_positive_20c_momentum":positive,"coins_with_negative_20c_momentum":negative,"coins_measured":len(valid),"positive_pct":round(positive/len(valid)*100,1) if valid else None},
+    }
 
 
 def main():
@@ -937,6 +1011,19 @@ def main():
             snapshots.append(snap); fresh_coins.append(coin)
         except Exception as e:
             print(f"  {coin}: snapshot error ({e})"); stale.append(coin); stale_reasons[coin]=f"snapshot error: {e}"
+
+    # Build cross-market context from this cycle's already-fetched universe.
+    # Feed it to Gemini for every coin, while keeping direction discretionary.
+    market_context=build_market_context(snapshots)
+    btc_ref=market_context.get("btc_reference",{})
+    for snap in snapshots:
+        m5=snap.get("momentum_pct_5_3m"); m20=snap.get("momentum_pct_20_3m"); m60=snap.get("momentum_pct_60_3m")
+        snap["relative_strength_vs_btc"]={
+            "momentum_diff_5":round(m5-btc_ref["momentum_pct_5_3m"],3) if m5 is not None and btc_ref.get("momentum_pct_5_3m") is not None else None,
+            "momentum_diff_20":round(m20-btc_ref["momentum_pct_20_3m"],3) if m20 is not None and btc_ref.get("momentum_pct_20_3m") is not None else None,
+            "momentum_diff_60":round(m60-btc_ref["momentum_pct_60_3m"],3) if m60 is not None and btc_ref.get("momentum_pct_60_3m") is not None else None,
+        }
+        snap["market_context"]=market_context
 
     # Process fresh coins immediately. Stale coins are NOT allowed to block them.
     open_positions=build_open_position_context(ledger,current_prices,now)

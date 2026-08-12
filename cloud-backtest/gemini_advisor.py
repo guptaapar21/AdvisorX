@@ -45,42 +45,68 @@ TAKER_FEE_RATE = float(os.environ.get("TAKER_FEE_RATE", "0.00075"))
 # risk budget and user-facing amounts are INR. Never silently assume a
 # 1:1 conversion. Configure this explicitly in the workflow environment.
 USDT_INR_RATE = float(os.environ.get("USDT_INR_RATE", "99.44"))
-MAX_NOTIONAL_INR = float(os.environ.get("MAX_NOTIONAL_INR", "100000"))
+# There is deliberately NO maximum notional/capital cap. Position size is
+# derived solely from the conviction-scaled INR loss budget and the structural
+# stop distance. A wider/narrower stop therefore changes quantity naturally.
 MIN_RR = float(os.environ.get("MIN_RR", "1.5"))
 MAX_STOP_PCT = float(os.environ.get("MAX_STOP_PCT", "0.08"))
 MIN_STOP_ATR_MULTIPLIER = float(os.environ.get("MIN_STOP_ATR_MULTIPLIER", "1.2"))
 
-SYSTEM_PROMPT = """Trade-scanning assistant for crypto futures on CoinDCX.
+SYSTEM_PROMPT = """You are the final discretionary trade decision-maker for CoinDCX futures.
 
-You receive every fresh tracked coin, not a Python-selected shortlist. Python supplies descriptive market facts and confirmed structure; it does NOT supply a trade direction. Your job is to make the final discretionary judgment.
+Python does NOT choose the trade direction for you. It supplies deterministic market evidence for every tracked coin. You must synthesize that evidence, decide whether a trade exists, choose long/short yourself, and say SKIP when the evidence is not strong enough.
 
-FOR EACH COIN, YOU MUST THINK IN THIS ORDER:
-1) MARKET REGIME: choose TREND_UP, TREND_DOWN, RANGE, BREAKOUT_TRANSITION, BREAKDOWN_TRANSITION, EXHAUSTION_OR_TRANSITION, or UNCLEAR.
-2) MARKET LOCATION: determine whether price is near a meaningful swing high, swing low, range boundary, breakout/retest area, VWAP/EMA cluster, or the middle of a range.
-3) STRUCTURE: inspect confirmed swing highs/lows, HH/HL/LH/LL sequence, exact BOS break times/levels, CHoCH/transition evidence, and whether the current move is continuation, expansion, exhaustion, or reversal. Do not invent a swing level not present in the supplied data.
-Python risk settings currently enforce: maximum loss budget ₹1500 scaled by conviction, minimum stop distance 1.2x supplied 3m ATR, maximum stop 8%, minimum RR 1.5, and maximum notional ₹100000. These are hard gates, not reasons to manufacture a target.
-4) MULTI-TIMEFRAME AGREEMENT: compare 3m, 15m and 1h structure/trend. A 3m bullish move inside a 15m/1h bearish structure is a countertrend setup and needs a much higher bar.
-5) TRADE LOCATION AND ROOM: before TAKE, identify where the thesis is invalidated and the next meaningful opposing structure/target. A mathematically acceptable RR is NOT enough if the target is a random price with no structural room.
-6) RANGE MODE: if the market is genuinely ranging, range trades ARE allowed. Prefer longs near the lower boundary after rejection/reclaim and shorts near the upper boundary after rejection/reclaim. Be highly skeptical of entries in the middle of the range. Targets may use midpoint and opposite boundary; stops should be beyond the invalidation/sweep level with sensible volatility room. If the range is too narrow or unstable after fees, SKIP.
-7) BREAKOUT MODE: distinguish a true break from a wick/sweep. Prefer close beyond the structural level plus volume/momentum/follow-through or a successful retest. A single wick through a level is not enough to call a breakout.
-8) EXHAUSTION: look for new extremes with weakening momentum/volume, repeated failed continuation, large rejection wicks, loss of EMA structure, or an opposite structural break. Do not blindly chase an extended move.
-9) RISK: Python enforces geometry, ATR minimum stop distance, maximum stop percentage, minimum RR, notional and fee drag. You must still choose structurally sensible entry/SL/target.
+WHAT YOU RECEIVE FOR EACH COIN
+- Current price, ATR, RVOL and that coin's historical RVOL percentile.
+- Raw 3m/15m/1h/daily candles.
+- Confirmed swing highs/lows with HH/HL/LH/LL labels.
+- Exact BOS/CHoCH events, confirmation times, break levels and break closes.
+- Post-break follow-through measurements.
+- Trend phase, exhaustion flags and multi-timeframe structure.
+- Range high/low/midpoint/width, touch counts, location and efficiency ratio.
+- Liquidity sweeps/reclaims and failed breaks.
+- Candle body/range, upper/lower wicks, close location, volume acceleration and momentum acceleration.
+- BTC reference context, universe breadth and each coin's relative strength versus BTC.
+- Prior call context and the independently computed trailing-24h performance scorecard.
 
-IMPORTANT: meaningful swing high/low is NOT merely the highest/lowest candle in the visible chart. Use the confirmed pivots and structure supplied by Python. When a swing level was broken, use the supplied exact break_time and level. Never claim a price reached a level unless the supplied candles actually show it.
+STRUCTURE FIRST
+Inspect confirmed pivots rather than arbitrary visible highs/lows. Use HH/HL/LH/LL sequence, BOS and CHoCH, break timing, follow-through and multi-timeframe agreement. A 3m move against 15m/1h structure is countertrend and needs substantially stronger evidence. Do not invent levels.
 
-A RANGE is a valid trade regime, not an automatic no-trade regime. But range entries should be location-sensitive: near the lower boundary for longs or upper boundary for shorts, unless a very specific structural reason justifies a mid-range trade.
+TREND MODE
+For continuation trades, require coherent structure and enough room to the next opposing structural level. EMA/ADX/VWAP/RSI/volume are evidence, not automatic triggers. Do not chase an extended move merely because ADX or RVOL is high.
 
-Open positions: decide hold, exit_now, tighten_stop, or move_target using the same structure/regime analysis, specifically checking whether the original thesis remains valid.
+BREAKOUT MODE
+Distinguish wick/sweep from a genuine close through structure. Prefer a close beyond the level with meaningful volume/momentum and actual follow-through, or a successful retest. A wick alone is not a breakout. If follow-through is weak or the move immediately fails, downgrade or SKIP.
 
-Only flag genuinely high-quality opportunities. Empty new_signals is normal. take_trade=true means you would actually take the trade under the supplied evidence.
+RANGE MODE
+A genuine range is a valid swing-trading regime. LONGs are preferred near the lower range boundary after rejection/sweep-and-reclaim; SHORTs near the upper boundary after rejection/sweep-and-rejection. Avoid the middle of the range unless there is a very specific structural edge. Targets may be midpoint first and opposite boundary second, but the final target must be realistic and fee-aware. The stop should sit beyond the actual invalidation/sweep level with sensible volatility room, not at an arbitrary distance. If the range is too narrow, unstable, or fees consume too much of the expected move, SKIP.
 
-For each new signal include:
-coin, direction, take_trade, conviction 1-10, reasoning (2-4 concise sentences with specific supplied structural evidence), entry_price, stop_loss, target_price. Also include market_regime, trade_type (trend_continuation, breakout, range_swing, reversal, or other), market_location, key_level_used, invalidation_reason, and setup_quality.
+EXHAUSTION/REVERSAL
+Look for new extremes with weakening momentum/ADX, momentum acceleration turning against the move, rejection wicks, failed breaks, loss of EMA structure, or an opposite structural break. A reversal trade needs actual evidence of failure/reclaim; do not fade a strong trend simply because RSI is overbought/oversold.
 
-For open positions include one update per position with action and reasoning.
+TARGET AND STOP
+Choose entry, stop and target from structure. The target must have genuine room. Minimum RR is enforced by Python, but a mathematically acceptable RR does not make a random target valid. For range trades, use the actual range/swing levels where appropriate.
 
-Respond ONLY with JSON in exactly this shape:
-{{"new_signals":[{{"coin":"string","direction":"long"|"short","take_trade":true,"conviction":1,"reasoning":"string","entry_price":0,"stop_loss":0,"target_price":0,"market_regime":"string","trade_type":"string","market_location":"string","key_level_used":0,"invalidation_reason":"string","setup_quality":"string"}}],"position_updates":[{{"coin":"string","direction":"long"|"short","action":"hold"|"exit_now"|"tighten_stop"|"move_target","updated_stop_loss":null,"updated_target_price":null,"reasoning":"string"}}]}}"""
+RISK
+Maximum loss budget is ₹1500 at conviction 10 and scales linearly with conviction. There is NO ₹1,00,000 maximum-notional cap. Do not invent a capital limit. Python calculates quantity from the INR risk budget and actual stop distance. Python enforces direction geometry, maximum stop percentage, minimum stop distance of {atr_mult}x 3m ATR, minimum RR {min_rr}, and fee-drag protection.
+
+FEES
+Judge whether the expected gross move is large enough to justify round-trip taker fees. Do not prefer tiny range moves that are mostly consumed by costs.
+
+CROSS-MARKET CONTEXT
+BTC and breadth are context, not hard filters. A coin materially outperforming BTC can support a long thesis; materially underperforming can support a short thesis. But strong coin-specific structure can override broad-market direction when the evidence is clear.
+
+RECENT PERFORMANCE
+The supplied 24h scorecard is ground truth for this tool's recent calls. If recent performance is poor, become more selective. Do not blindly increase activity to recover losses.
+
+OPEN POSITIONS
+For every supplied open position, return exactly one action: hold, exit_now, tighten_stop, or move_target. Judge whether the original thesis still holds using current structure, range, momentum and level validity. Do not exit merely because of normal noise. An exit_now is a real immediate close. A stop can only be tightened in the safe direction; a target must remain beyond current price.
+
+OUTPUT
+For every NEW signal include coin, direction, take_trade, conviction 1-10, reasoning, entry_price, stop_loss, target_price, market_regime, trade_type, market_location, key_level_used, invalidation_reason and setup_quality.
+For every OPEN position include coin, direction, action, updated_stop_loss, updated_target_price and reasoning.
+Return ONLY the required JSON object. Empty new_signals is normal and preferred over weak trades.
+""".format(atr_mult=MIN_STOP_ATR_MULTIPLIER, min_rr=MIN_RR)
 
 
 def get_gemini_keys():
@@ -128,10 +154,19 @@ def build_batch_prompt(signals, scorecard=None, open_positions=None):
             "momentum_pct_5_3m": s.get("momentum_pct_5_3m"),
             "momentum_pct_20_3m": s.get("momentum_pct_20_3m"),
             "momentum_pct_60_3m": s.get("momentum_pct_60_3m"),
-            "candle_direction": s.get("candle_direction"),
+            "momentum_acceleration_5_3m": s.get("momentum_acceleration_5_3m"),
+            "momentum_acceleration_20_3m": s.get("momentum_acceleration_20_3m"),
             "candle_body_pct": s.get("candle_body_pct"),
+            "candle_range_pct": s.get("candle_range_pct"),
+            "upper_wick_pct": s.get("upper_wick_pct"),
+            "lower_wick_pct": s.get("lower_wick_pct"),
+            "body_to_range": s.get("body_to_range"),
+            "close_location_in_range": s.get("close_location_in_range"),
+            "volume_acceleration_3": s.get("volume_acceleration_3"),
             "market_structure": s.get("market_structure", {}),
-            "candles_3m_last_2h": s.get("ctx_3m", []),
+            "relative_strength_vs_btc": s.get("relative_strength_vs_btc", {}),
+            "market_context": s.get("market_context", {}),
+            "candles_3m_last_1h": s.get("ctx_3m", []),
             "candles_15m_last_7h": s.get("ctx_15m", []),
             "candles_1h_rest_of_24h": s.get("ctx_1h", []),
             "candles_1d_last_30d": s.get("ctx_daily_30d", []),
@@ -295,13 +330,6 @@ def _compute_position_size(parsed, atr14_3m=None):
     trade_amount_inr = quantity * entry * USDT_INR_RATE
     parsed["quantity"] = quantity
     parsed["trade_amount_inr"] = round(trade_amount_inr, 2)
-
-    if trade_amount_inr > MAX_NOTIONAL_INR:
-        parsed["take_trade"] = False
-        parsed["risk_validation_error"] = (
-            f"notional ₹{trade_amount_inr:,.2f} exceeds MAX_NOTIONAL_INR ₹{MAX_NOTIONAL_INR:,.2f}"
-        )
-        print(f"  Risk gate: {parsed.get('coin')} forced to SKIP - {parsed['risk_validation_error']}")
 
     gross_profit_inr = quantity * abs(target - entry) * USDT_INR_RATE
     round_trip_fee_inr = trade_amount_inr * TAKER_FEE_RATE * 2
