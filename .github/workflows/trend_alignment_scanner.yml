@@ -1,6 +1,9 @@
 name: Trend Alignment Scanner (advisory only)
 
 on:
+  # The live scanner is triggered externally by cron-job.org every minute.
+  # Do NOT add a GitHub schedule here; that would create a second scheduler
+  # and can cause duplicate/competing runs.
   workflow_dispatch: {}
 
 permissions:

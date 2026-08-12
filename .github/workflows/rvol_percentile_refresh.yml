@@ -40,14 +40,14 @@ jobs:
           --coins BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX,HEI,BICO,HYPE,ZEC,ZBT,ADA,ACE,PAXG
           --days 30
 
-      - name: Persist percentile and daily-candle files
+      - name: Persist percentile file
         working-directory: cloud-backtest
         run: |
           git config user.name "coindcx-rvol-percentile-bot"
           git config user.email "actions@github.com"
           git add rvol_percentiles.json daily_candles_30d.json
           git diff --staged --quiet && exit 0
-          git commit -m "Refresh RVOL percentiles and daily candles [skip ci]"
+          git commit -m "Refresh RVOL percentiles and daily context [skip ci]"
           for i in 1 2 3; do
             if git push; then
               exit 0
@@ -60,7 +60,7 @@ jobs:
             git fetch origin main
             git reset --soft origin/main
             git add rvol_percentiles.json daily_candles_30d.json
-            git commit -m "Refresh RVOL percentiles and daily candles [skip ci]" --allow-empty
+            git commit -m "Refresh RVOL percentiles and daily context [skip ci]" --allow-empty
           done
-          echo "Failed to push percentile/daily-candle files after 3 attempts."
+          echo "Failed to push percentile file after 3 attempts."
           exit 1
