@@ -2,10 +2,6 @@ name: Trend Alignment Scanner (advisory only)
 
 on:
   workflow_dispatch: {}
-  # Runs every 1 minute via an external cron-job.org job (same pattern
-  # as fastwatch.yml/idea18f_live_monitor.yml) - not GitHub's native
-  # scheduler, which is unreliable at this frequency and gets disabled
-  # on inactive repos.
 
 permissions:
   contents: write
@@ -21,17 +17,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # actions/checkout can return a ref that predates the previous
-      # run's state push by a second or two. The scanner then loads
-      # stale state, sees an already-reported candle as unsent, and
-      # sends a duplicate message. Re-fetch immediately before the scan
-      # so it always reads the newest committed state.
       - name: Ensure freshest state
         run: git fetch origin main && git reset --hard origin/main
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
 
