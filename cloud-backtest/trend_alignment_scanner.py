@@ -85,35 +85,38 @@ def load_state():
         if not os.path.exists(path):
             continue
         try:
-            with open(path) as f:
-                return json.load(f)
-        except (json.JSONDecodeError, OSError) as e:
+            with open(path, encoding="utf-8") as f:
+                state=json.load(f)
+            state.setdefault("coins", {})
+            state.setdefault("call_history", {})
+            state.setdefault("ledger", [])
+            state.setdefault("last_processed_candle_time", None)
+            state.setdefault("last_sent_candle_time", None)
+            state.setdefault("pending_telegram", None)
+            return state
+        except (json.JSONDecodeError,OSError) as e:
             print(f"  State WARNING: unable to load {path}: {e}")
-    return {"coins": {}, "last_sent_at": None}
+    return {"coins":{},"last_sent_at":None,"last_content_signature":[],"last_processed_candle_time":None,"last_sent_candle_time":None,"pending_telegram":None,"call_history":{},"ledger":[]}
 
 
 def save_state(state):
-    """Atomically persist scanner state so a killed write cannot corrupt it."""
-    directory = os.path.dirname(os.path.abspath(STATE_FILE)) or "."
-    fd, temp_path = tempfile.mkstemp(prefix=".trend_scanner_state_", suffix=".tmp", dir=directory, text=True)
+    directory=os.path.dirname(os.path.abspath(STATE_FILE)) or "."
+    fd,temp_path=tempfile.mkstemp(prefix=".trend_scanner_state_",suffix=".tmp",dir=directory,text=True)
     try:
-        with os.fdopen(fd, "w") as f:
-            json.dump(state, f, indent=2, default=str)
-            f.flush()
-            os.fsync(f.fileno())
-        if os.path.exists(STATE_FILE):
-            try:
-                shutil.copy2(STATE_FILE, STATE_BACKUP_FILE)
-            except OSError as e:
-                print(f"  State WARNING: backup copy failed ({e}); continuing with atomic replacement")
-        os.replace(temp_path, STATE_FILE)
-    except Exception:
+        with os.fdopen(fd,"w",encoding="utf-8") as f:
+            json.dump(state,f,indent=2,default=str)
+            f.flush(); os.fsync(f.fileno())
+        os.replace(temp_path,STATE_FILE)
         try:
-            os.unlink(temp_path)
-        except OSError:
+            dir_fd=os.open(directory,os.O_DIRECTORY)
+            try: os.fsync(dir_fd)
+            finally: os.close(dir_fd)
+        except (AttributeError,OSError):
             pass
+    except Exception:
+        try: os.unlink(temp_path)
+        except OSError: pass
         raise
-
 
 def utc_datetime(value):
     """Parse persisted timestamps and normalize them to timezone-aware UTC."""
@@ -218,119 +221,42 @@ EXPIRY_HOURS = 2  # a pending trade that hasn't hit target or stop within this w
 
 
 def resolve_ledger(ledger, fetched, now):
-    """Checks every still-pending ledger entry against real price
-    action since it was flagged - did target or stop actually get hit
-    first, chronologically? Uses candle data already fetched this
-    cycle (no extra API calls). An entry with neither touched yet
-    stays pending. Mutates and returns the ledger, pruning anything
-    older than LEDGER_MAX_AGE_HOURS regardless of status so it doesn't
-    grow unbounded."""
-    now_utc_value = utc_datetime(now)
+    now_utc_value=utc_datetime(now)
     for entry in ledger:
-        if entry["status"] != "pending":
-            continue
-        # Validate BEFORE any arithmetic - confirmed directly as a
-        # real, serious risk: entry_price<=0 silently produces
-        # nonsensical P&L (a fake $0 "win", or a catastrophic
-        # -1,090,000 "loss" labeled as a win with a negative price),
-        # and a missing trade_amount_inr crashes this function with an
-        # uncaught TypeError - which, since this runs on the
-        # PERSISTED ledger every cycle, means one bad entry
-        # permanently breaks every future run until manually fixed.
-        # Marked "invalid" here instead - visible, excluded from the
-        # scorecard, and never retried since it can never resolve.
-        entry_price = entry.get("entry_price")
-        trade_amount = entry.get("trade_amount_inr")
-        if not entry_price or entry_price <= 0 or not trade_amount or trade_amount <= 0 or USDT_INR_RATE <= 0:
-            print(f"  Ledger WARNING: {entry.get('coin')} entry marked invalid "
-                  f"(entry_price={entry_price}, trade_amount_inr={trade_amount}) - excluding from resolution")
-            entry["status"] = "invalid"
-            continue
-
-        coin = entry["coin"]
-        if coin not in fetched:
-            continue
-        candles_3m, _, _ = fetched[coin]
-        call_time = utc_datetime(entry["time"])
-        # If Gemini has since revised the stop/target (tighten_stop /
-        # move_target), only apply the CURRENT stop/target to candles
-        # from the revision onward - never retroactively, since the
-        # levels in effect on earlier candles were the original ones,
-        # and those already didn't trigger in prior cycles' checks
-        # (otherwise this entry wouldn't still be pending).
-        effective_start = call_time
-        if entry.get("revised_at"):
-            revised_at = utc_datetime(entry["revised_at"])
-            effective_start = max(call_time, revised_at)
-        candle_start = effective_start.replace(tzinfo=None)
-        since = candles_3m[candles_3m.index > candle_start]
-        if since.empty:
-            continue
-        direction = entry["direction"]
-        target, stop = entry["target_price"], entry["stop_loss"]
-        quantity = trade_amount / (entry_price * USDT_INR_RATE) if USDT_INR_RATE > 0 else None
-        # trade_amount_inr is the INR notional. Quantity is coin units;
-        # P&L is converted from USDT to INR using the same explicit FX rate
-        # used during sizing.
-        round_trip_fee = trade_amount * TAKER_FEE_RATE * 2
-        for _, row in since.iterrows():
-            if direction == "long":
-                target_hit = row["high"] >= target
-                stop_hit = row["low"] <= stop
-            else:
-                target_hit = row["low"] <= target
-                stop_hit = row["high"] >= stop
+        if entry.get("status")!="pending": continue
+        ep=entry.get("entry_price"); amt=entry.get("trade_amount_inr")
+        if not ep or ep<=0 or not amt or amt<=0 or USDT_INR_RATE<=0:
+            entry["status"]="invalid"; entry["resolved_pnl"]=0.0; entry["resolved_time"]=now.isoformat(); continue
+        coin=entry.get("coin")
+        if coin not in fetched: continue
+        c3,_,_=fetched[coin]; call=utc_datetime(entry["time"]); since=c3[c3.index>call.replace(tzinfo=None)]
+        if since.empty: continue
+        qty=amt/(ep*USDT_INR_RATE); fees=amt*TAKER_FEE_RATE*2; direction=entry["direction"]
+        history=entry.get("level_history") or [{"from":entry["time"],"stop":entry.get("stop_loss"),"target":entry.get("target_price")}]
+        history=sorted(history,key=lambda x:utc_datetime(x["from"]))
+        for _,row in since.iterrows():
+            candle_time=pd.Timestamp(row.name).to_pydatetime().replace(tzinfo=timezone.utc)
+            active=history[0]
+            for level in history:
+                if utc_datetime(level["from"])<=candle_time: active=level
+                else: break
+            target=active.get("target"); stop=active.get("stop")
+            if target is None or stop is None: continue
+            if direction=="long": target_hit=row["high"]>=target; stop_hit=row["low"]<=stop
+            else: target_hit=row["low"]<=target; stop_hit=row["high"]>=stop
             if target_hit and stop_hit:
-                # Both touched in the same candle - can't know which
-                # came first from OHLC alone. Treat conservatively as
-                # the stop, not the target - understating P&L is the
-                # safer direction to be wrong in here.
-                entry["status"] = "stop_hit"
-                stop_loss_inr = quantity * abs(stop - entry_price) * USDT_INR_RATE
-                entry["resolved_pnl"] = round(-stop_loss_inr - round_trip_fee, 2)
-                entry["resolved_time"] = str(row.name)
-                break
+                entry["status"]="stop_hit"; entry["resolved_pnl"]=round(-qty*abs(stop-ep)*USDT_INR_RATE-fees,2); entry["resolved_time"]=str(row.name); break
             if target_hit:
-                entry["status"] = "target_hit"
-                entry["resolved_pnl"] = round(quantity * abs(target - entry_price) * USDT_INR_RATE - round_trip_fee, 2)
-                entry["resolved_time"] = str(row.name)
-                break
+                entry["status"]="target_hit"; entry["resolved_pnl"]=round(qty*abs(target-ep)*USDT_INR_RATE-fees,2); entry["resolved_time"]=str(row.name); break
             if stop_hit:
-                entry["status"] = "stop_hit"
-                stop_loss_inr = quantity * abs(stop - entry_price) * USDT_INR_RATE
-                entry["resolved_pnl"] = round(-stop_loss_inr - round_trip_fee, 2)
-                entry["resolved_time"] = str(row.name)
-                break
+                entry["status"]="stop_hit"; entry["resolved_pnl"]=round(-qty*abs(stop-ep)*USDT_INR_RATE-fees,2); entry["resolved_time"]=str(row.name); break
         else:
-            # Loop completed without ever breaking - neither target
-            # nor stop was hit in any checked candle. If this trade
-            # has been pending longer than EXPIRY_HOURS, close it at
-            # the most recent known price (mark-to-market) rather than
-            # leaving it pending indefinitely - these are short-term,
-            # 3m-chart setups, not positions meant to be held for
-            # hours with no resolution. Given its own status rather
-            # than folded into target_hit/stop_hit - it never actually
-            # reached the real target or stop price, just happened to
-            # be up or down when the clock ran out, so counting it as
-            # a genuine target/stop hit would be misleading even
-            # though its P&L still counts toward REALIZED per explicit
-            # instruction.
-            age_hours = (now_utc_value - call_time).total_seconds() / 3600
-            if age_hours >= EXPIRY_HOURS:
-                last_price = float(since["close"].iloc[-1])
-                if direction == "long":
-                    pnl = quantity * (last_price - entry_price) * USDT_INR_RATE
-                else:
-                    pnl = quantity * (entry_price - last_price) * USDT_INR_RATE
-                entry["status"] = "expired"
-                entry["resolved_pnl"] = round(pnl - round_trip_fee, 2)
-                entry["resolved_time"] = str(since.index[-1])
-                print(f"  Ledger: {entry.get('coin')} {direction.upper()} expired after {age_hours:.1f}h, "
-                      f"closed at {last_price} (pnl={entry['resolved_pnl']})")
-
-    cutoff = now_utc_value - timedelta(hours=LEDGER_MAX_AGE_HOURS)
-    return [e for e in ledger if utc_datetime(e["time"]) > cutoff]
-
+            age=(now_utc_value-call).total_seconds()/3600
+            if age>=EXPIRY_HOURS:
+                last=float(since["close"].iloc[-1]); pnl=qty*((last-ep) if direction=="long" else (ep-last))*USDT_INR_RATE-fees
+                entry["status"]="expired"; entry["resolved_pnl"]=round(pnl,2); entry["resolved_time"]=str(since.index[-1])
+    cutoff=now_utc_value-timedelta(hours=LEDGER_MAX_AGE_HOURS)
+    return [e for e in ledger if e.get("status")=="pending" or utc_datetime(e["time"])>cutoff]
 
 def compute_scorecard(ledger, now, window_hours=1, current_prices=None):
     """Real trades-in / target-hit / stop-hit / pending / P&L over the
@@ -512,6 +438,7 @@ def apply_position_updates(ledger, position_updates, current_prices, now):
                 continue
             entry["stop_loss"] = new_stop
             entry["revised_at"] = now.isoformat()
+            entry.setdefault("level_history", []).append({"from": now.isoformat(), "stop": new_stop, "target": entry.get("target_price")})
             summaries.append({"coin": coin, "direction": entry["direction"], "action": "tighten_stop",
                                "reasoning": update.get("reasoning"), "new_stop_loss": new_stop})
             continue
@@ -535,6 +462,7 @@ def apply_position_updates(ledger, position_updates, current_prices, now):
                 continue
             entry["target_price"] = new_target
             entry["revised_at"] = now.isoformat()
+            entry.setdefault("level_history", []).append({"from": now.isoformat(), "stop": entry.get("stop_loss"), "target": new_target})
             summaries.append({"coin": coin, "direction": entry["direction"], "action": "move_target",
                                "reasoning": update.get("reasoning"), "new_target_price": new_target})
             continue
@@ -634,400 +562,123 @@ def build_coin_snapshot(coin, candles_3m, candles_15m, rvol_percentiles=None):
     return snapshot
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--coins", type=str, required=True)
-    args = parser.parse_args()
-
-    coins = [c.strip().upper() for c in args.coins.split(",")]
-    now = now_utc()
-    state = load_state()
-    if state.pop("recent_flags", None) is not None:  # orphaned key from before the rename to call_history
-        save_state(state)  # persist the cleanup now, not just in memory - this is the common early-exit path below
-
-    # Compute the most recently CLOSED 3m candle's boundary purely
-    # from the clock - no network call needed, since 3m boundaries are
-    # deterministic (:00, :03, :06, ...). Skip the entire expensive
-    # fetch+Gemini flow if this candle was already processed last run.
-    # CONFIRMED REAL BUG this fixes: without this check, the full 24h
-    # fetch (23 coins x ~2 API requests, threaded) was running on
-    # EVERY 1-minute cycle regardless of whether a new candle actually
-    # existed - since a 3m candle only changes every 3 minutes, that
-    # meant roughly 3x more fetching than necessary, every single day.
-    forming_start = now.replace(second=0, microsecond=0) - timedelta(minutes=now.minute % 3)
-    expected_last_closed = forming_start - timedelta(minutes=3)
-    expected_candle_key = str(expected_last_closed)
-    if expected_candle_key == state.get("last_sent_candle_time"):
-        print(f"No new 3m candle yet (still {expected_candle_key}) - skipping fetch entirely")
-        return
-
-    # Single fetch window covers 24h - feeds ALL FOUR candle tiers
-    # (3m/15m/1h derived locally via resample, 1d from the daily
-    # refresh file) directly from one pull per coin, instead of the
-    # old design's two separate fetches (a trimmed ~16h main window
-    # plus a second dedicated 24h "enrichment" fetch). Every coin now
-    # needs the full tiered context every cycle - there's no more
-    # staged pre-filter deciding which few coins "deserve" it - so
-    # merging into one fetch avoids doubling the request count.
-    start = now - timedelta(hours=24)
-    rvol_percentiles = load_rvol_percentiles()
-    daily_candles = load_daily_candles_30d()
-
-    print(f"Raw-data scanner (no pre-filtering - Gemini decides) | coins={coins} | {now.isoformat()}")
-
-    def fetch_one(coin):
-        """One 24h pull per coin, all tiers derived locally from it -
-        read-only, safe to run concurrently."""
-        candles_1m = fetch_coindcx_klines(coin, "1m", start.isoformat(), now.isoformat(), stagger_delay=False)
-        candles_3m = drop_still_forming_bucket(resample_candles(candles_1m, 3), now, 3)
-        candles_15m = drop_still_forming_bucket(resample_candles(candles_1m, 15), now, 15)
-        candles_1h = drop_still_forming_bucket(resample_candles(candles_1m, 60), now, 60)
-        return coin, candles_3m, candles_15m, candles_1h
-
-    fetched = {}
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = {pool.submit(fetch_one, coin): coin for coin in coins}
-        for future in as_completed(futures):
-            coin = futures[future]
-            try:
-                _, candles_3m, candles_15m, candles_1h = future.result()
-                fetched[coin] = (candles_3m, candles_15m, candles_1h)
-            except Exception as e:
-                print(f"  {coin}: fetch failed ({e}), skipping")
-
-    # Resolve every pending ledger entry against the candle data just
-    # fetched - no extra API calls needed, this reuses what's already
-    # in memory. Powers both the visible scorecard and the
-    # repeat-flag detection below.
-    ledger = resolve_ledger(state.get("ledger", []), fetched, now)
-    state["ledger"] = ledger
-    current_prices = {coin: float(candles_3m["close"].iloc[-1]) for coin, (candles_3m, _, _) in fetched.items() if len(candles_3m)}
-    scorecard = compute_scorecard(ledger, now, window_hours=24, current_prices=current_prices)
-
-    snapshots = []
-    for coin in coins:
-        try:
-            if coin not in fetched:
-                continue
-            candles_3m, candles_15m, candles_1h = fetched[coin]
-            if len(candles_3m) < 65:
-                # 65, not 30 - confirmed directly that 30 let candles
-                # through with too little history for momentum_pct_60
-                # (needs 61+ candles), silently producing None for
-                # that field instead of either skipping or ensuring
-                # complete data. 65 gives real margin above 61.
-                print(f"  {coin}: not enough closed candles yet, skipping")
-                continue
-
-            candles_3m = compute_raw_stats(candles_3m)
-            snapshot = build_coin_snapshot(coin, candles_3m, candles_15m, rvol_percentiles)
-
-            # Prior-call context: Gemini's API has no memory between
-            # calls, so this is how it actually gets to see its own
-            # recent track record - not just "don't contradict
-            # yourself" as an instruction, but the real prior call and
-            # what price has genuinely done since, so it can judge
-            # whether that thesis is playing out or failing.
-            call_history = state.get("call_history", {}).get(coin, [])
-            if call_history:
-                last_call = call_history[-1]
-                minutes_since = (now - utc_datetime(last_call["time"])).total_seconds() / 60
-                prior_entry = last_call.get("entry_price")
-                if minutes_since <= 180 and prior_entry:  # only recent calls with a real entry price are usable context
-                    price_change_pct = round((snapshot["close"] - prior_entry) / prior_entry * 100, 3)
-                    # Explicit three-way check, not an equality trick -
-                    # confirmed directly that (pct>0)==(direction=="long")
-                    # incorrectly reported "favorable" for a SHORT call
-                    # at EXACTLY 0% change (no movement at all), while
-                    # correctly reporting "not favorable" for LONG at
-                    # the same 0% - an inconsistent, asymmetric bug.
-                    if last_call["direction"] == "long":
-                        favorable = price_change_pct > 0
-                    else:
-                        favorable = price_change_pct < 0
-                    snapshot["prior_call"] = {
-                        "direction": last_call["direction"],
-                        "take_trade": last_call["take_trade"],
-                        "minutes_ago": round(minutes_since, 1),
-                        "price_change_pct_since": price_change_pct,
-                        "moved_favorably": favorable,
-                    }
-
-            # Tiered candle context, same compact format throughout -
-            # 3m recent detail, 15m/1h progressively coarser, 1d from
-            # the daily-refreshed file (no live fetch cost for that
-            # tier at all).
-            # Keep the full tracked universe, but cap historical context so
-            # the batch request scales predictably with coin count and does
-            # not bury the latest 3m candles in the middle of a huge prompt.
-            snapshot["ctx_3m"] = candles_to_compact(candles_3m.tail(20))
-            snapshot["ctx_15m"] = candles_to_compact(candles_15m.tail(20))
-            snapshot["ctx_1h"] = candles_to_compact(candles_1h.tail(12))
-            snapshot["ctx_daily_30d"] = daily_candles.get(coin, [])[-20:]
-
-            snapshots.append(snapshot)
-            print(f"  {coin}: close={snapshot['close']} rvol={snapshot['rvol']} "
-                  f"mom5={snapshot['momentum_pct_5_3m']}")
-        except Exception as e:
-            print(f"  {coin}: ERROR - {e}")
-
-    # Gate on a genuinely NEW 3m candle, same pattern as before - but
-    # now covers ALL coins every cycle, not just ones a pre-filter
-    # decided were worth tracking. No pre-filtering means every coin's
-    # raw data goes to Gemini every new candle; Gemini alone decides
-    # whether anything is worth flagging.
-    candle_times_utc = [pd.Timestamp(s["candle_time"]) for s in snapshots if s.get("candle_time")]
-    current_candle_time = str(max(candle_times_utc)) if candle_times_utc else None
-    should_call_gemini = bool(snapshots) and current_candle_time != state.get("last_sent_candle_time")
-
-    if not should_call_gemini:
-        print(f"\nNot calling Gemini (has_snapshots={bool(snapshots)}, "
-              f"same_candle_already_processed={current_candle_time == state.get('last_sent_candle_time')})")
-        save_state(state)
-        return
-
-    # Open positions (still-pending ledger entries) get reviewed in
-    # the SAME Gemini call as fresh coins - a genuinely separate
-    # judgment ("is my thesis still valid" vs "is this a good new
-    # entry"), but one API call, same budget reasoning as the batching
-    # of coins itself.
-    open_positions = build_open_position_context(ledger, current_prices, now)
-
-    # ONE Gemini call per cycle, covering ALL coins plus ALL open
-    # positions together - not staged, not one call per coin/position.
-    # new_signals may come back empty if nothing across all coins
-    # looks worth mentioning - in which case no fresh call gets sent,
-    # matching the "don't spam" preference. position_updates is
-    # reviewed regardless, since managing existing risk isn't
-    # optional the way flagging a new entry is.
-    gemini_ok, flagged, position_updates = get_trade_suggestions_batch(snapshots, scorecard, open_positions)
-
-    if not gemini_ok:
-        # Gemini outage is NOT equivalent to a successful "no signal" result.
-        # Keep this candle unacknowledged so the next workflow run can retry.
-        state["ledger"] = ledger
-        save_state(state)
-        print("  Gemini unavailable/invalid this cycle - candle remains unacknowledged for retry")
-        return
-
-    # Apply hold/exit_now/tighten_stop/move_target decisions to the
-    # ledger BEFORE recomputing the scorecard, so anything closed via
-    # exit_now this cycle is already reflected in the numbers sent to
-    # the user (and fed to Gemini again next cycle).
-    position_summaries = apply_position_updates(ledger, position_updates, current_prices, now)
-    if position_summaries:
-        scorecard = compute_scorecard(ledger, now, window_hours=24, current_prices=current_prices)
-    state["ledger"] = ledger
-
-    if not flagged and not position_summaries:
-        print("\nGemini flagged nothing and made no position changes this cycle - sending scorecard-only update")
-        # Persist ledger/call_history NOW, unconditionally - confirmed
-        # directly this was NOT actually saved earlier in this flow
-        # (only held in memory), so without this the Telegram send
-        # below failing would silently lose this cycle's ledger
-        # resolutions, same class of bug fixed for the flagged case
-        # a few rounds ago.
-        save_state(state)
-
-        candle_start_utc = max(candle_times_utc)
-        candle_start_ist = candle_start_utc + timedelta(hours=5, minutes=30)
-        candle_close_ist = candle_start_ist + timedelta(minutes=3)
-        detected_ist = now + timedelta(hours=5, minutes=30)
-
-        def fmt_pnl(v):
-            return f"+\u20b9{v}" if v >= 0 else f"-\u20b9{abs(v)}"
-        lines = [f"\U0001F4CA {candle_start_ist.strftime('%H:%M')}\u2192{candle_close_ist.strftime('%H:%M')} IST "
-                 f"(detected {detected_ist.strftime('%H:%M:%S')})"]
-        reversed_note = f", {scorecard['abandoned_or_invalid']} reversed/invalid" if scorecard["abandoned_or_invalid"] else ""
-        lines.append(f"Last 24h: {scorecard['total']} calls \u2014 {scorecard['target_hit']} hit target, "
-                      f"{scorecard['stop_hit']} hit stop, {scorecard['expired']} expired, "
-                      f"{scorecard.get('gemini_exit', 0)} closed by Gemini, {scorecard['pending']} pending{reversed_note}")
-        lines.append(f"Realized {fmt_pnl(scorecard['realized_pnl_inr'])} | Unrealized {fmt_pnl(scorecard['unrealized_pnl_inr'])} "
-                      f"| Total {fmt_pnl(scorecard['total_pnl_inr'])}")
-        if open_positions:
-            lines.append(f"\nNo new signals this cycle - tracking {len(open_positions)} open position(s), all holding.")
-        else:
-            lines.append("\nNo new signals this cycle.")
-        message = "\n".join(lines)
-        print(f"\nSending Telegram message:\n{message}")
-        try:
-            send_telegram(message)
-            state["last_sent_candle_time"] = current_candle_time
-            save_state(state)
-        except Exception as e:
-            print(f"Telegram send failed ({e}) - ledger/call_history already saved above, "
-                  f"this candle will be retried next cycle since last_sent_candle_time was not updated")
-        return
-
-    # Anti-whipsaw backstop: even with prior-call context now fed to
-    # Gemini (see the snapshot-building loop above), it could still
-    # reverse - the difference is it now does so WITH awareness of its
-    # own track record, not blindly. This stays as a visible check
-    # rather than being removed, since it costs nothing and catches
-    # anything that slips through regardless of context.
-    WHIPSAW_WINDOW_MINUTES = 15
-    call_history = state.get("call_history", {})
-    for coin, g in flagged.items():
-        history = call_history.get(coin, [])
-        if history:
-            prior = history[-1]
-            prior_time = utc_datetime(prior["time"])
-            minutes_since = (now - prior_time).total_seconds() / 60
-            if minutes_since <= WHIPSAW_WINDOW_MINUTES and prior["direction"] != g.get("direction"):
-                g["whipsaw_warning"] = (f"reverses {prior['direction'].upper()} call from "
-                                         f"{int(minutes_since)} min ago")
-        history.append({
-            "direction": g.get("direction"),
-            "entry_price": g.get("entry_price"),
-            "take_trade": g.get("take_trade"),
-            "time": now.isoformat(),
-        })
-        call_history[coin] = history[-5:]  # capped - last 5 calls per coin, not unbounded growth
-
-        # Repeat-flag detection: is this coin+direction already an
-        # unresolved, pending call from earlier? Confirmed as a real
-        # pattern (HEI LONG flagged 5 times in 15 minutes with no
-        # acknowledgment any prior one was still open) - flagged
-        # visibly, not silently suppressed, same principle as the
-        # whipsaw warning above.
-        if g.get("take_trade"):
-            opposite_direction = "short" if g.get("direction") == "long" else "long"
-            opposite = find_pending_same_direction(ledger, coin, opposite_direction, now)
-            if opposite is not None:
-                # Gemini flagged the OPPOSITE direction on a coin that
-                # already has a pending position - confirmed as a real
-                # gap: "HEI SHORT - Reversing prior long call" left the
-                # old HEI LONG sitting as "pending" forever, since the
-                # repeat-check only ever matched on SAME direction.
-                # Marked "abandoned" here rather than guessing at a
-                # mark-to-market P&L for it - honest about not knowing
-                # its real outcome, excluded from pending/win/loss
-                # counts either way.
-                opposite["status"] = "abandoned"
-                opposite["resolved_time"] = now.isoformat()
-                print(f"  Ledger: {coin} prior {opposite_direction.upper()} marked abandoned - reversed to {g.get('direction', '').upper()}")
-
-            existing = find_pending_same_direction(ledger, coin, g.get("direction"), now)
-            if existing is not None:
-                minutes_ago = (utc_datetime(now) - utc_datetime(existing["time"])).total_seconds() / 60
-                g["repeat_warning"] = f"already have a pending {g.get('direction', '').upper()} call on {coin} from {minutes_ago:.0f} min ago"
-                # Do NOT rewrite entry_price/stop_loss/target_price -
-                # confirmed directly as a real bug: resolution scans
-                # candles from the ORIGINAL open time, but was checking
-                # them against whichever levels were most recently
-                # updated. A genuinely-hit ORIGINAL target could be
-                # silently missed if a later reaffirmation changed the
-                # target, since the resolution loop would then be
-                # comparing old candles against a target that didn't
-                # exist yet when those candles formed. The position
-                # stays anchored to the terms it actually opened under
-                # - only conviction is refreshed, since that's purely
-                # informational and doesn't affect resolution.
-                existing["conviction"] = g.get("conviction")
-            else:
-                ledger.append({
-                    "coin": coin, "direction": g.get("direction"),
-                    "entry_price": g.get("entry_price"), "stop_loss": g.get("stop_loss"),
-                    "target_price": g.get("target_price"), "trade_amount_inr": g.get("trade_amount_inr"),
-                    "quantity": g.get("quantity"),
-                    "max_loss_this_trade_inr": g.get("max_loss_this_trade_inr"),
-                    "conviction": g.get("conviction"), "status": "pending", "time": now.isoformat(),
-                    # Persisted so a later cycle's open-position review
-                    # (build_open_position_context) can hand Gemini its
-                    # own original reasoning back - without this it has
-                    # no way to judge whether its own thesis still
-                    # holds, since it has no memory between calls.
-                    "reasoning": g.get("reasoning"),
-                })
-    state["call_history"] = call_history
-    state["ledger"] = ledger
-
-    candle_start_utc = max(candle_times_utc)
-    candle_start_ist = candle_start_utc + timedelta(hours=5, minutes=30)
-    candle_close_ist = candle_start_ist + timedelta(minutes=3)
-    detected_ist = now + timedelta(hours=5, minutes=30)
-
-    import html
-    def fmt_pnl(v):
-        return f"+\u20b9{v}" if v >= 0 else f"-\u20b9{abs(v)}"
-    lines = [f"\U0001F4CA {candle_start_ist.strftime('%H:%M')}\u2192{candle_close_ist.strftime('%H:%M')} IST "
-             f"(detected {detected_ist.strftime('%H:%M:%S')})"]
-    reversed_note = f", {scorecard['abandoned_or_invalid']} reversed/invalid" if scorecard["abandoned_or_invalid"] else ""
-    lines.append(f"Last 24h: {scorecard['total']} calls \u2014 {scorecard['target_hit']} hit target, "
-                  f"{scorecard['stop_hit']} hit stop, {scorecard['expired']} expired, "
-                  f"{scorecard.get('gemini_exit', 0)} closed by Gemini, {scorecard['pending']} pending{reversed_note}")
-    lines.append(f"Realized {fmt_pnl(scorecard['realized_pnl_inr'])} | Unrealized {fmt_pnl(scorecard['unrealized_pnl_inr'])} "
-                  f"| Total {fmt_pnl(scorecard['total_pnl_inr'])}")
-
-    # Position management this cycle - exits/adjustments on positions
-    # Gemini itself flagged earlier, shown separately from fresh
-    # new_signals below since it's a different kind of update (managing
-    # existing risk, not proposing a new trade).
-    if position_summaries:
-        lines.append("\n\U0001F4CB Position updates:")
-        for ps in position_summaries:
-            direction = (ps.get("direction") or "?").upper()
-            if ps["action"] == "exit_now":
-                lines.append(f"\U0001F6AA <b>{html.escape(ps['coin'])} {direction} \u2014 CLOSED</b> "
-                              f"({fmt_pnl(ps.get('pnl', 0))})")
-            elif ps["action"] == "tighten_stop":
-                lines.append(f"\U0001F53B <b>{html.escape(ps['coin'])} {direction}</b> \u2014 stop tightened to {ps.get('new_stop_loss')}")
-            elif ps["action"] == "move_target":
-                lines.append(f"\U0001F3AF <b>{html.escape(ps['coin'])} {direction}</b> \u2014 target moved to {ps.get('new_target_price')}")
-            if ps.get("reasoning"):
-                lines.append(html.escape(ps["reasoning"]))
-
-    for coin, g in flagged.items():
-        verdict = "TAKE" if g.get("take_trade") else "SKIP"
-        direction = (g.get("direction") or "?").upper()
-        conviction = g.get("conviction")
-        verdict_emoji = "\u2705" if verdict == "TAKE" else "\u26aa"
-        lines.append(f"\n{verdict_emoji} <b>{html.escape(coin)} {direction} \u2014 {verdict}</b> (conviction {conviction}/10)")
-        lines.append(html.escape(g.get("reasoning", "-")))
-        if g.get("whipsaw_warning"):
-            lines.append(f"\u26a0\ufe0f Contradicts prior call: {html.escape(g['whipsaw_warning'])}")
-        if g.get("repeat_warning"):
-            lines.append(f"\U0001F501 {html.escape(g['repeat_warning'])} - still unresolved, not a fresh signal")
-        lines.append(f"Entry {g.get('entry_price')} | SL {g.get('stop_loss')} | Target {g.get('target_price')}")
-        lines.append(f"Amount \u20b9{g.get('trade_amount_inr')} (risk \u20b9{g.get('max_loss_this_trade_inr')})")
-        # Fee math only shown when actually noteworthy - a healthy
-        # trade's fee breakdown is backup detail, not something that
-        # needs displaying every single time. Still ALWAYS computed
-        # and enforced (the fee_override check above runs regardless
-        # of whether this line is shown), just not always surfaced.
-        if g.get("fee_override"):
-            lines.append(f"\u26a0 Downgraded to SKIP \u2014 fees (\u20b9{g.get('estimated_fee_inr')}) would eat "
-                          f"{g.get('fee_drag_pct')}% of the \u20b9{g.get('gross_profit_at_target_inr')} target profit")
-        elif g.get("fee_drag_pct", 0) and g["fee_drag_pct"] > 15:
-            lines.append(f"\u26a0 Fees \u2248{g['fee_drag_pct']}% of target profit (net \u20b9{g.get('net_profit_at_target_inr')})")
-    message = "\n".join(lines)
-
-    chart_coins = list(flagged) + [ps["coin"] for ps in position_summaries if ps["coin"] not in flagged]
-    reply_markup = {"inline_keyboard": [
-        [{"text": f"\U0001F4C8 {coin} chart", "url": f"https://coindcx.com/futures/B-{coin}_USDT"}]
-        for coin in chart_coins
-    ]}
-
-    # Persist call_history NOW, separately from the send-success state
-    # below - confirmed directly that send_telegram can raise with no
-    # try/except above it, and previously save_state was only called
-    # after the send, meaning a transient failure would crash the
-    # script and silently discard the call_history just computed -
-    # losing this cycle's self-tracking data exactly when a real
-    # failure occurs. Deliberately NOT marking last_sent_candle_time
-    # here though - that only gets set on CONFIRMED send success below,
-    # so a failed send still gets retried next cycle instead of the
-    # message being silently dropped forever.
-    save_state(state)
-
-    print(f"\nSending Telegram message:\n{message}")
+def _flush_pending_telegram(state):
+    pending=state.get("pending_telegram")
+    if not pending: return True
     try:
-        send_telegram(message, reply_markup)
-        state["last_sent_candle_time"] = current_candle_time
-        save_state(state)
+        send_telegram(pending["text"],pending.get("reply_markup"))
+        state["pending_telegram"]=None; state["last_sent_at"]=now_utc().isoformat(); return True
     except Exception as e:
-        print(f"Telegram send failed ({e}) - call_history was already saved, "
-              f"this candle will be retried next cycle since last_sent_candle_time was not updated")
+        print(f"Queued Telegram delivery failed: {e}"); return False
+
+
+def _format_pnl(v): return f"+₹{v}" if v>=0 else f"-₹{abs(v)}"
+
+
+def _build_message(candle_start_utc,now,scorecard,scan_stats=None,stale=None,position_summaries=None,flagged=None):
+    import html
+    ist=candle_start_utc+timedelta(hours=5,minutes=30); end=ist+timedelta(minutes=3); det=now+timedelta(hours=5,minutes=30)
+    lines=[f"📊 {ist.strftime('%H:%M')}→{end.strftime('%H:%M')} IST (detected {det.strftime('%H:%M:%S')})"]
+    lines.append(f"Last 24h: {scorecard['total']} calls — {scorecard['target_hit']} hit target, {scorecard['stop_hit']} hit stop, {scorecard['expired']} expired, {scorecard.get('gemini_exit',0)} closed by Gemini, {scorecard['pending']} pending")
+    lines.append(f"Realized {_format_pnl(scorecard['realized_pnl_inr'])} | Unrealized {_format_pnl(scorecard['unrealized_pnl_inr'])} | Total {_format_pnl(scorecard['total_pnl_inr'])}")
+    if scan_stats:
+        lines.append(f"\n🔎 Gemini scan: {scan_stats['scanned']} coins | proposals {scan_stats['proposals']} | TAKE {scan_stats['take']} | Python risk rejected {scan_stats['risk_rejected']}")
+        for reason,count in sorted(scan_stats['risk_reasons'].items(),key=lambda x:-x[1])[:4]: lines.append(f"• Risk reject: {html.escape(reason)} ({count})")
+    if stale: lines.append(f"\n🟡 Stale/missing data: {', '.join(sorted(set(stale)))} — Gemini not called for this candle.")
+    if position_summaries:
+        lines.append("\n📋 Position updates:")
+        for ps in position_summaries:
+            d=(ps.get('direction') or '?').upper(); a=ps.get('action')
+            if a=='exit_now': lines.append(f"🚪 <b>{html.escape(ps['coin'])} {d} — CLOSED</b> ({_format_pnl(ps.get('pnl',0))})")
+            elif a=='tighten_stop': lines.append(f"🔻 <b>{html.escape(ps['coin'])} {d}</b> — stop tightened to {ps.get('new_stop_loss')}")
+            elif a=='move_target': lines.append(f"🎯 <b>{html.escape(ps['coin'])} {d}</b> — target moved to {ps.get('new_target_price')}")
+            if ps.get('reasoning'): lines.append(html.escape(ps['reasoning']))
+    if flagged:
+        for coin,g in flagged.items():
+            verdict='TAKE' if g.get('take_trade') else 'SKIP'; d=(g.get('direction') or '?').upper(); em='✅' if verdict=='TAKE' else '⚪'
+            lines.append(f"\n{em} <b>{html.escape(coin)} {d} — {verdict}</b> (conviction {g.get('conviction')}/10)")
+            lines.append(html.escape(g.get('reasoning','-')))
+            if g.get('risk_validation_error'): lines.append(f"🛡 Risk gate: {html.escape(g['risk_validation_error'])}")
+            lines.append(f"Entry {g.get('entry_price')} | SL {g.get('stop_loss')} | Target {g.get('target_price')}")
+            if g.get('take_trade'): lines.append(f"Amount ₹{g.get('trade_amount_inr')} (risk ₹{g.get('max_loss_this_trade_inr')})")
+    if not flagged and not position_summaries and not stale: lines.append("\nNo new signals this cycle.")
+    return "\n".join(lines)
+
+
+def main():
+    parser=argparse.ArgumentParser(); parser.add_argument('--coins',type=str,required=True); args=parser.parse_args()
+    coins=[c.strip().upper() for c in args.coins.split(',') if c.strip()]; now=now_utc(); state=load_state()
+    # Telegram delivery is independent from Gemini processing. A failed send
+    # is retried without asking Gemini to make another decision.
+    if state.get("pending_telegram"):
+        if not _flush_pending_telegram(state):
+            save_state(state)
+            return
+        save_state(state)
+    forming=now.replace(second=0,microsecond=0)-timedelta(minutes=now.minute%3); expected=forming-timedelta(minutes=3); expected_key=str(expected)
+    if expected_key==state.get('last_processed_candle_time'): return
+
+    start_fetch=now-timedelta(hours=24); rvol_percentiles=load_rvol_percentiles(); daily_candles=load_daily_candles_30d()
+    def fetch_one(coin):
+        c1=fetch_coindcx_klines(coin,'1m',start_fetch.isoformat(),now.isoformat(),stagger_delay=False)
+        return coin,drop_still_forming_bucket(resample_candles(c1,3),now,3),drop_still_forming_bucket(resample_candles(c1,15),now,15),drop_still_forming_bucket(resample_candles(c1,60),now,60)
+    fetched={}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        fs={pool.submit(fetch_one,c):c for c in coins}
+        for f in as_completed(fs):
+            c=fs[f]
+            try: _,a,b,d=f.result(); fetched[c]=(a,b,d)
+            except Exception as e: print(f"  {c}: fetch failed ({e})")
+    ledger=resolve_ledger(state.get('ledger',[]),fetched,now); state['ledger']=ledger
+    current_prices={c:float(v[0]['close'].iloc[-1]) for c,v in fetched.items() if len(v[0])}
+    scorecard=compute_scorecard(ledger,now,window_hours=24,current_prices=current_prices)
+    snapshots=[]; stale=[]
+    for coin in coins:
+        if coin not in fetched or len(fetched[coin][0])<65: stale.append(coin); continue
+        c3,c15,c1=fetched[coin]
+        try:
+            c3=compute_raw_stats(c3); snap=build_coin_snapshot(coin,c3,c15,rvol_percentiles)
+            if snap.get('candle_time')!=expected_key: stale.append(coin); continue
+            hist=state.get('call_history',{}).get(coin,[])
+            if hist:
+                last=hist[-1]; mins=(now-utc_datetime(last['time'])).total_seconds()/60
+                if mins<=180 and last.get('entry_price'):
+                    ch=round((snap['close']-last['entry_price'])/last['entry_price']*100,3); fav=ch>0 if last.get('direction')=='long' else ch<0
+                    snap['prior_call']={'direction':last.get('direction'),'take_trade':last.get('take_trade'),'minutes_ago':round(mins,1),'price_change_pct_since':ch,'moved_favorably':fav}
+            snap['ctx_3m']=candles_to_compact(c3.tail(20)); snap['ctx_15m']=candles_to_compact(c15.tail(20)); snap['ctx_1h']=candles_to_compact(c1.tail(12)); snap['ctx_daily_30d']=daily_candles.get(coin,[])[-20:]; snapshots.append(snap)
+        except Exception as e: print(f"  {coin}: snapshot error ({e})"); stale.append(coin)
+    if stale or len(snapshots)!=len(coins):
+        msg=_build_message(expected,now,scorecard,stale=stale); state['last_processed_candle_time']=expected_key; state['pending_telegram']={'text':msg,'reply_markup':None}; save_state(state); _flush_pending_telegram(state); save_state(state); return
+    open_positions=build_open_position_context(ledger,current_prices,now)
+    ok,flagged,position_updates=get_trade_suggestions_batch(snapshots,scorecard,open_positions)
+    if not ok: save_state(state); print('Gemini unavailable/invalid; candle remains unprocessed'); return
+    state['last_processed_candle_time']=expected_key
+    position_summaries=apply_position_updates(ledger,position_updates,current_prices,now)
+    call_history=state.get('call_history',{})
+    stats={'scanned':len(snapshots),'proposals':len(flagged),'take':sum(1 for g in flagged.values() if g.get('take_trade')),'risk_rejected':0,'risk_reasons':{}}
+    for coin,g in flagged.items():
+        if g.get('risk_validation_error') and not g.get('take_trade'):
+            stats['risk_rejected']+=1; r=g['risk_validation_error']; stats['risk_reasons'][r]=stats['risk_reasons'].get(r,0)+1
+        h=call_history.get(coin,[])
+        if h:
+            mins=(now-utc_datetime(h[-1]['time'])).total_seconds()/60
+            if mins<=15 and h[-1].get('direction')!=g.get('direction'): g['whipsaw_warning']=f"reverses {h[-1].get('direction','?').upper()} call from {int(mins)} min ago"
+        h.append({'direction':g.get('direction'),'entry_price':g.get('entry_price'),'take_trade':g.get('take_trade'),'time':now.isoformat()}); call_history[coin]=h[-5:]
+        if g.get('take_trade'):
+            opposite='short' if g.get('direction')=='long' else 'long'; old=find_pending_same_direction(ledger,coin,opposite,now)
+            if old is not None:
+                cp=current_prices.get(coin); ep=old.get('entry_price'); amt=old.get('trade_amount_inr')
+                if cp and ep and amt and USDT_INR_RATE>0:
+                    qty=amt/(ep*USDT_INR_RATE); fees=amt*TAKER_FEE_RATE*2; pnl=qty*((cp-ep) if old['direction']=='long' else (ep-cp))*USDT_INR_RATE-fees; old.update({'status':'gemini_exit','resolved_pnl':round(pnl,2),'resolved_time':now.isoformat(),'exit_reasoning':'Closed because Gemini reversed direction on the same coin.'})
+            existing=find_pending_same_direction(ledger,coin,g.get('direction'),now)
+            if existing is not None: existing['conviction']=g.get('conviction')
+            else:
+                ledger.append({'coin':coin,'direction':g.get('direction'),'entry_price':g.get('entry_price'),'stop_loss':g.get('stop_loss'),'target_price':g.get('target_price'),'trade_amount_inr':g.get('trade_amount_inr'),'quantity':g.get('quantity'),'max_loss_this_trade_inr':g.get('max_loss_this_trade_inr'),'conviction':g.get('conviction'),'status':'pending','time':now.isoformat(),'reasoning':g.get('reasoning'),'level_history':[{'from':now.isoformat(),'stop':g.get('stop_loss'),'target':g.get('target_price')}]})
+    state['call_history']=call_history; state['ledger']=ledger; scorecard=compute_scorecard(ledger,now,window_hours=24,current_prices=current_prices)
+    msg=_build_message(expected,now,scorecard,scan_stats=stats,position_summaries=position_summaries,flagged=flagged)
+    chart_coins=list(flagged)+[p['coin'] for p in position_summaries if p['coin'] not in flagged]
+    markup={'inline_keyboard':[[{'text':f'📈 {c} chart','url':f'https://coindcx.com/futures/B-{c}_USDT'}] for c in chart_coins]}
+    state['pending_telegram']={'text':msg,'reply_markup':markup}; save_state(state); _flush_pending_telegram(state); save_state(state)
 
 
 if __name__ == "__main__":

@@ -44,10 +44,11 @@ TAKER_FEE_RATE = float(os.environ.get("TAKER_FEE_RATE", "0.00075"))
 # Crypto futures prices/contract values are quoted in USDT, while the
 # risk budget and user-facing amounts are INR. Never silently assume a
 # 1:1 conversion. Configure this explicitly in the workflow environment.
-USDT_INR_RATE = float(os.environ.get("USDT_INR_RATE", "0"))
+USDT_INR_RATE = float(os.environ.get("USDT_INR_RATE", "99.44"))
 MAX_NOTIONAL_INR = float(os.environ.get("MAX_NOTIONAL_INR", "100000"))
 MIN_RR = float(os.environ.get("MIN_RR", "1.5"))
 MAX_STOP_PCT = float(os.environ.get("MAX_STOP_PCT", "0.08"))
+MIN_STOP_ATR_MULTIPLIER = float(os.environ.get("MIN_STOP_ATR_MULTIPLIER", "1.2"))
 
 SYSTEM_PROMPT = """Trade-scanning assistant for crypto futures on CoinDCX. You receive a JSON object with up to three parts every scan cycle (roughly every 3 minutes): "coins" - an array of ALL currently tracked coins, NOT pre-filtered by any trend/strength logic, "open_positions" - trades you (a prior call, not this one - you have no memory) previously flagged that are still open and unresolved, needing a hold/exit/adjust decision this cycle, and optionally "recent_performance_last_24h" - real, code-verified outcomes of your own recent calls over the trailing 24 hours. This performance data is NOT something you tracked yourself - you have no memory between calls - it's computed independently from actual subsequent price action and current market prices, so trust it completely; it is ground truth about how your recent judgment has actually performed, not a self-report.
 
@@ -71,7 +72,7 @@ For each coin you DO include:
 5. reasoning: 1-2 sentences, reference specific numbers/candle structure actually given for THIS coin
 6. entry_price, stop_loss, target_price: numbers - fill these even if take_trade is false (a best-guess reference level), so a skip is still comparable data next cycle
 
-Do NOT compute trade_amount_inr yourself - position sizing is calculated separately from your conviction score, scaled down from a maximum of {max_loss} INR risk. A low-conviction flag should risk meaningfully less than a high-conviction one; that scaling is handled outside your response, driven entirely by the conviction number you give.
+Do NOT compute trade_amount_inr yourself - position sizing is calculated separately from your conviction score, scaled down from a maximum of {max_loss} INR risk. Python will reject a proposed trade if its stop is tighter than {atr_mult}x the supplied 3m ATR. A low-conviction flag should risk meaningfully less than a high-conviction one; that scaling is handled outside your response, driven entirely by the conviction number you give.
 
 No backtested win-rate exists for any of this - it's your independent judgment on raw data, not a validated edge.
 
@@ -84,7 +85,7 @@ Always include reasoning for the action, referencing what's actually changed sin
 
 Respond with ONLY a JSON object, no markdown fences, no other text, in this exact shape:
 {{"new_signals": [{{"coin": "string", "direction": "long"|"short", "take_trade": bool, "conviction": integer, "reasoning": "string", "entry_price": number, "stop_loss": number, "target_price": number}}, ...], "position_updates": [{{"coin": "string", "direction": "long"|"short", "action": "hold"|"exit_now"|"tighten_stop"|"move_target", "updated_stop_loss": number|null, "updated_target_price": number|null, "reasoning": "string"}}, ...]}}
-new_signals is empty if nothing this cycle meets your own bar for quality (the normal case). position_updates must include exactly one entry for every coin given in "open_positions" - never omit one, since a missing entry there means it silently keeps whatever it already has with no signal either way.""".format(max_loss=MAX_LOSS_RUPEES)
+new_signals is empty if nothing this cycle meets your own bar for quality (the normal case). position_updates must include exactly one entry for every coin given in "open_positions" - never omit one, since a missing entry there means it silently keeps whatever it already has with no signal either way.""".format(max_loss=MAX_LOSS_RUPEES, atr_mult=MIN_STOP_ATR_MULTIPLIER)
 
 
 def get_gemini_keys():
@@ -201,7 +202,7 @@ def _normalize_item(item):
     return normalized
 
 
-def _validate_trade_geometry(parsed):
+def _validate_trade_geometry(parsed, atr14_3m=None):
     """Deterministic safety gate for Gemini's proposed trade levels.
 
     Gemini supplies judgment; Python owns the non-negotiable geometry.
@@ -235,10 +236,24 @@ def _validate_trade_geometry(parsed):
     if rr < MIN_RR:
         return False, f"risk/reward {rr:.2f} below MIN_RR {MIN_RR:.2f}"
 
+    if atr14_3m is not None:
+        try:
+            atr = float(atr14_3m)
+        except (TypeError, ValueError):
+            atr = 0.0
+        if atr > 0:
+            min_stop_distance = atr * MIN_STOP_ATR_MULTIPLIER
+            actual_stop_distance = abs(entry - stop)
+            if actual_stop_distance < min_stop_distance:
+                return False, (
+                    f"stop distance {actual_stop_distance:.8g} is below "
+                    f"{MIN_STOP_ATR_MULTIPLIER:.2f}x 3m ATR ({min_stop_distance:.8g})"
+                )
+
     return True, "ok"
 
 
-def _compute_position_size(parsed):
+def _compute_position_size(parsed, atr14_3m=None):
     """Convert INR risk into crypto quantity using an explicit USDT/INR rate.
 
     Risk is always calculated in INR, quantity is in coin units, and
@@ -259,7 +274,7 @@ def _compute_position_size(parsed):
     max_loss_inr = round(MAX_LOSS_RUPEES * conviction / 10, 2)
     parsed["max_loss_this_trade_inr"] = max_loss_inr
 
-    ok, reason = _validate_trade_geometry(parsed)
+    ok, reason = _validate_trade_geometry(parsed, atr14_3m=atr14_3m)
     if not ok:
         parsed["take_trade"] = False
         parsed["risk_validation_error"] = reason
@@ -356,6 +371,7 @@ def get_trade_suggestions_batch(signals, scorecard=None, open_positions=None):
 
     user_prompt = build_batch_prompt(signals, scorecard, open_positions)
     expected_coins = {s["coin"] for s in signals}
+    atr_by_coin = {s["coin"]: s.get("atr14_3m") for s in signals}
     expected_position_coins = {p["coin"] for p in open_positions} if open_positions else set()
     last_error = None
 
@@ -410,7 +426,7 @@ def get_trade_suggestions_batch(signals, scorecard=None, open_positions=None):
                     continue
                 try:
                     item = _normalize_item(item)
-                    result[coin] = _compute_position_size(item)
+                    result[coin] = _compute_position_size(item, atr14_3m=atr_by_coin.get(coin))
                 except (TypeError, ValueError) as e:
                     # Isolated per-item - one malformed item (e.g. a
                     # numeric field returned as an unparseable string)
