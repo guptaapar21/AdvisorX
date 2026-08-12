@@ -1,0 +1,18 @@
+Required runtime configuration
+
+USDT_INR_RATE
+- Required for TAKE trades.
+- Example: 90
+- Set to the INR value of 1 USDT used by the workflow.
+- If missing/0, Gemini proposals are forced to SKIP rather than using a wrong currency conversion.
+
+Optional safety controls
+TAKER_FEE_RATE=0.00075
+MAX_NOTIONAL_INR=100000
+MIN_RR=1.5
+MAX_STOP_PCT=0.08
+
+Existing required secrets remain required:
+GEMINI_API_KEYS (or GEMINI_API_KEY_1..30 / GEMINI_API_KEY)
+TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID
