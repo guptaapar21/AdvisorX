@@ -1,9 +1,8 @@
 name: Trend Alignment Scanner (advisory only)
 
 on:
-  # The live scanner is triggered externally by cron-job.org every minute.
-  # Do NOT add a GitHub schedule here; that would create a second scheduler
-  # and can cause duplicate/competing runs.
+  # Triggered by the external cron-job.org dispatcher.
+  # Do NOT add a GitHub schedule: the external dispatcher is the single scheduler.
   workflow_dispatch: {}
 
 permissions:
@@ -37,7 +36,6 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
           USDT_INR_RATE: "99.44"
-          MAX_NOTIONAL_INR: "100000"
           MIN_RR: "1.5"
           MAX_STOP_PCT: "0.08"
           MIN_STOP_ATR_MULTIPLIER: "1.2"
