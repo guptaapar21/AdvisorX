@@ -96,7 +96,7 @@ def load_state():
             return state
         except (json.JSONDecodeError,OSError) as e:
             print(f"  State WARNING: unable to load {path}: {e}")
-    return {"coins":{},"last_sent_at":None,"last_content_signature":[],"last_processed_candle_time":None,"last_sent_candle_time":None,"pending_telegram":None,"call_history":{},"ledger":[]}
+    return {"coins":{},"last_sent_at":None,"last_content_signature":[],"last_processed_candle_time":None,"last_sent_candle_time":None,"pending_telegram":None,"last_stale_notice_candle_time":None,"call_history":{},"ledger":[]}
 
 
 def save_state(state):
@@ -132,6 +132,22 @@ def utc_datetime(value):
 
 def now_utc():
     return datetime.now(timezone.utc)
+
+
+def candle_key(value):
+    """Canonical UTC key for candle timestamps.
+
+    CoinDCX/resampling can return timezone-naive UTC indexes while Python
+    datetime objects here are timezone-aware. Comparing str(datetime) values
+    directly therefore makes the same candle look different (e.g.
+    `2026-08-12 15:30:00` vs `2026-08-12 15:30:00+00:00`).
+    """
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    return ts.floor("min").strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def send_telegram(text, reply_markup=None, parse_mode="HTML"):
@@ -543,7 +559,7 @@ def build_coin_snapshot(coin, candles_3m, candles_15m, rvol_percentiles=None):
     the candle-time dedup that decides whether to run this cycle at
     all happens once, globally, in main(), before any of this runs."""
     row = candles_3m.iloc[-1]
-    candle_time = str(candles_3m.index[-1])
+    candle_time = candle_key(candles_3m.index[-1])
 
     rvol = row.get("rvol")
     coin_percentiles = (rvol_percentiles or {}).get(coin)
@@ -615,30 +631,37 @@ def main():
             save_state(state)
             return
         save_state(state)
-    forming=now.replace(second=0,microsecond=0)-timedelta(minutes=now.minute%3); expected=forming-timedelta(minutes=3); expected_key=str(expected)
+    forming=now.replace(second=0,microsecond=0)-timedelta(minutes=now.minute%3); expected=forming-timedelta(minutes=3); expected_key=candle_key(expected)
     if expected_key==state.get('last_processed_candle_time'): return
 
-    start_fetch=now-timedelta(hours=24); rvol_percentiles=load_rvol_percentiles(); daily_candles=load_daily_candles_30d()
+    start_fetch=now-timedelta(minutes=FETCH_MINUTES_BACK); rvol_percentiles=load_rvol_percentiles(); daily_candles=load_daily_candles_30d()
     def fetch_one(coin):
         c1=fetch_coindcx_klines(coin,'1m',start_fetch.isoformat(),now.isoformat(),stagger_delay=False)
         return coin,drop_still_forming_bucket(resample_candles(c1,3),now,3),drop_still_forming_bucket(resample_candles(c1,15),now,15),drop_still_forming_bucket(resample_candles(c1,60),now,60)
     fetched={}
+    fetch_errors={}
     with ThreadPoolExecutor(max_workers=4) as pool:
         fs={pool.submit(fetch_one,c):c for c in coins}
         for f in as_completed(fs):
             c=fs[f]
             try: _,a,b,d=f.result(); fetched[c]=(a,b,d)
-            except Exception as e: print(f"  {c}: fetch failed ({e})")
+            except Exception as e:
+                fetch_errors[c]=str(e)
+                print(f"  {c}: fetch failed ({e})")
     ledger=resolve_ledger(state.get('ledger',[]),fetched,now); state['ledger']=ledger
     current_prices={c:float(v[0]['close'].iloc[-1]) for c,v in fetched.items() if len(v[0])}
     scorecard=compute_scorecard(ledger,now,window_hours=24,current_prices=current_prices)
-    snapshots=[]; stale=[]
+    snapshots=[]; stale=[]; stale_reasons={}
     for coin in coins:
-        if coin not in fetched or len(fetched[coin][0])<65: stale.append(coin); continue
+        if coin not in fetched:
+            stale.append(coin); stale_reasons[coin]=f"fetch failed: {fetch_errors.get(coin, 'no data returned')}"; continue
+        if len(fetched[coin][0])<65:
+            stale.append(coin); stale_reasons[coin]=f"only {len(fetched[coin][0])} closed 3m candles"; continue
         c3,c15,c1=fetched[coin]
         try:
             c3=compute_raw_stats(c3); snap=build_coin_snapshot(coin,c3,c15,rvol_percentiles)
-            if snap.get('candle_time')!=expected_key: stale.append(coin); continue
+            if snap.get('candle_time')!=expected_key:
+                stale.append(coin); stale_reasons[coin]=f"last 3m={snap.get('candle_time')} expected={expected_key}"; continue
             hist=state.get('call_history',{}).get(coin,[])
             if hist:
                 last=hist[-1]; mins=(now-utc_datetime(last['time'])).total_seconds()/60
@@ -646,9 +669,25 @@ def main():
                     ch=round((snap['close']-last['entry_price'])/last['entry_price']*100,3); fav=ch>0 if last.get('direction')=='long' else ch<0
                     snap['prior_call']={'direction':last.get('direction'),'take_trade':last.get('take_trade'),'minutes_ago':round(mins,1),'price_change_pct_since':ch,'moved_favorably':fav}
             snap['ctx_3m']=candles_to_compact(c3.tail(20)); snap['ctx_15m']=candles_to_compact(c15.tail(20)); snap['ctx_1h']=candles_to_compact(c1.tail(12)); snap['ctx_daily_30d']=daily_candles.get(coin,[])[-20:]; snapshots.append(snap)
-        except Exception as e: print(f"  {coin}: snapshot error ({e})"); stale.append(coin)
+        except Exception as e: print(f"  {coin}: snapshot error ({e})"); stale.append(coin); stale_reasons[coin]=f"snapshot error: {e}"
     if stale or len(snapshots)!=len(coins):
-        msg=_build_message(expected,now,scorecard,stale=stale); state['last_processed_candle_time']=expected_key; state['pending_telegram']={'text':msg,'reply_markup':None}; save_state(state); _flush_pending_telegram(state); save_state(state); return
+        # IMPORTANT: a stale/incomplete candle is NOT processed. It must be retried
+        # on the next workflow run after CoinDCX data catches up. The previous
+        # implementation marked it processed here, permanently preventing Gemini
+        # from ever seeing that candle.
+        stale_lines = list(stale)
+        msg=_build_message(expected,now,scorecard,stale=stale_lines)
+        if stale_reasons:
+            details = "\n".join(f"• {c}: {stale_reasons[c]}" for c in sorted(stale_reasons))
+            msg += "\n\n🛠 Data diagnostics:\n" + details
+        stale_notice_key=expected_key
+        if state.get('last_stale_notice_candle_time') != stale_notice_key:
+            state['pending_telegram']={'text':msg,'reply_markup':None}
+            state['last_stale_notice_candle_time']=stale_notice_key
+            save_state(state); _flush_pending_telegram(state); save_state(state)
+        else:
+            save_state(state)
+        return
     open_positions=build_open_position_context(ledger,current_prices,now)
     ok,flagged,position_updates=get_trade_suggestions_batch(snapshots,scorecard,open_positions)
     if not ok: save_state(state); print('Gemini unavailable/invalid; candle remains unprocessed'); return
