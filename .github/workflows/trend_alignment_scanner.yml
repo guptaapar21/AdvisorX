@@ -41,6 +41,11 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+          USDT_INR_RATE: "99.44"
+          MAX_NOTIONAL_INR: "100000"
+          MIN_RR: "1.5"
+          MAX_STOP_PCT: "0.08"
+          MIN_STOP_ATR_MULTIPLIER: "1.2"
         run: >
           python trend_alignment_scanner.py
           --coins BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX,HEI,BICO,HYPE,ZEC,ZBT,ADA,ACE,PAXG
