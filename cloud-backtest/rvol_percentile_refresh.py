@@ -33,7 +33,7 @@ import pandas as pd
 from coindcx_fetcher import fetch_coindcx_klines, resample_candles
 
 PERCENTILE_FILE = "rvol_percentiles.json"
-DAILY_CANDLES_FILE = "daily_candles_30d.json"
+DAILY_FILE = "daily_candles_30d.json"
 PERCENTILE_GRID = list(range(0, 101, 5))  # 0,5,10,...,100 - 21 points
 
 
@@ -51,31 +51,24 @@ def backfill_one_coin(coin, days):
     start = now - timedelta(days=days)
     candles_1m = fetch_coindcx_klines(coin, "1m", start.date().isoformat(), now.isoformat(), stagger_delay=False)
     if len(candles_1m) < 100:
-        return coin, None, None, f"only {len(candles_1m)} 1m candles returned, too little history"
+        return coin, None, f"only {len(candles_1m)} 1m candles returned, too little history"
     candles_3m = resample_candles(candles_1m, 3)
     rvol_series = compute_rvol_series(candles_3m)
+    candles_1d = resample_candles(candles_1m, 1440)
+    daily = []
+    for idx, row in candles_1d.tail(days).iterrows():
+        daily.append({"t": str(idx), "o": round(float(row["open"]), 8), "h": round(float(row["high"]), 8), "l": round(float(row["low"]), 8), "c": round(float(row["close"]), 8), "v": round(float(row["volume"]), 2)})
     if len(rvol_series) < 50:
-        return coin, None, None, f"only {len(rvol_series)} valid RVOL samples, too few for a stable distribution"
+        return coin, None, f"only {len(rvol_series)} valid RVOL samples, too few for a stable distribution"
     breakpoints = np.percentile(rvol_series.values, PERCENTILE_GRID).tolist()
-    percentile_data = {
+    return coin, {
         "grid": PERCENTILE_GRID,
         "breakpoints": [round(float(b), 4) for b in breakpoints],
         "n_samples": int(len(rvol_series)),
         "computed_at": now.isoformat(),
         "days": days,
-    }
-
-    # Daily candles derived from the SAME 1m data already fetched above
-    # for RVOL - zero extra API requests. Used as the outermost, 30-day
-    # context tier in the Gemini payload at the reversal stage.
-    candles_1d = resample_candles(candles_1m, "1d")
-    daily_candles = [
-        {"t": str(idx), "o": round(float(r["open"]), 8), "h": round(float(r["high"]), 8),
-         "l": round(float(r["low"]), 8), "c": round(float(r["close"]), 8), "v": round(float(r["volume"]), 2)}
-        for idx, r in candles_1d.iterrows()
-    ]
-
-    return coin, percentile_data, daily_candles, None
+        "daily_candles": daily,
+    }, None
 
 
 def main():
@@ -88,13 +81,12 @@ def main():
     print(f"RVOL percentile refresh | coins={coins} | days={args.days}")
 
     result = {}
+    daily_result = {}
     if os.path.exists(PERCENTILE_FILE):
         with open(PERCENTILE_FILE) as f:
             result = json.load(f)
-
-    daily_result = {}
-    if os.path.exists(DAILY_CANDLES_FILE):
-        with open(DAILY_CANDLES_FILE) as f:
+    if os.path.exists(DAILY_FILE):
+        with open(DAILY_FILE) as f:
             daily_result = json.load(f)
 
     with ThreadPoolExecutor(max_workers=4) as pool:
@@ -102,13 +94,12 @@ def main():
         for future in as_completed(futures):
             coin = futures[future]
             try:
-                _, data, daily_candles, err = future.result()
+                _, data, err = future.result()
                 if data is not None:
-                    result[coin] = data
-                    daily_result[coin] = daily_candles
+                    result[coin] = {k:v for k,v in data.items() if k != "daily_candles"}
+                    daily_result[coin] = data.get("daily_candles", [])
                     print(f"  {coin}: {data['n_samples']} samples, p50={data['breakpoints'][10]}, "
-                          f"p90={data['breakpoints'][18]}, p95={data['breakpoints'][19]}, "
-                          f"{len(daily_candles)} daily candles")
+                          f"p90={data['breakpoints'][18]}, p95={data['breakpoints'][19]}")
                 else:
                     print(f"  {coin}: skipped - {err}")
             except Exception as e:
@@ -116,10 +107,10 @@ def main():
 
     with open(PERCENTILE_FILE, "w") as f:
         json.dump(result, f, indent=2)
-    with open(DAILY_CANDLES_FILE, "w") as f:
+    with open(DAILY_FILE, "w") as f:
         json.dump(daily_result, f, indent=2)
     print(f"\nWrote {PERCENTILE_FILE} with {len(result)} coins")
-    print(f"Wrote {DAILY_CANDLES_FILE} with {len(daily_result)} coins")
+    print(f"Wrote {DAILY_FILE} with {len(daily_result)} coins")
 
 
 if __name__ == "__main__":
