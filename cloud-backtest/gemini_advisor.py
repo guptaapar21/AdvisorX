@@ -88,7 +88,7 @@ TARGET AND STOP
 Choose entry, stop and target from structure. The target must have genuine room. Minimum RR is enforced by Python, but a mathematically acceptable RR does not make a random target valid. For range trades, use the actual range/swing levels where appropriate.
 
 RISK
-Maximum loss budget is ₹1500 at conviction 10 and scales linearly with conviction. There is NO ₹1,00,000 maximum-notional cap. Do not invent a capital limit. Python calculates quantity from the INR risk budget and actual stop distance. Python enforces direction geometry, maximum stop percentage, minimum stop distance of {atr_mult}x 3m ATR, minimum RR {min_rr}, and fee-drag protection.
+Maximum loss budget is ₹1500 at conviction 10 and scales linearly with conviction. There is NO ₹1,00,000 maximum-notional cap. Do not invent a capital limit. Python calculates quantity from the INR risk budget INCLUDING estimated round-trip taker fees, using the actual stop distance. Python enforces direction geometry, maximum stop percentage, minimum stop distance of {atr_mult}x 3m ATR, minimum RR {min_rr}, and fee-drag protection. The ₹1500-at-conviction-10 budget is a hard gross-loss-plus-fees budget.
 
 FEES
 Judge whether the expected gross move is large enough to justify round-trip taker fees. Do not prefer tiny range moves that are mostly consumed by costs.
@@ -100,7 +100,13 @@ RECENT PERFORMANCE
 The supplied 24h scorecard is ground truth for this tool's recent calls. If recent performance is poor, become more selective. Do not blindly increase activity to recover losses.
 
 OPEN POSITIONS
-For every supplied open position, return exactly one action: hold, exit_now, tighten_stop, or move_target. Judge whether the original thesis still holds using current structure, range, momentum and level validity. Do not exit merely because of normal noise. An exit_now is a real immediate close. A stop can only be tightened in the safe direction; a target must remain beyond current price.
+For every supplied open position, return exactly one action: hold, exit_now, tighten_stop, or move_target. Judge the position from its CURRENT state, not only whether the original thesis remains theoretically valid. You are given current P&L plus MFE (maximum favorable excursion), MAE, peak/trough price, MFE in R, percentage of MFE already given back, and a deterministic profit_health score/state computed from the same 3m/15m structural machinery. Use that history.
+
+PROFIT HEALTH: If profit_health.state is weakening or severe, do not default to HOLD merely because the original stop has not broken. At >=1R MFE, >=40% giveback with weakening health is a warning to protect profit; >=50% is an active protection condition; severe health plus >=65% giveback should normally be EXIT or a stop that locks meaningful profit.
+
+PROFIT-PROTECTION RULE: If a trade has already reached at least +1R MFE and is now giving back a meaningful portion of that profit, do NOT blindly hold merely because the original structure has not fully broken. If momentum acceleration, ADX slope, relative strength, volume/follow-through, candle rejection, failed breaks, or structural location is deteriorating, prefer tighten_stop or exit_now. If MFE giveback is >=50% while current P&L is still positive and the evidence is weakening, actively protect the trade. If giveback is severe (>=65%) and the trade remains profitable, holding without a specific reason to expect renewed momentum is not acceptable; tighten the stop to lock profit or exit.
+
+A trade that went +₹700 and is now +₹200 is NOT equivalent to a trade that only ever reached +₹200. Treat the former as a profit-giveback event. Preserve a healthy runner when momentum remains strong, but protect earned profit when momentum is fading. Do not exit merely because of normal noise. An exit_now is a real immediate close. A stop can only be tightened in the safe direction; a target must remain beyond current price.
 
 OUTPUT
 For every NEW signal include coin, direction, take_trade, conviction 1-10, reasoning, entry_price, stop_loss, target_price, market_regime, trade_type, market_location, key_level_used, invalidation_reason and setup_quality.
@@ -166,8 +172,8 @@ def build_batch_prompt(signals, scorecard=None, open_positions=None):
             "market_structure": s.get("market_structure", {}),
             "relative_strength_vs_btc": s.get("relative_strength_vs_btc", {}),
             "market_context": s.get("market_context", {}),
-            "candles_3m_last_1h": s.get("ctx_3m", []),
-            "candles_15m_last_7h": s.get("ctx_15m", []),
+            "candles_3m_last_2h": s.get("ctx_3m", []),
+            "candles_15m_last_8h": s.get("ctx_15m", []),
             "candles_1h_rest_of_24h": s.get("ctx_1h", []),
             "candles_1d_last_30d": s.get("ctx_daily_30d", []),
         }
@@ -325,17 +331,26 @@ def _compute_position_size(parsed, atr14_3m=None):
     entry = float(parsed["entry_price"])
     stop = float(parsed["stop_loss"])
     target = float(parsed["target_price"])
-    risk_per_unit_inr = abs(entry - stop) * USDT_INR_RATE
-    quantity = max_loss_inr / risk_per_unit_inr
+    stop_loss_per_unit_inr = abs(entry - stop) * USDT_INR_RATE
+    entry_fee_per_unit_inr = entry * USDT_INR_RATE * TAKER_FEE_RATE
+    exit_fee_per_unit_inr = abs(stop) * USDT_INR_RATE * TAKER_FEE_RATE
+    total_loss_per_unit_inr = stop_loss_per_unit_inr + entry_fee_per_unit_inr + exit_fee_per_unit_inr
+    if total_loss_per_unit_inr <= 0:
+        parsed["take_trade"] = False
+        parsed["risk_validation_error"] = "invalid stop/fee loss calculation"
+        parsed["trade_amount_inr"] = None
+        return parsed
+    quantity = max_loss_inr / total_loss_per_unit_inr
     trade_amount_inr = quantity * entry * USDT_INR_RATE
     parsed["quantity"] = quantity
     parsed["trade_amount_inr"] = round(trade_amount_inr, 2)
 
     gross_profit_inr = quantity * abs(target - entry) * USDT_INR_RATE
-    round_trip_fee_inr = trade_amount_inr * TAKER_FEE_RATE * 2
+    round_trip_fee_inr = quantity * (entry + stop) * USDT_INR_RATE * TAKER_FEE_RATE
     net_profit_inr = gross_profit_inr - round_trip_fee_inr
     parsed["gross_profit_at_target_inr"] = round(gross_profit_inr, 2)
     parsed["estimated_fee_inr"] = round(round_trip_fee_inr, 2)
+    parsed["estimated_loss_at_stop_inr"] = round(quantity * abs(stop - entry) * USDT_INR_RATE + round_trip_fee_inr, 2)
     parsed["net_profit_at_target_inr"] = round(net_profit_inr, 2)
 
     if gross_profit_inr > 0:

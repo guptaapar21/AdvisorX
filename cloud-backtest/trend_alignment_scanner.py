@@ -546,6 +546,185 @@ def load_rvol_percentiles():
 LEDGER_MAX_AGE_HOURS = 26  # entries older than this are pruned regardless of status - covers the 24h scorecard window with 2h margin
 EXPIRY_HOURS = 2  # a pending trade that hasn't hit target or stop within this window is closed at current market price
 
+# Position-management telemetry / protection. These are deliberately conservative:
+# Gemini remains the discretionary manager, while Python prevents a large amount
+# of already-earned profit from silently evaporating.
+PROFIT_PROTECT_MIN_MFE_R = 1.0
+PROFIT_PROTECT_EARLY_GIVEBACK_PCT = 40.0
+PROFIT_PROTECT_SEVERE_GIVEBACK_PCT = 65.0
+PROFIT_PROTECT_LOCK_R = 0.25
+PROFIT_PROTECT_HEALTH_SCORE = 2
+PROFIT_PROTECT_SEVERE_HEALTH_SCORE = 3
+
+def _position_gross_pnl(entry, price):
+    ep = float(entry.get("entry_price") or 0)
+    amt = float(entry.get("trade_amount_inr") or 0)
+    if ep <= 0 or amt <= 0 or USDT_INR_RATE <= 0 or price is None:
+        return None
+    qty = amt / (ep * USDT_INR_RATE)
+    if entry.get("direction") == "long":
+        return qty * (float(price) - ep) * USDT_INR_RATE
+    return qty * (ep - float(price)) * USDT_INR_RATE
+
+def update_position_telemetry(ledger, fetched, now):
+    """Update MFE/MAE from closed 1m candles before resolving stops/targets.
+
+    This records what actually happened inside the 3m decision window, so a
+    trade that reached +₹700 and later returned to +₹200 is presented to Gemini
+    as a giveback rather than as a fresh +₹200 trade. Existing state is migrated
+    lazily without requiring a manual reset.
+    """
+    for entry in ledger:
+        if entry.get("status") != "pending":
+            continue
+        coin = entry.get("coin")
+        data = fetched.get(coin)
+        if not data:
+            continue
+        c1 = data[3] if len(data) >= 4 else None
+        if c1 is None or c1.empty:
+            continue
+        ep = entry.get("entry_price")
+        if not ep:
+            continue
+        entry.setdefault("peak_price", float(ep))
+        entry.setdefault("trough_price", float(ep))
+        entry.setdefault("mfe_pnl_inr", 0.0)
+        entry.setdefault("mae_pnl_inr", 0.0)
+        entry.setdefault("mfe_time", entry.get("time"))
+        entry.setdefault("mae_time", entry.get("time"))
+        call = utc_datetime(entry["time"])
+        since = c1[c1.index > call.replace(tzinfo=None)]
+        if since.empty:
+            continue
+        for idx, row in since.iterrows():
+            high = float(row["high"]); low = float(row["low"])
+            if entry.get("direction") == "long":
+                if high > float(entry["peak_price"]):
+                    entry["peak_price"] = high; entry["mfe_time"] = str(idx)
+                if low < float(entry["trough_price"]):
+                    entry["trough_price"] = low; entry["mae_time"] = str(idx)
+                fav = _position_gross_pnl(entry, high)
+                adverse = _position_gross_pnl(entry, low)
+            else:
+                if low < float(entry["trough_price"]):
+                    entry["trough_price"] = low; entry["mfe_time"] = str(idx)
+                if high > float(entry["peak_price"]):
+                    entry["peak_price"] = high; entry["mae_time"] = str(idx)
+                fav = _position_gross_pnl(entry, low)
+                adverse = _position_gross_pnl(entry, high)
+            if fav is not None and fav > float(entry.get("mfe_pnl_inr", 0.0)):
+                entry["mfe_pnl_inr"] = round(fav, 2)
+            if adverse is not None and adverse < float(entry.get("mae_pnl_inr", 0.0)):
+                entry["mae_pnl_inr"] = round(adverse, 2)
+        risk = float(entry.get("max_loss_this_trade_inr") or 0)
+        mfe = float(entry.get("mfe_pnl_inr") or 0)
+        entry["mfe_r"] = round(mfe / risk, 3) if risk > 0 else None
+
+def _profit_health_from_fetched(entry, fetched):
+    """Deterministic health score for an already-profitable runner.
+
+    This is a safety overlay, not an entry strategy. It uses the scanner's
+    existing 3m/15m structural machinery to detect deterioration.
+    0-1 healthy, 2 weakening, 3+ severe.
+    """
+    data = fetched.get(entry.get("coin")) if fetched else None
+    if not data:
+        return {"score": 0, "reasons": [], "state": "unknown"}
+    c3, c15 = data[0], data[1]
+    direction = entry.get("direction")
+    score = 0; reasons = []
+    try:
+        s3 = _tf_structure(c3, "3m") if len(c3) >= 55 else {}
+        s15 = _tf_structure(c15, "15m") if len(c15) >= 55 else {}
+    except Exception:
+        s3 = {}; s15 = {}
+    bullish = direction == "long"
+    def add(cond, reason, points=1):
+        nonlocal score
+        if cond:
+            score += points; reasons.append(reason)
+    if s3:
+        add(s3.get("structure_bias") == ("bearish" if bullish else "bullish"), "3m structure flipped", 2)
+        add(s3.get("phase") == ("bearish_transition" if bullish else "bullish_transition"), "3m transition against position", 2)
+        ema9=s3.get("ema9"); close=s3.get("close")
+        add(ema9 is not None and close is not None and ((close < ema9) if bullish else (close > ema9)), "3m lost EMA9")
+        adx_slope=s3.get("adx_slope_3bars")
+        add(adx_slope is not None and adx_slope < 0, "ADX slope weakening")
+        mom5=s3.get("momentum_acceleration_5")
+        add(mom5 is not None and ((mom5 < 0) if bullish else (mom5 > 0)), "momentum acceleration reversed")
+        upper=s3.get("upper_wick_pct") or 0; lower=s3.get("lower_wick_pct") or 0
+        add((upper > lower*1.5) if bullish else (lower > upper*1.5), "rejection wick against position")
+        add(bool(s3.get("failed_breaks")), "recent failed break")
+    if s15:
+        add(s15.get("structure_bias") == ("bearish" if bullish else "bullish"), "15m structure against position", 2)
+        add(s15.get("phase") == ("bearish_transition" if bullish else "bullish_transition"), "15m transition against position", 2)
+    state = "severe" if score >= PROFIT_PROTECT_SEVERE_HEALTH_SCORE else ("weakening" if score >= PROFIT_PROTECT_HEALTH_SCORE else "healthy")
+    return {"score": score, "reasons": reasons[:8], "state": state}
+
+
+def apply_python_profit_protection(ledger, current_prices, now, fetched=None):
+    """Deterministic profit-protection floor after a substantial favorable move.
+
+    The first protection layer activates when the trade has reached >=1R MFE,
+    given back >=40% of that MFE, is still profitable, and the deterministic
+    profit-health score is >=2. It tightens protection to lock approximately
+    +0.25R where market geometry permits it.
+
+    A stronger deterministic exit is used at >=65% MFE giveback when the
+    profit-health score is >=3 and remaining profit is <=0.5R. That exit is
+    recorded as ``python_profit_exit``. Gemini can still exit earlier or
+    manage the trade normally.
+    """
+    summaries = []
+    for entry in ledger:
+        if entry.get("status") != "pending":
+            continue
+        coin = entry.get("coin"); cp = current_prices.get(coin)
+        if cp is None:
+            continue
+        mfe = float(entry.get("mfe_pnl_inr") or 0)
+        risk = float(entry.get("max_loss_this_trade_inr") or 0)
+        current_gross = _position_gross_pnl(entry, cp)
+        if risk <= 0 or mfe < risk * PROFIT_PROTECT_MIN_MFE_R or current_gross is None or current_gross <= 0:
+            continue
+        giveback = (mfe - current_gross) / mfe * 100 if mfe > 0 else 0
+        entry["mfe_giveback_pct"] = round(max(0.0, giveback), 1)
+        health = _profit_health_from_fetched(entry, fetched)
+        entry["profit_health_score"] = health["score"]
+        entry["profit_health_state"] = health["state"]
+        entry["profit_health_reasons"] = health["reasons"]
+        if giveback < PROFIT_PROTECT_EARLY_GIVEBACK_PCT or health["score"] < PROFIT_PROTECT_HEALTH_SCORE:
+            continue
+        ep = float(entry["entry_price"])
+        current_r = current_gross / risk if risk > 0 else 0
+        if (giveback >= PROFIT_PROTECT_SEVERE_GIVEBACK_PCT and health["score"] >= PROFIT_PROTECT_SEVERE_HEALTH_SCORE and current_r <= 0.50):
+            fees = float(entry.get("trade_amount_inr") or 0) * TAKER_FEE_RATE * 2
+            entry["status"] = "python_profit_exit"
+            entry["resolved_pnl"] = round(current_gross - fees, 2)
+            entry["resolved_time"] = now.isoformat()
+            entry["exit_reasoning"] = f"Deterministic profit protection: {giveback:.0f}% MFE giveback, health score {health['score']} ({', '.join(health['reasons'][:4])})."
+            summaries.append({"coin":entry.get("coin"),"direction":entry.get("direction"),"action":"profit_exit","pnl":entry["resolved_pnl"],"mfe_pnl_inr":mfe,"giveback_pct":giveback,"health_score":health["score"],"health_reasons":health["reasons"]})
+            continue
+        lock_move = risk * PROFIT_PROTECT_LOCK_R
+        price_move = lock_move / (float(entry["trade_amount_inr"]) / ep) if entry.get("trade_amount_inr") else 0
+        if entry.get("direction") == "long":
+            desired = ep + price_move
+            old = float(entry.get("stop_loss") or 0)
+            if old < desired < float(cp):
+                entry["stop_loss"] = desired
+                entry["revised_at"] = now.isoformat()
+                entry.setdefault("level_history", []).append({"from": now.isoformat(), "stop": desired, "target": entry.get("target_price"), "source": "python_profit_protection"})
+                summaries.append({"coin":coin,"direction":"long","action":"profit_protection","new_stop_loss":desired,"mfe_pnl_inr":mfe,"current_pnl_inr":current_gross,"giveback_pct":giveback,"health_score":health["score"],"health_reasons":health["reasons"]})
+        else:
+            desired = ep - price_move
+            old = float(entry.get("stop_loss") or 0)
+            if float(cp) < desired < old:
+                entry["stop_loss"] = desired
+                entry["revised_at"] = now.isoformat()
+                entry.setdefault("level_history", []).append({"from": now.isoformat(), "stop": desired, "target": entry.get("target_price"), "source": "python_profit_protection"})
+                summaries.append({"coin":coin,"direction":"short","action":"profit_protection","new_stop_loss":desired,"mfe_pnl_inr":mfe,"current_pnl_inr":current_gross,"giveback_pct":giveback,"health_score":health["score"],"health_reasons":health["reasons"]})
+    return summaries
 
 def resolve_ledger(ledger, fetched, now):
     now_utc_value=utc_datetime(now)
@@ -556,7 +735,7 @@ def resolve_ledger(ledger, fetched, now):
             entry["status"]="invalid"; entry["resolved_pnl"]=0.0; entry["resolved_time"]=now.isoformat(); continue
         coin=entry.get("coin")
         if coin not in fetched: continue
-        c3,_,_=fetched[coin]; call=utc_datetime(entry["time"]); since=c3[c3.index>call.replace(tzinfo=None)]
+        c3,_,_,_=fetched[coin]; call=utc_datetime(entry["time"]); since=c3[c3.index>call.replace(tzinfo=None)]
         if since.empty: continue
         qty=amt/(ep*USDT_INR_RATE); fees=amt*TAKER_FEE_RATE*2; direction=entry["direction"]
         history=entry.get("level_history") or [{"from":entry["time"],"stop":entry.get("stop_loss"),"target":entry.get("target_price")}]
@@ -613,6 +792,7 @@ def compute_scorecard(ledger, now, window_hours=1, current_prices=None):
     # stop, or the 2h expiry clock was actually touched - a third,
     # distinct kind of resolution alongside target/stop/expiry.
     gemini_exit = [e for e in window if e["status"] == "gemini_exit"]
+    profit_exit = [e for e in window if e["status"] == "python_profit_exit"]
     pending = [e for e in window if e["status"] == "pending"]
     abandoned_or_invalid = [e for e in window if e["status"] in ("abandoned", "invalid")]
     # Expired and gemini_exit trades' P&L counts toward realized (per
@@ -620,7 +800,7 @@ def compute_scorecard(ledger, now, window_hours=1, current_prices=None):
     # clock or at Gemini's exit call, respectively), so it's a real,
     # locked-in number, just not from genuinely touching the actual
     # target/stop price.
-    realized_pnl = round(sum(e.get("resolved_pnl", 0) for e in target_hit + stop_hit + expired + gemini_exit), 2)
+    realized_pnl = round(sum(e.get("resolved_pnl", 0) for e in target_hit + stop_hit + expired + gemini_exit + profit_exit), 2)
 
     unrealized_pnl = 0.0
     if current_prices:
@@ -641,14 +821,14 @@ def compute_scorecard(ledger, now, window_hours=1, current_prices=None):
 
     return {
         "total": len(window), "target_hit": len(target_hit), "stop_hit": len(stop_hit),
-        "expired": len(expired), "gemini_exit": len(gemini_exit), "pending": len(pending),
+        "expired": len(expired), "gemini_exit": len(gemini_exit), "profit_exit": len(profit_exit), "pending": len(pending),
         "abandoned_or_invalid": len(abandoned_or_invalid),
         "realized_pnl_inr": realized_pnl,
         "unrealized_pnl_inr": unrealized_pnl, "total_pnl_inr": round(realized_pnl + unrealized_pnl, 2),
     }
 
 
-def build_open_position_context(ledger, current_prices, now):
+def build_open_position_context(ledger, current_prices, now, profit_health_by_coin=None):
     """Builds the 'open_positions' payload sent back to Gemini: every
     still-pending ledger entry whose coin has fresh data this cycle,
     with its original entry/stop/target/reasoning (so Gemini can judge
@@ -672,6 +852,14 @@ def build_open_position_context(ledger, current_prices, now):
         direction = entry["direction"]
         if quantity is None:
             continue
+        # Update current giveback telemetry before sending the position to Gemini.
+        mfe_now = float(entry.get("mfe_pnl_inr") or 0)
+        current_gross = _position_gross_pnl(entry, current_price)
+        if mfe_now > 0 and current_gross is not None:
+            entry["mfe_giveback_pct"] = round(max(0.0, (mfe_now-current_gross)/mfe_now*100), 1)
+        risk_now = float(entry.get("max_loss_this_trade_inr") or 0)
+        if risk_now > 0:
+            entry["mfe_r"] = round(mfe_now/risk_now, 3)
         if direction == "long":
             unrealized_pnl = quantity * (current_price - entry_price) * USDT_INR_RATE
         else:
@@ -688,6 +876,15 @@ def build_open_position_context(ledger, current_prices, now):
             "minutes_open": minutes_open,
             "current_price": current_price,
             "unrealized_pnl_inr": round(unrealized_pnl, 2),
+            "mfe_pnl_inr": round(float(entry.get("mfe_pnl_inr") or 0), 2),
+            "mae_pnl_inr": round(float(entry.get("mae_pnl_inr") or 0), 2),
+            "mfe_r": entry.get("mfe_r"),
+            "peak_price": entry.get("peak_price"),
+            "trough_price": entry.get("trough_price"),
+            "mfe_time": entry.get("mfe_time"),
+            "mae_time": entry.get("mae_time"),
+            "mfe_giveback_pct": entry.get("mfe_giveback_pct"),
+            "profit_health": (profit_health_by_coin or {}).get(coin),
         })
     return positions
 
@@ -908,6 +1105,9 @@ def _build_message(candle_start_utc,now,scorecard,scan_stats=None,stale=None,pos
     lines.append(f"Realized {_format_pnl(scorecard['realized_pnl_inr'])} | Unrealized {_format_pnl(scorecard['unrealized_pnl_inr'])} | Total {_format_pnl(scorecard['total_pnl_inr'])}")
     if scan_stats:
         lines.append(f"\n🔎 Gemini scan: {scan_stats['scanned']} coins | proposals {scan_stats['proposals']} | TAKE {scan_stats['take']} | Python risk rejected {scan_stats['risk_rejected']}")
+        reviewed=scan_stats.get('position_reviewed',0); missing=scan_stats.get('position_missing',0); acts=scan_stats.get('position_actions',{})
+        if reviewed or missing:
+            lines.append(f"📋 Position review: {reviewed} reviewed | HOLD {acts.get('hold',0)} | EXIT {acts.get('exit_now',0)} | TIGHTEN {acts.get('tighten_stop',0)} | TARGET {acts.get('move_target',0)} | missing {missing}")
         for reason,count in sorted(scan_stats['risk_reasons'].items(),key=lambda x:-x[1])[:4]: lines.append(f"• Risk reject: {html.escape(reason)} ({count})")
     if stale: lines.append(f"\n🟡 Stale/missing data: {', '.join(sorted(set(stale)))} — Gemini not called for this candle.")
     if position_summaries:
@@ -915,6 +1115,8 @@ def _build_message(candle_start_utc,now,scorecard,scan_stats=None,stale=None,pos
         for ps in position_summaries:
             d=(ps.get('direction') or '?').upper(); a=ps.get('action')
             if a=='exit_now': lines.append(f"🚪 <b>{html.escape(ps['coin'])} {d} — CLOSED</b> ({_format_pnl(ps.get('pnl',0))})")
+            elif a=='profit_protection': lines.append(f"🛡 <b>{html.escape(ps['coin'])} {d}</b> — profit protected at {ps.get('new_stop_loss')} | MFE {_format_pnl(ps.get('mfe_pnl_inr',0))} | giveback {ps.get('giveback_pct',0):.0f}% | health {ps.get('health_score','?')}")
+            elif a=='profit_exit': lines.append(f"🚪 <b>{html.escape(ps['coin'])} {d} — PROFIT EXIT</b> ({_format_pnl(ps.get('pnl',0))}) | MFE {_format_pnl(ps.get('mfe_pnl_inr',0))} | giveback {ps.get('giveback_pct',0):.0f}% | health {ps.get('health_score','?')}")
             elif a=='tighten_stop': lines.append(f"🔻 <b>{html.escape(ps['coin'])} {d}</b> — stop tightened to {ps.get('new_stop_loss')}")
             elif a=='move_target': lines.append(f"🎯 <b>{html.escape(ps['coin'])} {d}</b> — target moved to {ps.get('new_target_price')}")
             if ps.get('reasoning'): lines.append(html.escape(ps['reasoning']))
@@ -976,29 +1178,30 @@ def main():
     start_fetch=now-timedelta(minutes=FETCH_MINUTES_BACK)
     def fetch_one(coin):
         c1=fetch_coindcx_klines(coin,'1m',start_fetch.isoformat(),now.isoformat(),stagger_delay=False)
-        return coin,drop_still_forming_bucket(resample_candles(c1,3),now,3),drop_still_forming_bucket(resample_candles(c1,15),now,15),drop_still_forming_bucket(resample_candles(c1,60),now,60)
+        return coin,drop_still_forming_bucket(resample_candles(c1,3),now,3),drop_still_forming_bucket(resample_candles(c1,15),now,15),drop_still_forming_bucket(resample_candles(c1,60),now,60),drop_still_forming_bucket(c1,now,1)
     fetched={}; fetch_errors={}
     with ThreadPoolExecutor(max_workers=4) as pool:
         fs={pool.submit(fetch_one,c):c for c in fetch_coins}
         for f in as_completed(fs):
             c=fs[f]
-            try: _,a,b,d=f.result(); fetched[c]=(a,b,d)
+            try: _,a,b,d,c1=f.result(); fetched[c]=(a,b,d,c1)
             except Exception as e: fetch_errors[c]=str(e); print(f"  {c}: fetch failed ({e})")
 
+    update_position_telemetry(ledger,fetched,now)
     ledger=resolve_ledger(ledger,fetched,now); state['ledger']=ledger
-    current_prices={c:float(v[0]['close'].iloc[-1]) for c,v in fetched.items() if len(v[0])}
+    current_prices={c:float(v[3]['close'].iloc[-1]) if len(v)>=4 and not v[3].empty else float(v[0]['close'].iloc[-1]) for c,v in fetched.items() if len(v[0])}
     scorecard=compute_scorecard(ledger,now,window_hours=24,current_prices=current_prices)
 
     snapshots=[]; stale=[]; stale_reasons={}; fresh_coins=[]
     for coin in pending_coins:
         if coin not in fetched:
             stale.append(coin); stale_reasons[coin]=f"fetch failed: {fetch_errors.get(coin,'no data returned')}"; continue
-        c3,c15,c1=fetched[coin]
+        c3,c15,c60,c1=fetched[coin]
         if len(c3)<65:
             stale.append(coin); stale_reasons[coin]=f"only {len(c3)} closed 3m candles"; continue
         try:
             c3=compute_raw_stats(c3)
-            snap=build_coin_snapshot(coin,c3,c15,c1,rvol_percentiles)
+            snap=build_coin_snapshot(coin,c3,c15,c60,rvol_percentiles)
             if snap.get('candle_time')!=expected_key:
                 stale.append(coin); stale_reasons[coin]=f"last 3m={snap.get('candle_time')} expected={expected_key}"; continue
             hist=state.get('call_history',{}).get(coin,[])
@@ -1026,7 +1229,11 @@ def main():
         snap["market_context"]=market_context
 
     # Process fresh coins immediately. Stale coins are NOT allowed to block them.
-    open_positions=build_open_position_context(ledger,current_prices,now)
+    profit_health_by_coin = {}
+    for p in ledger:
+        if p.get("status") == "pending" and p.get("coin") in fetched:
+            profit_health_by_coin[p.get("coin")] = _profit_health_from_fetched(p, fetched)
+    open_positions=build_open_position_context(ledger,current_prices,now,profit_health_by_coin)
     if snapshots:
         ok,flagged,position_updates=get_trade_suggestions_batch(snapshots,scorecard,open_positions)
         if not ok:
@@ -1041,8 +1248,16 @@ def main():
         state['processed_candle_coins'].pop(k,None)
 
     position_summaries=apply_position_updates(ledger,position_updates,current_prices,now)
+    protection_summaries=apply_python_profit_protection(ledger,current_prices,now,fetched=fetched)
+    position_summaries.extend(protection_summaries)
     call_history=state.get('call_history',{})
-    stats={'scanned':len(snapshots),'proposals':len(flagged),'take':sum(1 for g in flagged.values() if g.get('take_trade')),'risk_rejected':0,'risk_reasons':{},'fresh':len(fresh_coins),'stale':len(stale)}
+    review_actions = {}
+    for coin, upd in position_updates.items():
+        a = (upd.get('action') or 'hold').lower()
+        review_actions[a] = review_actions.get(a, 0) + 1
+    expected_review = {p['coin'] for p in open_positions}
+    missing_reviews = sorted(expected_review - set(position_updates))
+    stats={'scanned':len(snapshots),'proposals':len(flagged),'take':sum(1 for g in flagged.values() if g.get('take_trade')),'risk_rejected':0,'risk_reasons':{},'fresh':len(fresh_coins),'stale':len(stale),'position_reviewed':len(position_updates),'position_missing':len(missing_reviews),'position_actions':review_actions}
     for coin,g in flagged.items():
         if g.get('risk_validation_error') and not g.get('take_trade'):
             stats['risk_rejected']+=1; r=g['risk_validation_error']; stats['risk_reasons'][r]=stats['risk_reasons'].get(r,0)+1
@@ -1062,7 +1277,7 @@ def main():
             existing=find_pending_same_direction(ledger,coin,g.get('direction'),now)
             if existing is not None: existing['conviction']=g.get('conviction')
             else:
-                ledger.append({'coin':coin,'direction':g.get('direction'),'entry_price':g.get('entry_price'),'stop_loss':g.get('stop_loss'),'target_price':g.get('target_price'),'trade_amount_inr':g.get('trade_amount_inr'),'quantity':g.get('quantity'),'max_loss_this_trade_inr':g.get('max_loss_this_trade_inr'),'conviction':g.get('conviction'),'status':'pending','time':now.isoformat(),'reasoning':g.get('reasoning'),'level_history':[{'from':now.isoformat(),'stop':g.get('stop_loss'),'target':g.get('target_price')}]})
+                ledger.append({'coin':coin,'direction':g.get('direction'),'entry_price':g.get('entry_price'),'stop_loss':g.get('stop_loss'),'target_price':g.get('target_price'),'trade_amount_inr':g.get('trade_amount_inr'),'quantity':g.get('quantity'),'max_loss_this_trade_inr':g.get('max_loss_this_trade_inr'),'conviction':g.get('conviction'),'status':'pending','time':now.isoformat(),'reasoning':g.get('reasoning'),'level_history':[{'from':now.isoformat(),'stop':g.get('stop_loss'),'target':g.get('target_price')}],'peak_price':g.get('entry_price'),'trough_price':g.get('entry_price'),'mfe_pnl_inr':0.0,'mae_pnl_inr':0.0,'mfe_r':0.0,'mfe_time':now.isoformat(),'mae_time':now.isoformat(),'mfe_giveback_pct':0.0})
     state['call_history']=call_history; state['ledger']=ledger
     state['last_processed_candle_time']=expected_key if len(processed)>=len(coins) else state.get('last_processed_candle_time')
     scorecard=compute_scorecard(ledger,now,window_hours=24,current_prices=current_prices)
