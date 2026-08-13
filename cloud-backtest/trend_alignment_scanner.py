@@ -1106,8 +1106,10 @@ def _build_message(candle_start_utc,now,scorecard,scan_stats=None,stale=None,pos
     if scan_stats:
         lines.append(f"\n🔎 Gemini scan: {scan_stats['scanned']} coins | proposals {scan_stats['proposals']} | TAKE {scan_stats['take']} | Python risk rejected {scan_stats['risk_rejected']}")
         reviewed=scan_stats.get('position_reviewed',0); missing=scan_stats.get('position_missing',0); acts=scan_stats.get('position_actions',{})
-        if reviewed or missing:
+        if reviewed or missing or scan_stats.get('gemini_review_failed'):
             lines.append(f"📋 Position review: {reviewed} reviewed | HOLD {acts.get('hold',0)} | EXIT {acts.get('exit_now',0)} | TIGHTEN {acts.get('tighten_stop',0)} | TARGET {acts.get('move_target',0)} | missing {missing}")
+            if scan_stats.get('gemini_review_failed'):
+                lines.append('🛑 Gemini review FAILED — no missing position was treated as HOLD; Python protection remains active.')
         for reason,count in sorted(scan_stats['risk_reasons'].items(),key=lambda x:-x[1])[:4]: lines.append(f"• Risk reject: {html.escape(reason)} ({count})")
     if stale: lines.append(f"\n🟡 Stale/missing data: {', '.join(sorted(set(stale)))} — Gemini not called for this candle.")
     if position_summaries:
@@ -1234,11 +1236,15 @@ def main():
         if p.get("status") == "pending" and p.get("coin") in fetched:
             profit_health_by_coin[p.get("coin")] = _profit_health_from_fetched(p, fetched)
     open_positions=build_open_position_context(ledger,current_prices,now,profit_health_by_coin)
+    gemini_review_failed=False
     if snapshots:
         ok,flagged,position_updates=get_trade_suggestions_batch(snapshots,scorecard,open_positions)
         if not ok:
-            save_state(state); print('Gemini unavailable/invalid; fresh coins remain unprocessed'); return
-        for c in fresh_coins: processed.add(c)
+            flagged={}; position_updates={}
+            gemini_review_failed=True
+            print('Gemini unavailable/invalid; fresh coins remain unprocessed; Python protection continues')
+        else:
+            for c in fresh_coins: processed.add(c)
     else:
         flagged={}; position_updates={}
 
@@ -1257,7 +1263,7 @@ def main():
         review_actions[a] = review_actions.get(a, 0) + 1
     expected_review = {p['coin'] for p in open_positions}
     missing_reviews = sorted(expected_review - set(position_updates))
-    stats={'scanned':len(snapshots),'proposals':len(flagged),'take':sum(1 for g in flagged.values() if g.get('take_trade')),'risk_rejected':0,'risk_reasons':{},'fresh':len(fresh_coins),'stale':len(stale),'position_reviewed':len(position_updates),'position_missing':len(missing_reviews),'position_actions':review_actions}
+    stats={'scanned':len(snapshots),'proposals':len(flagged),'take':sum(1 for g in flagged.values() if g.get('take_trade')),'risk_rejected':0,'risk_reasons':{},'fresh':len(fresh_coins),'stale':len(stale),'position_reviewed':len(position_updates),'position_missing':len(missing_reviews),'position_actions':review_actions,'gemini_review_failed':gemini_review_failed}
     for coin,g in flagged.items():
         if g.get('risk_validation_error') and not g.get('take_trade'):
             stats['risk_rejected']+=1; r=g['risk_validation_error']; stats['risk_reasons'][r]=stats['risk_reasons'].get(r,0)+1

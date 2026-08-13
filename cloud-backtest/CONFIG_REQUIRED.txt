@@ -8,9 +8,11 @@ USDT_INR_RATE
 
 Optional safety controls
 TAKER_FEE_RATE=0.00075
-MAX_NOTIONAL_INR=100000
 MIN_RR=1.5
 MAX_STOP_PCT=0.08
+MIN_STOP_ATR_MULTIPLIER=1.2
+
+There is no MAX_NOTIONAL_INR cap in the current runtime advisor. Position size is controlled by the conviction-based INR loss budget, stop distance, fees, and the other Python risk gates.
 
 Existing required secrets remain required:
 GEMINI_API_KEYS (or GEMINI_API_KEY_1..30 / GEMINI_API_KEY)
