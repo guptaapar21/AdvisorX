@@ -41,7 +41,6 @@ jobs:
           MIN_RR: "1.5"
           MAX_STOP_PCT: "0.08"
           MIN_STOP_ATR_MULTIPLIER: "1.2"
-          GEMINI_RAW_LOG_PATH: "gemini_raw_responses.log"
         run: >
           python trend_alignment_scanner.py
           --coins BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX,HEI,BICO,HYPE,ZEC,ZBT,ADA,ACE,PAXG
@@ -80,11 +79,3 @@ jobs:
           echo "Failed to push state after 3 attempts."
           exit 1
 
-      - name: Upload Gemini diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gemini-raw-responses-${{ github.run_id }}
-          path: cloud-backtest/gemini_raw_responses.log
-          if-no-files-found: ignore
-          retention-days: 7
