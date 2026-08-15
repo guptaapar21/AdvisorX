@@ -59,7 +59,11 @@ Fields in recent_performance_last_24h: total (all calls in the window), target_h
 
 If recent performance has been poor (more stops/expiries than targets, negative realized P&L), that's a real reason to be MORE selective this cycle, not something to disregard because "this setup is different."
 
-For each coin in "coins" you get only raw, descriptive data: latest close, ATR (volatility), RVOL and its percentile rank against that coin's own history, plain momentum (% price change over the last 5/20/60 3m candles - just arithmetic, not an indicator), and TIERED candle history at decreasing resolution the further back in time it goes - candles_3m_last_1h (full 3m detail, most recent hour), candles_15m_last_7h (next several hours), candles_1h_rest_of_24h (rest of the day), and candles_1d_last_30d (daily candles, 30-day context). No direction, trend verdict, or strategy signal is supplied, and no rule is given for which numbers should agree or how - that judgment, entirely, is yours to make.
+For each coin in "coins" you receive both raw descriptive data and symmetric structural context computed deterministically by Python from closed candles. Raw data includes latest close, ATR (volatility), RVOL and its percentile rank against that coin's own history, plain momentum (% price change over the last 5/20/60 3m candles), candle anatomy, and TIERED candle history at decreasing resolution the further back in time it goes - candles_3m_last_1h, candles_15m_last_7h, candles_1h_rest_of_24h, and candles_1d_last_30d.
+
+The "structure_context" block contains 3m/15m/1h structure bias, trend phase, confirmed swing highs/lows and HH/HL/LH/LL sequence, BOS/CHoCH events, latest break, failed breaks, liquidity sweeps/rejections, EMA9/21/50, EMA9 slope, ADX and ADX slope, +DI/-DI, VWAP distance, RSI, efficiency ratio, volume ratio, momentum acceleration and exhaustion flags, plus range boundaries/location. It also includes market_regime and cross-market context such as BTC-relative momentum and breadth.
+
+These fields are descriptive evidence, not a preselected trade direction. You must make the final directional decision yourself. Apply the same evidentiary standard to LONG and SHORT. Do not assume LONG is the default, and do not require a stronger bar for SHORT. For a SHORT candidate, explicitly consider bearish evidence such as LH/LL, bearish BOS/CHoCH, failed support reclaims, resistance rejection/liquidity sweeps, negative momentum, -DI dominance, and adequate downside room. For a LONG candidate, apply the equivalent bullish checks. Mixed or contradictory evidence should result in SKIP.
 
 Only flag genuinely high-quality, high-conviction opportunities. Do not flag marginal, borderline, or small setups just because one number happens to look elevated - that produces noise, not useful signals. Flagging nothing is the correct, expected outcome most cycles; only flag when you'd actually stand behind it. take_trade: true is a higher bar than simply being worth mentioning - if you're flagging a coin mainly because something looks unusual but you're not genuinely confident, set take_trade: false and say so, rather than defaulting to true.
 
@@ -107,23 +111,50 @@ def get_gemini_keys():
 
 
 def build_batch_prompt(signals, scorecard=None, open_positions=None):
-    """signals: list of raw coin snapshots from build_coin_snapshot -
-    every tracked coin, every cycle, NOT pre-filtered. No direction,
-    no trend verdict, no prescribed combination of which numbers
-    should agree - just raw descriptive numbers, the tiered candle
-    context, and (when available) this coin's own prior-call context
-    so Gemini can genuinely self-correct rather than reason blind.
-    scorecard: optional aggregate stats over the trailing 24h -
-    computed deterministically by code, not something Gemini tracks
-    or is asked to remember itself. open_positions: optional list of
-    dicts (from build_open_position_context in the caller) - the
-    still-pending ledger entries Gemini itself previously flagged,
-    given back with their original entry/stop/target/reasoning plus
-    current price/P&L so Gemini can judge whether to hold, exit, or
-    adjust - a genuinely separate decision from scanning "coins" for
-    fresh setups."""
+    """Build the Gemini batch payload.
+
+    Every fresh coin is still sent to Gemini without a Python entry-direction
+    filter. Python supplies the deterministic facts it already computed,
+    including symmetric bullish/bearish structural evidence, while Gemini
+    remains responsible for the final LONG/SHORT and TAKE/SKIP decision.
+    """
     payload = []
     for s in signals:
+        ms = s.get("market_structure") or {}
+        s3 = ms.get("3m") or {}
+        s15 = ms.get("15m") or {}
+        s1h = ms.get("1h") or {}
+        rng = ms.get("range") or {}
+
+        def structural_view(st):
+            return {
+                "structure_bias": st.get("structure_bias"),
+                "phase": st.get("phase"),
+                "recent_structure": st.get("recent_structure", []),
+                "swing_highs": st.get("swing_highs", []),
+                "swing_lows": st.get("swing_lows", []),
+                "break_events": st.get("break_events", []),
+                "latest_break": st.get("latest_break"),
+                "failed_breaks": st.get("failed_breaks", []),
+                "liquidity_sweeps": st.get("liquidity_sweeps", []),
+                "ema9": st.get("ema9"),
+                "ema21": st.get("ema21"),
+                "ema50": st.get("ema50"),
+                "ema9_slope_pct_3bars": st.get("ema9_slope_pct_3bars"),
+                "adx14": st.get("adx14"),
+                "adx_slope_3bars": st.get("adx_slope_3bars"),
+                "plus_di": st.get("plus_di"),
+                "minus_di": st.get("minus_di"),
+                "vwap20": st.get("vwap20"),
+                "distance_vwap_pct": st.get("distance_vwap_pct"),
+                "rsi14": st.get("rsi14"),
+                "efficiency_ratio_20": st.get("efficiency_ratio_20"),
+                "volume_ratio_vs_prior20": st.get("volume_ratio_vs_prior20"),
+                "momentum_acceleration_5": st.get("momentum_acceleration_5"),
+                "momentum_acceleration_20": st.get("momentum_acceleration_20"),
+                "exhaustion_flags": st.get("exhaustion_flags", []),
+            }
+
         entry = {
             "coin": s["coin"],
             "close": s.get("close"),
@@ -134,20 +165,53 @@ def build_batch_prompt(signals, scorecard=None, open_positions=None):
             "momentum_pct_5_3m": s.get("momentum_pct_5_3m"),
             "momentum_pct_20_3m": s.get("momentum_pct_20_3m"),
             "momentum_pct_60_3m": s.get("momentum_pct_60_3m"),
+            "momentum_acceleration_5_3m": s.get("momentum_acceleration_5_3m"),
+            "momentum_acceleration_20_3m": s.get("momentum_acceleration_20_3m"),
+            "candle_body_pct": s.get("candle_body_pct"),
+            "candle_range_pct": s.get("candle_range_pct"),
+            "upper_wick_pct": s.get("upper_wick_pct"),
+            "lower_wick_pct": s.get("lower_wick_pct"),
+            "body_to_range": s.get("body_to_range"),
+            "close_location_in_range": s.get("close_location_in_range"),
+            "volume_acceleration_3": s.get("volume_acceleration_3"),
             "candles_3m_last_1h": s.get("ctx_3m", []),
             "candles_15m_last_7h": s.get("ctx_15m", []),
             "candles_1h_rest_of_24h": s.get("ctx_1h", []),
             "candles_1d_last_30d": s.get("ctx_daily_30d", []),
+            "structure_context": {
+                "market_regime": ms.get("market_regime"),
+                "3m": structural_view(s3),
+                "15m": structural_view(s15),
+                "1h": structural_view(s1h),
+                "range": {
+                    "candidate": rng.get("candidate"),
+                    "range_high": rng.get("range_high"),
+                    "range_low": rng.get("range_low"),
+                    "range_mid": rng.get("range_mid"),
+                    "range_width": rng.get("range_width"),
+                    "range_width_pct": rng.get("range_width_pct"),
+                    "position_pct": rng.get("position_pct"),
+                    "high_touches": rng.get("high_touches"),
+                    "low_touches": rng.get("low_touches"),
+                    "efficiency_ratio": rng.get("efficiency_ratio"),
+                    "near_high": rng.get("near_high"),
+                    "near_low": rng.get("near_low"),
+                    "middle": rng.get("middle"),
+                },
+            },
+            "relative_strength_vs_btc": s.get("relative_strength_vs_btc"),
+            "market_context": s.get("market_context"),
         }
         if s.get("prior_call"):
             entry["prior_call"] = s["prior_call"]
         payload.append(entry)
+
     wrapped = {"coins": payload}
     if open_positions:
         wrapped["open_positions"] = open_positions
     if scorecard:
         wrapped["recent_performance_last_24h"] = scorecard
-    return json.dumps(wrapped)
+    return json.dumps(wrapped, separators=(",", ":"))
 
 
 def _response_schema(position_count=None, recovery=False):

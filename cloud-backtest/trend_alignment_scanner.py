@@ -1104,13 +1104,16 @@ def _build_message(candle_start_utc,now,scorecard,scan_stats=None,stale=None,pos
     lines.append(f"Last 24h: {scorecard['total']} calls — {scorecard['target_hit']} hit target, {scorecard['stop_hit']} hit stop, {scorecard['expired']} expired, {scorecard.get('gemini_exit',0)} closed by Gemini, {scorecard['pending']} pending")
     lines.append(f"Realized {_format_pnl(scorecard['realized_pnl_inr'])} | Unrealized {_format_pnl(scorecard['unrealized_pnl_inr'])} | Total {_format_pnl(scorecard['total_pnl_inr'])}")
     if scan_stats:
-        lines.append(f"\n🔎 Gemini scan: {scan_stats['scanned']} coins | proposals {scan_stats['proposals']} | TAKE {scan_stats['take']} | Python risk rejected {scan_stats['risk_rejected']}")
+        lines.append(f"\n🔎 Gemini scan: {scan_stats['scanned']} coins | proposals {scan_stats['proposals']} (LONG {scan_stats.get('long_proposals',0)} / SHORT {scan_stats.get('short_proposals',0)}) | TAKE {scan_stats['take']} | Python risk rejected {scan_stats['risk_rejected']}")
         reviewed=scan_stats.get('position_reviewed',0); missing=scan_stats.get('position_missing',0); acts=scan_stats.get('position_actions',{})
         if reviewed or missing or scan_stats.get('gemini_review_failed'):
             lines.append(f"📋 Position review: {reviewed} reviewed | HOLD {acts.get('hold',0)} | EXIT {acts.get('exit_now',0)} | TIGHTEN {acts.get('tighten_stop',0)} | TARGET {acts.get('move_target',0)} | missing {missing}")
             if scan_stats.get('gemini_review_failed'):
                 lines.append('🛑 Gemini review FAILED — no missing position was treated as HOLD; Python protection remains active.')
         for reason,count in sorted(scan_stats['risk_reasons'].items(),key=lambda x:-x[1])[:4]: lines.append(f"• Risk reject: {html.escape(reason)} ({count})")
+        if scan_stats.get('short_proposals'):
+            short_rej=sum(1 for g in (flagged or {}).values() if str(g.get('direction','')).lower()=='short' and g.get('risk_validation_error') and not g.get('take_trade'))
+            lines.append(f"↘️ Short diagnostics: Gemini proposed {scan_stats.get('short_proposals',0)} SHORT | Python rejected {short_rej}")
     if stale: lines.append(f"\n🟡 Stale/missing data: {', '.join(sorted(set(stale)))} — Gemini not called for this candle.")
     if position_summaries:
         lines.append("\n📋 Position updates:")
@@ -1263,7 +1266,9 @@ def main():
         review_actions[a] = review_actions.get(a, 0) + 1
     expected_review = {p['coin'] for p in open_positions}
     missing_reviews = sorted(expected_review - set(position_updates))
-    stats={'scanned':len(snapshots),'proposals':len(flagged),'take':sum(1 for g in flagged.values() if g.get('take_trade')),'risk_rejected':0,'risk_reasons':{},'fresh':len(fresh_coins),'stale':len(stale),'position_reviewed':len(position_updates),'position_missing':len(missing_reviews),'position_actions':review_actions,'gemini_review_failed':gemini_review_failed}
+    long_proposals=sum(1 for g in flagged.values() if str(g.get('direction','')).lower()=='long')
+    short_proposals=sum(1 for g in flagged.values() if str(g.get('direction','')).lower()=='short')
+    stats={'scanned':len(snapshots),'proposals':len(flagged),'take':sum(1 for g in flagged.values() if g.get('take_trade')),'risk_rejected':0,'risk_reasons':{},'fresh':len(fresh_coins),'stale':len(stale),'position_reviewed':len(position_updates),'position_missing':len(missing_reviews),'position_actions':review_actions,'gemini_review_failed':gemini_review_failed,'long_proposals':long_proposals,'short_proposals':short_proposals}
     for coin,g in flagged.items():
         if g.get('risk_validation_error') and not g.get('take_trade'):
             stats['risk_rejected']+=1; r=g['risk_validation_error']; stats['risk_reasons'][r]=stats['risk_reasons'].get(r,0)+1
