@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-15T17:21:36.191083+00:00",
+  "last_sent_at": "2026-08-15T17:24:45.937432+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-15T17:18:00Z",
+  "last_processed_candle_time": "2026-08-15T17:21:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -35,12 +35,6 @@
     "ADA": [
       {
         "direction": "long",
-        "entry_price": 0.1832,
-        "take_trade": true,
-        "time": "2026-08-12T17:54:21.234640+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 0.1818,
         "take_trade": true,
         "time": "2026-08-13T01:01:04.671545+00:00"
@@ -62,6 +56,12 @@
         "entry_price": 0.1812,
         "take_trade": true,
         "time": "2026-08-15T02:57:26.618336+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 0.1774,
+        "take_trade": true,
+        "time": "2026-08-15T17:24:21.637019+00:00"
       }
     ],
     "PAXG": [
@@ -261,12 +261,6 @@
     "AVAX": [
       {
         "direction": "long",
-        "entry_price": 6.343,
-        "take_trade": false,
-        "time": "2026-08-12T17:18:32.013667+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 6.339,
         "take_trade": false,
         "time": "2026-08-12T17:21:22.047381+00:00"
@@ -288,6 +282,12 @@
         "entry_price": 6.766,
         "take_trade": true,
         "time": "2026-08-15T03:01:04.532989+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 6.505,
+        "take_trade": true,
+        "time": "2026-08-15T17:24:21.637019+00:00"
       }
     ],
     "ZEC": [
@@ -1825,11 +1825,13 @@
       "mfe_r": 1.125,
       "mfe_time": "2026-08-15 17:16:00",
       "mae_time": "2026-08-15 16:32:00",
-      "mfe_giveback_pct": 6.2,
+      "mfe_giveback_pct": 38.3,
       "revised_at": "2026-08-15T17:12:27.862585+00:00",
-      "profit_health_score": 1,
-      "profit_health_state": "healthy",
+      "profit_health_score": 3,
+      "profit_health_state": "severe",
       "profit_health_reasons": [
+        "3m lost EMA9",
+        "rejection wick against position",
         "recent failed break"
       ]
     },
@@ -1896,29 +1898,67 @@
       "resolved_pnl": -314.1,
       "resolved_time": "2026-08-15T17:18:24.087348+00:00",
       "exit_reasoning": "Breakout momentum has stalled with multiple rejection wicks and deteriorating profit health, invalidating the thesis."
+    },
+    {
+      "coin": "AVAX",
+      "direction": "short",
+      "entry_price": 6.505,
+      "stop_loss": 6.54,
+      "target_price": 6.42,
+      "trade_amount_inr": 167271.43,
+      "quantity": 258.59096655556726,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "status": "pending",
+      "time": "2026-08-15T17:24:21.637019+00:00",
+      "reasoning": "Strong breakdown transition with high ADX (40.51), dominant minus_di (35.52), and bearish CHoCH at 6.507 supporting continuation.",
+      "level_history": [
+        {
+          "from": "2026-08-15T17:24:21.637019+00:00",
+          "stop": 6.54,
+          "target": 6.42
+        }
+      ],
+      "peak_price": 6.505,
+      "trough_price": 6.505,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-08-15T17:24:21.637019+00:00",
+      "mae_time": "2026-08-15T17:24:21.637019+00:00",
+      "mfe_giveback_pct": 0.0
+    },
+    {
+      "coin": "ADA",
+      "direction": "short",
+      "entry_price": 0.1774,
+      "stop_loss": 0.179,
+      "target_price": 0.173,
+      "trade_amount_inr": 116418.75,
+      "quantity": 6599.456958970274,
+      "max_loss_this_trade_inr": 1050.0,
+      "conviction": 7,
+      "status": "pending",
+      "time": "2026-08-15T17:24:21.637019+00:00",
+      "reasoning": "Clear bear continuation in TREND_DOWN regime with ADX at 34.6, heavy minus_di (41.51), and a fresh bearish BOS at 0.1775.",
+      "level_history": [
+        {
+          "from": "2026-08-15T17:24:21.637019+00:00",
+          "stop": 0.179,
+          "target": 0.173
+        }
+      ],
+      "peak_price": 0.1774,
+      "trough_price": 0.1774,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-08-15T17:24:21.637019+00:00",
+      "mae_time": "2026-08-15T17:24:21.637019+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-15T16:57:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-15T17:00:00Z": [
       "ACE",
       "ADA",
@@ -2040,6 +2080,26 @@
       "ZEC"
     ],
     "2026-08-15T17:18:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-15T17:21:00Z": [
       "ACE",
       "ADA",
       "AVAX",
