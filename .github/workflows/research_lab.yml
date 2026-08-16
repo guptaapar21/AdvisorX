@@ -29,6 +29,8 @@ jobs:
             git fetch origin researchlab-data
             git archive origin/researchlab-data -- cloud-backtest/research_lab_data \
               | tar -x --strip-components=2 -C cloud-backtest/research_lab_data
+            # Remove the legacy nested tree produced by the pre-fix workflow.
+            rm -rf cloud-backtest/research_lab_data/cloud-backtest
           fi
 
       - uses: actions/setup-python@v5
@@ -67,6 +69,7 @@ jobs:
           rm -rf /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data
           mkdir -p /tmp/researchlab-data-worktree/cloud-backtest
           cp -a cloud-backtest/research_lab_data /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data
+          rm -rf /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data/cloud-backtest
           cd /tmp/researchlab-data-worktree
           git add cloud-backtest/research_lab_data
           if git diff --cached --quiet; then
@@ -75,9 +78,14 @@ jobs:
           fi
           git commit -m 'Update ResearchLab data [skip ci]'
           for i in 1 2 3; do
-            if git push origin HEAD:researchlab-data; then exit 0; fi
+            if git push origin HEAD:researchlab-data; then
+              exit 0
+            fi
             git fetch origin researchlab-data || true
-            git rebase origin/researchlab-data && continue
+            if git rebase origin/researchlab-data; then
+              continue
+            fi
+            git rebase --abort || true
           done
           echo 'ResearchLab data push failed after retries.'
           exit 1
