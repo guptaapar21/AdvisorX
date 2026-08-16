@@ -2,8 +2,6 @@ name: AdvisorX ResearchLab
 
 on:
   workflow_dispatch: {}
-  schedule:
-    - cron: '*/5 * * * *'
 
 permissions:
   contents: write
@@ -26,12 +24,11 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf cloud-backtest/research_lab_data
+          mkdir -p cloud-backtest/research_lab_data
           if git ls-remote --exit-code --heads origin researchlab-data >/dev/null 2>&1; then
             git fetch origin researchlab-data
-            mkdir -p cloud-backtest/research_lab_data
-            git archive origin/researchlab-data -- cloud-backtest/research_lab_data | tar -x
-          else
-            mkdir -p cloud-backtest/research_lab_data
+            git archive origin/researchlab-data -- cloud-backtest/research_lab_data \
+              | tar -x --strip-components=2 -C cloud-backtest/research_lab_data
           fi
 
       - uses: actions/setup-python@v5
@@ -78,12 +75,9 @@ jobs:
           fi
           git commit -m 'Update ResearchLab data [skip ci]'
           for i in 1 2 3; do
-            if git push origin researchlab-data; then exit 0; fi
+            if git push origin HEAD:researchlab-data; then exit 0; fi
             git fetch origin researchlab-data || true
-            if git rebase origin/researchlab-data; then
-              continue
-            fi
-            git rebase --abort || true
+            git rebase origin/researchlab-data && continue
           done
           echo 'ResearchLab data push failed after retries.'
           exit 1
