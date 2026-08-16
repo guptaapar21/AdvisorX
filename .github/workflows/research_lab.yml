@@ -1,0 +1,89 @@
+name: AdvisorX ResearchLab
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '*/5 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: advisorx-researchlab
+  cancel-in-progress: false
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore ResearchLab data branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf cloud-backtest/research_lab_data
+          if git ls-remote --exit-code --heads origin researchlab-data >/dev/null 2>&1; then
+            git fetch origin researchlab-data
+            mkdir -p cloud-backtest/research_lab_data
+            git archive origin/researchlab-data -- cloud-backtest/research_lab_data | tar -x
+          else
+            mkdir -p cloud-backtest/research_lab_data
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install ResearchLab dependencies
+        run: python -m pip install -r cloud-backtest/research_lab/requirements.txt
+
+      - name: Run ResearchLab tests and collector
+        env:
+          PYTHONPATH: cloud-backtest
+          RESEARCH_COINS: BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX,HYPE,ZEC,ADA,ACE,PAXG
+          RESEARCH_CANDLE_RETENTION_DAYS: '7'
+          RESEARCH_ANALYSIS_UTC_HOUR: '0'
+          RESEARCH_TAKER_FEE: '0.00075'
+          RESEARCH_GEMINI_KEY: ${{ secrets.GEMINI_API_KEYS }}
+          RESEARCH_GEMINI_MODEL: gemini-3.5-flash-lite
+        run: |
+          python -m pytest cloud-backtest/research_lab/test_research_lab.py -q
+          python -m research_lab.run
+
+      - name: Persist ResearchLab data to isolated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'advisorx-research-bot'
+          git config user.email 'actions@github.com'
+          rm -rf /tmp/researchlab-data-worktree
+          if git ls-remote --exit-code --heads origin researchlab-data >/dev/null 2>&1; then
+            git fetch origin researchlab-data
+            git worktree add /tmp/researchlab-data-worktree origin/researchlab-data
+          else
+            git worktree add -b researchlab-data /tmp/researchlab-data-worktree origin/main
+          fi
+          rm -rf /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data
+          mkdir -p /tmp/researchlab-data-worktree/cloud-backtest
+          cp -a cloud-backtest/research_lab_data /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data
+          cd /tmp/researchlab-data-worktree
+          git add cloud-backtest/research_lab_data
+          if git diff --cached --quiet; then
+            echo 'No ResearchLab data changes.'
+            exit 0
+          fi
+          git commit -m 'Update ResearchLab data [skip ci]'
+          for i in 1 2 3; do
+            if git push origin researchlab-data; then exit 0; fi
+            git fetch origin researchlab-data || true
+            if git rebase origin/researchlab-data; then
+              continue
+            fi
+            git rebase --abort || true
+          done
+          echo 'ResearchLab data push failed after retries.'
+          exit 1
