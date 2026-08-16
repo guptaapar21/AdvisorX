@@ -1,0 +1,40 @@
+from __future__ import annotations
+import os
+from pathlib import Path
+
+DATA_DIR = Path(os.getenv("RESEARCH_DATA_DIR", "cloud-backtest/research_lab_data"))
+CANDLE_DIR = DATA_DIR / "candles_1m"
+OBS_FILE = DATA_DIR / "observations.jsonl"
+OUTCOME_FILE = DATA_DIR / "outcomes.jsonl"
+HYPOTHESIS_FILE = DATA_DIR / "hypotheses.jsonl"
+ERROR_FILE = DATA_DIR / "errors.jsonl"
+ANALYSIS_FILE = DATA_DIR / "analysis_log.jsonl"
+STATE_FILE = DATA_DIR / "state.json"
+MEMORY_FILE = DATA_DIR / "research_memory.json"
+
+HORIZONS_MIN = (5, 10, 15, 30, 60)
+MAX_HORIZON_MIN = max(HORIZONS_MIN)
+PURGE_MIN = MAX_HORIZON_MIN
+OBSERVATION_LOOKBACK_MIN = int(os.getenv("RESEARCH_OBSERVATION_LOOKBACK_MIN", "75"))
+CANDLE_RETENTION_DAYS = int(os.getenv("RESEARCH_CANDLE_RETENTION_DAYS", "7"))
+ANALYSIS_UTC_HOUR = int(os.getenv("RESEARCH_ANALYSIS_UTC_HOUR", "0"))
+TAKER_FEE_RATE = float(os.getenv("RESEARCH_TAKER_FEE", "0.00075"))
+GEMINI_MODEL = os.getenv("RESEARCH_GEMINI_MODEL", "gemini-3.5-flash-lite")
+COINS = tuple(x.strip().upper() for x in os.getenv(
+    "RESEARCH_COINS",
+    "BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX,HYPE,ZEC,ADA,ACE,PAXG",
+).split(",") if x.strip())
+MAX_DISCOVERY_OBSERVATIONS = int(os.getenv("RESEARCH_MAX_DISCOVERY_OBSERVATIONS", "1200"))
+MIN_DISCOVERY_OBSERVATIONS = int(os.getenv("RESEARCH_MIN_DISCOVERY_OBSERVATIONS", "300"))
+MIN_VALIDATION_OBSERVATIONS = int(os.getenv("RESEARCH_MIN_VALIDATION_OBSERVATIONS", "100"))
+MIN_HOLDOUT_OBSERVATIONS = int(os.getenv("RESEARCH_MIN_HOLDOUT_OBSERVATIONS", "100"))
+
+# Research-only promotion gates. These never affect AdvisorX.
+PROMOTE_MIN_VALID_N = int(os.getenv("RESEARCH_PROMOTE_MIN_VALID_N", "50"))
+PROMOTE_MIN_HOLDOUT_N = int(os.getenv("RESEARCH_PROMOTE_MIN_HOLDOUT_N", "50"))
+PROMOTE_MIN_VALID_PF = float(os.getenv("RESEARCH_PROMOTE_MIN_VALID_PF", "1.15"))
+PROMOTE_MIN_HOLDOUT_PF = float(os.getenv("RESEARCH_PROMOTE_MIN_HOLDOUT_PF", "1.10"))
+PROMOTE_MIN_VALID_AVG = float(os.getenv("RESEARCH_PROMOTE_MIN_VALID_AVG", "0.0005"))
+PROMOTE_MIN_HOLDOUT_AVG = float(os.getenv("RESEARCH_PROMOTE_MIN_HOLDOUT_AVG", "0.0002"))
+PROMOTE_MIN_HOLDOUT_WINRATE = float(os.getenv("RESEARCH_PROMOTE_MIN_HOLDOUT_WINRATE", "0.52"))
+PROMOTE_MAX_HOLDOUT_DD = float(os.getenv("RESEARCH_PROMOTE_MAX_HOLDOUT_DD", "0.08"))
