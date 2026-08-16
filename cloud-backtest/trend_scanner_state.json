@@ -2,7 +2,7 @@
   "coins": {},
   "last_sent_at": "2026-08-16T01:54:35.860665+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-16T21:27:00Z",
+  "last_processed_candle_time": "2026-08-16T21:30:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -450,6 +450,14 @@
         "entry_price": 0.0841,
         "take_trade": true,
         "time": "2026-08-15T23:06:27.193316+00:00"
+      }
+    ],
+    "BTC": [
+      {
+        "direction": "short",
+        "entry_price": 63033.4,
+        "take_trade": true,
+        "time": "2026-08-16T21:33:23.230793+00:00"
       }
     ]
   },
@@ -974,29 +982,113 @@
       "resolved_pnl": -415.18,
       "resolved_time": "2026-08-16T18:42:25.466664+00:00",
       "exit_reasoning": "Thesis invalidated by structure breakdown and severe profit health signals."
+    },
+    {
+      "coin": "BTC",
+      "direction": "short",
+      "entry_price": 63033.4,
+      "stop_loss": 63140.0,
+      "target_price": 62800.0,
+      "trade_amount_inr": 282028.5,
+      "quantity": 0.044994677255666075,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "CHOCH",
+        "ADX_DI",
+        "EMA_STRUCTURE"
+      ],
+      "risk_tags": [
+        "RANGE_LOCATION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 63033.4,
+        "direction": "short",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.0821,
+        "entry_vs_recent_swing_low_pct": -0.0073,
+        "entry_vs_recent_swing_high_atr": -3.024,
+        "entry_vs_recent_swing_low_atr": -0.27,
+        "entry_vs_latest_break_pct": -0.0073,
+        "entry_vs_latest_break_atr": -0.27,
+        "entry_range_position_pct": 4.46,
+        "entry_distance_to_range_high_pct": 0.3119,
+        "entry_distance_to_range_low_pct": 0.0146,
+        "nearest_boundary": "low",
+        "nearest_boundary_distance_pct": 0.0146,
+        "nearest_boundary_distance_atr": 0.536,
+        "entry_location_class": "near_range_low",
+        "latest_break_direction": "bearish",
+        "latest_break_type": "CHoCH",
+        "latest_break_time": "2026-08-16 21:24:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 2,
+          "break_freshness": "fresh",
+          "break_direction": "bearish",
+          "break_type": "CHoCH",
+          "extension_pct_from_break": 0.007,
+          "extension_atr_from_break": 0.27,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 3,
+          "liquidity_sweep_count_3m": 5,
+          "high_rejection_sweeps_3m": 3,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 21,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": null,
+        "last_signal_direction": null,
+        "last_signal_take_trade": null,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-16T21:33:23.230793+00:00",
+      "reasoning": "BTC exhibits strong bearish momentum with ADX at 47.86 and minus DI dominating at 47.29 after a recent 3m CHoCH break below 63038.",
+      "level_history": [
+        {
+          "from": "2026-08-16T21:33:23.230793+00:00",
+          "stop": 63140.0,
+          "target": 62800.0
+        }
+      ],
+      "peak_price": 63033.4,
+      "trough_price": 63033.4,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-08-16T21:33:23.230793+00:00",
+      "mae_time": "2026-08-16T21:33:23.230793+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-16T21:06:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-16T21:09:00Z": [
       "ACE",
       "ADA",
@@ -1136,9 +1228,29 @@
       "XRP",
       "ZBT",
       "ZEC"
+    ],
+    "2026-08-16T21:30:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
     ]
   },
   "telegram_last_delivery_ok": true,
   "telegram_last_delivery_error": null,
-  "telegram_last_delivery_at": "2026-08-16T21:31:11.073337+00:00"
+  "telegram_last_delivery_at": "2026-08-16T21:33:44.821050+00:00"
 }
