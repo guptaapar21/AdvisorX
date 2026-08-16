@@ -1,7 +1,7 @@
 name: AdvisorX ResearchLab
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -27,9 +27,7 @@ jobs:
           mkdir -p cloud-backtest/research_lab_data
           if git ls-remote --exit-code --heads origin researchlab-data >/dev/null 2>&1; then
             git fetch origin researchlab-data
-            git archive origin/researchlab-data -- cloud-backtest/research_lab_data \
-              | tar -x --strip-components=2 -C cloud-backtest/research_lab_data
-            # Remove the legacy nested tree produced by the pre-fix workflow.
+            git archive origin/researchlab-data -- cloud-backtest/research_lab_data               | tar -x --strip-components=2 -C cloud-backtest/research_lab_data
             rm -rf cloud-backtest/research_lab_data/cloud-backtest
           fi
 
@@ -50,8 +48,19 @@ jobs:
           RESEARCH_GEMINI_KEY: ${{ secrets.GEMINI_API_KEYS }}
           RESEARCH_GEMINI_MODEL: gemini-3.5-flash-lite
         run: |
-          python -m pytest cloud-backtest/research_lab/test_research_lab.py -q
+          python -m pytest             cloud-backtest/research_lab/test_research_lab.py             cloud-backtest/research_lab/test_research_store_paths.py -q
           python -m research_lab.run
+
+      - name: Verify collector produced persistent observations
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -s cloud-backtest/research_lab_data/observations.jsonl ]; then
+            echo "::error::ResearchLab collector completed without creating a non-empty observations.jsonl."
+            echo "::error::This indicates the observation persistence path or market-data collection is broken."
+            exit 1
+          fi
+          echo "Observations persisted: $(wc -l < cloud-backtest/research_lab_data/observations.jsonl)"
 
       - name: Persist ResearchLab data to isolated branch
         shell: bash
