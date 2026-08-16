@@ -55,19 +55,27 @@ SYSTEM_PROMPT = """Trade-scanning assistant for crypto futures on CoinDCX. You r
 
 Each entry in "open_positions" gives you: coin, direction, the entry/stop/target it was opened with, your own original reasoning for that call (verbatim, so you can judge whether that thesis still holds), how many minutes it's been open, current price, and current unrealized P&L in INR. This is a genuinely different judgment from scanning "coins" for new setups: here you're asking "is my original thesis still valid, given what price has actually done since" - not "is this a good entry right now."
 
-Fields in recent_performance_last_24h: total (all calls in the window), target_hit (genuinely reached the target price), stop_hit (genuinely reached the stop price), expired (never reached either within 2 hours, closed at whatever price it was at when the window ran out - a real but different kind of outcome than a clean target/stop hit), pending (still open, unresolved), abandoned_or_invalid (calls superseded by a later reversal on the same coin, or excluded due to malformed data - not a performance signal either way). realized_pnl_inr is money already locked in (target_hit + stop_hit + expired combined, net of round-trip fees). unrealized_pnl_inr is a live mark-to-market estimate on still-pending positions - not locked in, can still move either way. total_pnl_inr is both combined.
+Fields in recent_performance_last_24h: total (all calls in the window), target_hit (genuinely reached the target price), stop_hit (genuinely reached the stop price), expired (never reached either within 2 hours, closed at whatever price it was at when the window ran out - a real but different kind of outcome than a clean target/stop hit), pending (still open, unresolved), abandoned_or_invalid (calls superseded by a later reversal on the same coin, or excluded due to malformed data - not a performance signal either way). realized_pnl_inr is money already locked in (target_hit + stop_hit + expired combined, net of round-trip fees). unrealized_pnl_inr is a live mark-to-market estimate on still-pending positions - not locked in, can still move either way. total_pnl_inr is both combined. direction_stats, conviction_stats, and quality_stats are diagnostic summaries computed by Python; use them as supporting evidence only, not as a reason to force a direction or overfit a tiny sample.
 
 If recent performance has been poor (more stops/expiries than targets, negative realized P&L), that's a real reason to be MORE selective this cycle, not something to disregard because "this setup is different."
 
 For each coin in "coins" you receive both raw descriptive data and symmetric structural context computed deterministically by Python from closed candles. Raw data includes latest close, ATR (volatility), RVOL and its percentile rank against that coin's own history, plain momentum (% price change over the last 5/20/60 3m candles), candle anatomy, and TIERED candle history at decreasing resolution the further back in time it goes - candles_3m_last_1h, candles_15m_last_7h, candles_1h_rest_of_24h, and candles_1d_last_30d.
 
-The "structure_context" block contains 3m/15m/1h structure bias, trend phase, confirmed swing highs/lows and HH/HL/LH/LL sequence, BOS/CHoCH events, latest break, failed breaks, liquidity sweeps/rejections, EMA9/21/50, EMA9 slope, ADX and ADX slope, +DI/-DI, VWAP distance, RSI, efficiency ratio, volume ratio, momentum acceleration and exhaustion flags, plus range boundaries/location. It also includes market_regime and cross-market context such as BTC-relative momentum and breadth.
+The "structure_context" block contains 3m/15m/1h structure bias, trend phase, confirmed swing highs/lows and HH/HL/LH/LL sequence, BOS/CHoCH events, latest break, failed breaks, liquidity sweeps/rejections, EMA9/21/50, EMA9 slope, ADX and ADX slope, +DI/-DI, VWAP distance, RSI, efficiency ratio, volume ratio, momentum acceleration and exhaustion flags, plus range boundaries/location. It also includes market_regime and cross-market context such as BTC-relative momentum and breadth. The entry_quality_context, recent_signal_context, and entry_location_telemetry are observational diagnostics: use them as evidence, but do not apply a hard BOS-age, extension, re-entry, session, or entry-location rule. We are collecting this telemetry to test which variables actually predict outcomes.
 
 These fields are descriptive evidence, not a preselected trade direction. You must make the final directional decision yourself. Apply the same evidentiary standard to LONG and SHORT. Do not assume LONG is the default, and do not require a stronger bar for SHORT. For a SHORT candidate, explicitly consider bearish evidence such as LH/LL, bearish BOS/CHoCH, failed support reclaims, resistance rejection/liquidity sweeps, negative momentum, -DI dominance, and adequate downside room. For a LONG candidate, apply the equivalent bullish checks. Mixed or contradictory evidence should result in SKIP.
 
 Only flag genuinely high-quality, high-conviction opportunities. Do not flag marginal, borderline, or small setups just because one number happens to look elevated - that produces noise, not useful signals. Flagging nothing is the correct, expected outcome most cycles; only flag when you'd actually stand behind it. take_trade: true is a higher bar than simply being worth mentioning - if you're flagging a coin mainly because something looks unusual but you're not genuinely confident, set take_trade: false and say so, rather than defaulting to true.
 
-Some coins will include a "prior_call" field - your own most recent flag on that coin, with direction, whether you took it, how long ago, and how price has actually moved since (price_change_pct_since, moved_favorably). You have no memory of issuing that call - this is the only way you can see your own track record. When present, genuinely weigh it: if price has moved favorably, that's real evidence your prior thesis may still be playing out; if unfavorably, treat that as a real reason to reconsider, not something to ignore. If you reverse a recent call, say so explicitly in reasoning and explain what changed your view - don't reverse silently or contradict yourself without acknowledging it.
+ENTRY-QUALITY DIAGNOSTICS: do not treat positive momentum + high RVOL + BOS as sufficient by themselves, but also do not turn the current freshness/extension/re-entry/session measurements into a hard rule yet. Treat them as additional evidence when judging the setup and record the relevant supporting/risk tags. We are explicitly testing whether entry location and continuation freshness improve expectancy before changing conviction or filtering trades.
+
+Some coins will include a "prior_call" field - your own most recent flag on that coin, with direction, whether you took it, how long ago, and how price has actually moved since (price_change_pct_since, moved_favorably). You have no memory of issuing that call - this is the only way you can see your own track record. When present, genuinely weigh it: if price has moved favorably, that's real evidence your prior thesis may still be playing out; if unfavorably, treat that as a real reason to reconsider, not something to ignore. If you reverse a recent call, say so explicitly in reasoning and explain what changed your view - don't reverse silently or contradict yourself without acknowledging it. The recent_signal_context is there to detect chasing/re-entry: multiple recent same-direction TAKEs without a new structural break are not independent fresh signals.
+
+DIAGNOSTIC TAGS (observational only): for every new_signals item, also return two arrays:
+- supporting_tags: the material evidence supporting the decision.
+- risk_tags: the material evidence arguing against the decision or warning about failure/exhaustion.
+Use only these exact tags: MOMENTUM, RVOL, BREAKOUT, BOS, CHOCH, CONTINUATION, REVERSAL, PRIOR_CALL, CONSOLIDATION, ADX_DI, VWAP, EMA_STRUCTURE, LIQUIDITY_SWEEP, REJECTION, EXHAUSTION, RANGE_LOCATION, BTC_RELATIVE_STRENGTH.
+Do not invent tags. Do not add tags merely to fill the arrays. These tags are for research/diagnostics and MUST NOT be treated as a Python scoring or filtering rule.
 
 For each coin you DO include:
 1. coin: the coin symbol, exactly as given
@@ -77,7 +85,7 @@ For each coin you DO include:
 5. reasoning: 1-2 sentences, reference specific numbers/candle structure actually given for THIS coin
 6. entry_price, stop_loss, target_price: numbers - fill these even if take_trade is false (a best-guess reference level), so a skip is still comparable data next cycle
 
-Do NOT compute trade_amount_inr yourself - position sizing is calculated separately from your conviction score, scaled down from a maximum of {max_loss} INR risk. Python will reject a proposed trade if its stop is tighter than {atr_mult}x the supplied 3m ATR. A low-conviction flag should risk meaningfully less than a high-conviction one; that scaling is handled outside your response, driven entirely by the conviction number you give.
+Do NOT compute trade_amount_inr yourself - position sizing is calculated separately from your conviction score, scaled down from a maximum of {max_loss} INR ALL-IN risk, including expected round-trip taker fees. Python will reject a proposed trade if its stop is tighter than {atr_mult}x the supplied 3m ATR. A low-conviction flag should risk meaningfully less than a high-conviction one; that scaling is handled outside your response, driven entirely by the conviction number you give.
 
 No backtested win-rate exists for any of this - it's your independent judgment on raw data, not a validated edge.
 
@@ -89,7 +97,7 @@ For each entry in "open_positions" you get, decide one action:
 Always include reasoning for the action, referencing what's actually changed since entry (or explicitly that nothing has and it's still holding). Do not use exit_now or tighten_stop just because a position is currently at a small unrealized loss - that's normal noise, not thesis invalidation; use it only when the specific reason you entered no longer holds.
 
 Respond with ONLY a JSON object, no markdown fences, no other text, in this exact shape:
-{{"new_signals": [{{"coin": "string", "direction": "long"|"short", "take_trade": bool, "conviction": integer, "reasoning": "string", "entry_price": number, "stop_loss": number, "target_price": number}}, ...], "position_updates": [{{"coin": "string", "direction": "long"|"short", "action": "hold"|"exit_now"|"tighten_stop"|"move_target", "updated_stop_loss": number|null, "updated_target_price": number|null, "reasoning": "string"}}, ...]}}
+{{"new_signals": [{{"coin": "string", "direction": "long"|"short", "take_trade": bool, "conviction": integer, "reasoning": "string", "supporting_tags": ["allowed_tag"], "risk_tags": ["allowed_tag"], "entry_price": number, "stop_loss": number, "target_price": number}}, ...], "position_updates": [{{"coin": "string", "direction": "long"|"short", "action": "hold"|"exit_now"|"tighten_stop"|"move_target", "updated_stop_loss": number|null, "updated_target_price": number|null, "reasoning": "string"}}, ...]}}
 new_signals is empty if nothing this cycle meets your own bar for quality (the normal case). position_updates must include exactly one entry for every coin given in "open_positions" - never omit one, since a missing entry there means it silently keeps whatever it already has with no signal either way.""".format(max_loss=MAX_LOSS_RUPEES, atr_mult=MIN_STOP_ATR_MULTIPLIER)
 
 
@@ -153,6 +161,17 @@ def build_batch_prompt(signals, scorecard=None, open_positions=None):
                 "momentum_acceleration_5": st.get("momentum_acceleration_5"),
                 "momentum_acceleration_20": st.get("momentum_acceleration_20"),
                 "exhaustion_flags": st.get("exhaustion_flags", []),
+                "break_freshness": st.get("break_freshness"),
+                "bars_since_break": st.get("bars_since_break"),
+                "extension_pct_from_break": st.get("extension_pct_from_break"),
+                "extension_atr_from_break": st.get("extension_atr_from_break"),
+                "new_break_within_2_bars": st.get("new_break_within_2_bars"),
+                "failed_break_count_3m": st.get("failed_break_count_3m"),
+                "liquidity_sweep_count_3m": st.get("liquidity_sweep_count_3m"),
+                "high_rejection_sweeps_3m": st.get("high_rejection_sweeps_3m"),
+                "low_reclaim_sweeps_3m": st.get("low_reclaim_sweeps_3m"),
+                "exhaustion_score_3m": st.get("exhaustion_score_3m"),
+                "continuation_quality": st.get("continuation_quality"),
             }
 
         entry = {
@@ -201,6 +220,8 @@ def build_batch_prompt(signals, scorecard=None, open_positions=None):
             },
             "relative_strength_vs_btc": s.get("relative_strength_vs_btc"),
             "market_context": s.get("market_context"),
+            "entry_quality_context": s.get("entry_quality_context"),
+            "recent_signal_context": s.get("recent_signal_context"),
         }
         if s.get("prior_call"):
             entry["prior_call"] = s["prior_call"]
@@ -213,6 +234,8 @@ def build_batch_prompt(signals, scorecard=None, open_positions=None):
         wrapped["recent_performance_last_24h"] = scorecard
     return json.dumps(wrapped, separators=(",", ":"))
 
+
+REASON_TAG_SCHEMA_VERSION = "2026-08-15-tags-v1"
 
 def _response_schema(position_count=None, recovery=False):
     """Gemini structured-output contract. When positions are supplied, enforce
@@ -257,11 +280,13 @@ def _response_schema(position_count=None, recovery=False):
                         "take_trade": {"type": "BOOLEAN"},
                         "conviction": {"type": "INTEGER", "minimum": 1, "maximum": 10},
                         "reasoning": {"type": "STRING"},
+                        "supporting_tags": {"type": "ARRAY", "items": {"type": "STRING", "enum": ["MOMENTUM","RVOL","BREAKOUT","BOS","CHOCH","CONTINUATION","REVERSAL","PRIOR_CALL","CONSOLIDATION","ADX_DI","VWAP","EMA_STRUCTURE","LIQUIDITY_SWEEP","REJECTION","EXHAUSTION","RANGE_LOCATION","BTC_RELATIVE_STRENGTH"]}},
+                        "risk_tags": {"type": "ARRAY", "items": {"type": "STRING", "enum": ["MOMENTUM","RVOL","BREAKOUT","BOS","CHOCH","CONTINUATION","REVERSAL","PRIOR_CALL","CONSOLIDATION","ADX_DI","VWAP","EMA_STRUCTURE","LIQUIDITY_SWEEP","REJECTION","EXHAUSTION","RANGE_LOCATION","BTC_RELATIVE_STRENGTH"]}},
                         "entry_price": number,
                         "stop_loss": number,
                         "target_price": number,
                     },
-                    "required": ["coin", "direction", "take_trade", "conviction", "reasoning", "entry_price", "stop_loss", "target_price"],
+                    "required": ["coin", "direction", "take_trade", "conviction", "reasoning", "supporting_tags", "risk_tags", "entry_price", "stop_loss", "target_price"],
                 },
             },
             "position_updates": {
@@ -332,6 +357,7 @@ def _normalize_item(item):
     favorable/unfavorable and whipsaw-warning comparisons downstream,
     which both use exact string equality against "long"."""
     normalized = dict(item)
+    normalized["reason_tag_schema_version"] = REASON_TAG_SCHEMA_VERSION
     for field in ("entry_price", "stop_loss", "target_price"):
         if normalized.get(field) is not None:
             normalized[field] = float(normalized[field])
@@ -340,6 +366,14 @@ def _normalize_item(item):
         normalized["take_trade"] = val if isinstance(val, bool) else str(val).strip().lower() == "true"
     if normalized.get("direction"):
         normalized["direction"] = str(normalized["direction"]).strip().lower()
+    for field in ("supporting_tags", "risk_tags"):
+        vals = normalized.get(field)
+        if vals is None:
+            normalized[field] = []
+        elif isinstance(vals, list):
+            normalized[field] = [str(x).strip().upper() for x in vals if str(x).strip()]
+        else:
+            normalized[field] = []
     return normalized
 
 
@@ -433,8 +467,10 @@ def _compute_position_size(parsed, atr14_3m=None):
     entry = float(parsed["entry_price"])
     stop = float(parsed["stop_loss"])
     target = float(parsed["target_price"])
-    risk_per_unit_inr = abs(entry - stop) * USDT_INR_RATE
-    quantity = max_loss_inr / risk_per_unit_inr
+    stop_loss_per_unit_inr = abs(entry - stop) * USDT_INR_RATE
+    round_trip_fee_per_unit_inr = entry * USDT_INR_RATE * TAKER_FEE_RATE * 2
+    all_in_risk_per_unit_inr = stop_loss_per_unit_inr + round_trip_fee_per_unit_inr
+    quantity = max_loss_inr / all_in_risk_per_unit_inr if all_in_risk_per_unit_inr > 0 else 0.0
     trade_amount_inr = quantity * entry * USDT_INR_RATE
     parsed["quantity"] = quantity
     parsed["trade_amount_inr"] = round(trade_amount_inr, 2)
@@ -499,7 +535,19 @@ def _redact_and_log_gemini_response(text, keys, label="batch"):
         print(f"  Gemini: raw-response logging failed: {e}")
 
 
-def _parse_position_response(text, expected_coins, expected_position_coins, atr_by_coin):
+def _apply_entry_quality_adjustment(item, context):
+    """Compatibility shim: preserve the response unchanged.
+
+    Entry-quality context is observational research telemetry at this stage.
+    No BOS-age, extension, re-entry, session, or exhaustion rule changes the
+    Gemini conviction or Python risk budget until a larger sample validates it.
+    """
+    item.setdefault("entry_quality_penalty", 0)
+    item.setdefault("entry_quality_penalty_reasons", [])
+    item.setdefault("pre_risk_conviction", item.get("conviction"))
+    return item
+
+def _parse_position_response(text, expected_coins, expected_position_coins, atr_by_coin, signal_context_by_coin=None):
     """Parse one Gemini response. Missing open-position reviews are an error."""
     text = (text or "").strip()
     if text.startswith("```"):
@@ -525,6 +573,7 @@ def _parse_position_response(text, expected_coins, expected_position_coins, atr_
             continue
         try:
             item = _normalize_item(item)
+            item = _apply_entry_quality_adjustment(item, (signal_context_by_coin or {}).get(coin))
             result[coin] = _compute_position_size(item, atr14_3m=atr_by_coin.get(coin))
         except (TypeError, ValueError) as e:
             print(f"  Gemini: skipping malformed item for '{coin}' ({e})")
@@ -585,6 +634,7 @@ def get_trade_suggestions_batch(signals, scorecard=None, open_positions=None):
     user_prompt = build_batch_prompt(signals, scorecard, open_positions)
     expected_coins = {s["coin"] for s in signals}
     atr_by_coin = {s["coin"]: s.get("atr14_3m") for s in signals}
+    signal_context_by_coin = {s["coin"]: s for s in signals}
     expected_position_coins = {p["coin"] for p in open_positions} if open_positions else set()
     last_error = None
     retry_budget_seconds = 90
@@ -602,7 +652,7 @@ def get_trade_suggestions_batch(signals, scorecard=None, open_positions=None):
             _redact_and_log_gemini_response(text, keys, "initial")
             try:
                 result, position_updates = _parse_position_response(
-                    text, expected_coins, expected_position_coins, atr_by_coin
+                    text, expected_coins, expected_position_coins, atr_by_coin, signal_context_by_coin
                 )
                 print(f"  Gemini: flagged {len(result)} of {len(expected_coins)} coins; "
                       f"reviewed {len(position_updates)} of {len(expected_position_coins)} open positions")
@@ -675,6 +725,7 @@ def get_trade_suggestions_batch(signals, scorecard=None, open_positions=None):
                         if coin in expected_coins:
                             try:
                                 ni = _normalize_item(item)
+                                ni = _apply_entry_quality_adjustment(ni, signal_context_by_coin.get(coin))
                                 fresh_result[coin] = _compute_position_size(ni, atr_by_coin.get(coin))
                             except (TypeError, ValueError):
                                 pass

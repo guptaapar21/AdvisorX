@@ -43,6 +43,8 @@ VALID_POSITION_ACTIONS = {"hold", "exit_now", "tighten_stop", "move_target"}
 STATE_FILE = "trend_scanner_state.json"
 RVOL_PERCENTILE_FILE = "rvol_percentiles.json"
 DAILY_CANDLES_FILE = "daily_candles_30d.json"
+RESOLVED_TRADES_FILE = os.environ.get("RESOLVED_TRADES_FILE", "resolved_trades.jsonl")
+FAILURE_TO_LAUNCH_SHADOW_FILE = os.environ.get("FAILURE_TO_LAUNCH_SHADOW_FILE", "failure_to_launch_shadow.jsonl")
 # Trimmed from 150 to 100 15m candles after measuring the real fetch
 # cost at 18 coins - 150 candles needed 3 API requests/coin (2250 min
 # of 1m data), 100 needs only 2 (1500 min), saving ~14.4s across all 18
@@ -58,6 +60,16 @@ DAILY_CANDLES_FILE = "daily_candles_30d.json"
 FETCH_MINUTES_BACK = 24 * 60
 MESSAGE_INTERVAL_MINUTES = 1
 
+# Entry-quality diagnostics. These are descriptive context; the only Python
+# intervention is a soft conviction adjustment after Gemini chooses a trade.
+REENTRY_LOOKBACK_MINUTES = 180
+REENTRY_COOLDOWN_MINUTES = 30
+FRESH_BREAK_BARS = 2
+MATURE_BREAK_BARS = 5
+LATE_BREAK_BARS = 10
+LATE_EXTENSION_ATR = 1.0
+WEAK_SESSION_UTC_START = 6
+WEAK_SESSION_UTC_END = 18
 
 STATE_BACKUP_FILE = STATE_FILE + ".bak"
 
@@ -556,6 +568,29 @@ PROFIT_PROTECT_LOCK_R = 0.25
 PROFIT_PROTECT_HEALTH_SCORE = 2
 PROFIT_PROTECT_SEVERE_HEALTH_SCORE = 3
 
+# LOG-ONLY failure-to-launch experiment. These values intentionally do not
+# alter entries/exits. They create an auditable counterfactual dataset.
+FAILURE_TO_LAUNCH_MINUTES = 15.0
+FAILURE_TO_LAUNCH_MFE_R = 0.25
+FAILURE_TO_LAUNCH_MAX_CURRENT_R = 0.0
+FAILURE_TO_LAUNCH_MIN_HEALTH_SCORE = 2
+RESEARCH_TELEMETRY_VERSION = "2026-08-16-entry-location-shadow-v2"
+
+def _append_jsonl(path, record):
+    """Append one compact JSON record; research telemetry must survive state pruning."""
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, separators=(",", ":"), default=str) + "\n")
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except OSError:
+                pass
+        return True
+    except OSError as exc:
+        print(f"  Telemetry write failed for {path}: {exc}")
+        return False
+
 def _position_gross_pnl(entry, price):
     ep = float(entry.get("entry_price") or 0)
     amt = float(entry.get("trade_amount_inr") or 0)
@@ -663,6 +698,86 @@ def _profit_health_from_fetched(entry, fetched):
     return {"score": score, "reasons": reasons[:8], "state": state}
 
 
+def log_failure_to_launch_shadow(ledger, current_prices, now, fetched=None):
+    """LOG-ONLY counterfactual experiment for early trade failure.
+
+    A pending trade is logged on *every* qualifying 3-minute cycle once:
+      minutes_open >= 15
+      MFE < 0.25R
+      current R <= 0
+      profit-health score >= 2 (existing deterioration proxy)
+
+    No order/ledger status/stop/target is changed. Repeated qualifying cycles
+    are intentionally logged so later analysis can choose first-hit vs repeated
+    persistence/consecutive-cycle logic.
+    """
+    records = []
+    now_iso = utc_datetime(now).isoformat()
+    for entry in ledger:
+        if entry.get("status") != "pending":
+            continue
+        coin = entry.get("coin")
+        cp = current_prices.get(coin)
+        if cp is None:
+            continue
+        try:
+            opened = utc_datetime(entry.get("time"))
+            minutes_open = (utc_datetime(now) - opened).total_seconds() / 60.0
+            risk = float(entry.get("max_loss_this_trade_inr") or 0.0)
+            mfe = float(entry.get("mfe_pnl_inr") or 0.0)
+            current_gross = _position_gross_pnl(entry, cp)
+            if risk <= 0 or current_gross is None:
+                continue
+            mfe_r = mfe / risk
+            current_r = current_gross / risk
+        except (TypeError, ValueError):
+            continue
+
+        if minutes_open < FAILURE_TO_LAUNCH_MINUTES:
+            continue
+        if mfe_r >= FAILURE_TO_LAUNCH_MFE_R:
+            continue
+        if current_r > FAILURE_TO_LAUNCH_MAX_CURRENT_R:
+            continue
+
+        # Re-use the existing deterministic deterioration machinery; no new
+        # structural heuristic is introduced for the shadow experiment.
+        health = _profit_health_from_fetched(entry, fetched)
+        score = int(health.get("score") or 0)
+        if score < FAILURE_TO_LAUNCH_MIN_HEALTH_SCORE:
+            continue
+
+        record = {
+            "time": now_iso,
+                        "coin": coin,
+            "direction": entry.get("direction"),
+            "entry_time": entry.get("time"),
+            "minutes_open": round(minutes_open, 1),
+            "entry_price": entry.get("entry_price"),
+            "current_price": cp,
+            "stop_loss": entry.get("stop_loss"),
+            "target_price": entry.get("target_price"),
+            "risk_inr": risk,
+            "current_pnl_inr": round(current_gross, 2),
+            "current_r": round(current_r, 3),
+            "mfe_pnl_inr": round(mfe, 2),
+            "mfe_r": round(mfe_r, 3),
+            "mae_pnl_inr": round(float(entry.get("mae_pnl_inr") or 0.0), 2),
+            "profit_health_score": score,
+            "profit_health_state": health.get("state"),
+            "profit_health_reasons": health.get("reasons", []),
+            "conviction": entry.get("conviction"),
+            "entry_location_telemetry": entry.get("entry_location_telemetry", {}),
+            "entry_quality_context": entry.get("entry_quality_context", {}),
+            "research_telemetry_version": RESEARCH_TELEMETRY_VERSION,
+            "reasoning": entry.get("reasoning"),
+        }
+        _append_jsonl(FAILURE_TO_LAUNCH_SHADOW_FILE, record)
+        records.append(record)
+
+    return records
+
+
 def apply_python_profit_protection(ledger, current_prices, now, fetched=None):
     """Deterministic profit-protection floor after a substantial favorable move.
 
@@ -762,7 +877,21 @@ def resolve_ledger(ledger, fetched, now):
                 last=float(since["close"].iloc[-1]); pnl=qty*((last-ep) if direction=="long" else (ep-last))*USDT_INR_RATE-fees
                 entry["status"]="expired"; entry["resolved_pnl"]=round(pnl,2); entry["resolved_time"]=str(since.index[-1])
     cutoff=now_utc_value-timedelta(hours=LEDGER_MAX_AGE_HOURS)
-    return [e for e in ledger if e.get("status")=="pending" or utc_datetime(e["time"])>cutoff]
+    keep=[]
+    for e in ledger:
+        try:
+            created=utc_datetime(e.get("time"))
+        except Exception:
+            created=now_utc_value
+        if e.get("status")=="pending" or created>cutoff:
+            keep.append(e)
+            continue
+        archive_record=dict(e)
+        archive_record.setdefault("archive_time", now_utc_value.isoformat())
+        archive_record.setdefault("archive_reason", "operational_ledger_pruned")
+        archive_record.setdefault("research_telemetry_version", RESEARCH_TELEMETRY_VERSION)
+        _append_jsonl(RESOLVED_TRADES_FILE, archive_record)
+    return keep
 
 def compute_scorecard(ledger, now, window_hours=1, current_prices=None):
     """Real trades-in / target-hit / stop-hit / pending / P&L over the
@@ -818,6 +947,16 @@ def compute_scorecard(ledger, now, window_hours=1, current_prices=None):
             else:
                 unrealized_pnl += quantity * (entry_price - current_price) * USDT_INR_RATE
     unrealized_pnl = round(unrealized_pnl, 2)
+    def _bucket(entries):
+        wins = sum(1 for e in entries if float(e.get('resolved_pnl',0) or 0) > 0)
+        pnl = round(sum(float(e.get('resolved_pnl',0) or 0) for e in entries),2)
+        return {'trades':len(entries),'wins':wins,'win_rate_pct':round(wins/len(entries)*100,1) if entries else None,'pnl_inr':pnl}
+    resolved = target_hit + stop_hit + expired + gemini_exit + profit_exit
+    direction_stats = {'long':_bucket([e for e in resolved if e.get('direction')=='long']), 'short':_bucket([e for e in resolved if e.get('direction')=='short'])}
+    conviction_stats = {str(c): _bucket([e for e in resolved if int(e.get('conviction') or 0)==c]) for c in range(5,11) if any(int(e.get('conviction') or 0)==c for e in resolved)}
+    low_mfe = [e for e in resolved if float(e.get('mfe_r') or 0) < 0.5]
+    high_mfe = [e for e in resolved if float(e.get('mfe_r') or 0) >= 1.0]
+    quality_stats = {'lt_0_5R': _bucket(low_mfe), 'gte_1R': _bucket(high_mfe)}
 
     return {
         "total": len(window), "target_hit": len(target_hit), "stop_hit": len(stop_hit),
@@ -825,6 +964,7 @@ def compute_scorecard(ledger, now, window_hours=1, current_prices=None):
         "abandoned_or_invalid": len(abandoned_or_invalid),
         "realized_pnl_inr": realized_pnl,
         "unrealized_pnl_inr": unrealized_pnl, "total_pnl_inr": round(realized_pnl + unrealized_pnl, 2),
+        "direction_stats": direction_stats, "conviction_stats": conviction_stats, "quality_stats": quality_stats,
     }
 
 
@@ -1057,6 +1197,322 @@ def rvol_percentile_rank(rvol, coin_percentiles):
     return round(float(np.interp(rvol, breakpoints, grid)), 1)
 
 
+def _break_freshness(df, structure):
+    """Describe how fresh the latest confirmed structural break is.
+
+    This is intentionally descriptive. It does not block a trade and does not
+    decide bullish/bearish direction. It distinguishes a genuinely fresh BOS /
+    CHoCH from a continuation call made long after the structural event.
+    """
+    latest = (structure or {}).get("latest_break")
+    if not latest or df is None or len(df) == 0:
+        return {
+            "has_break": False,
+            "bars_since_break": None,
+            "break_freshness": "no_recent_break",
+            "break_direction": None,
+            "break_type": None,
+            "extension_pct_from_break": None,
+            "extension_atr_from_break": None,
+            "new_break_within_2_bars": False,
+        }
+    try:
+        bt = pd.Timestamp(latest.get("break_time"))
+        after = df[df.index > bt]
+        bars = int(len(after))
+        level = float(latest.get("level"))
+        close = float(df["close"].iloc[-1])
+        tr_atr = _safe_float(df.get("atr14").iloc[-1]) if "atr14" in df else None
+        direction = latest.get("direction")
+        if direction == "bullish":
+            extension = (close - level) / level * 100 if level else None
+            extension_atr = (close - level) / tr_atr if tr_atr and tr_atr > 0 else None
+        elif direction == "bearish":
+            extension = (level - close) / level * 100 if level else None
+            extension_atr = (level - close) / tr_atr if tr_atr and tr_atr > 0 else None
+        else:
+            extension = extension_atr = None
+        if bars <= FRESH_BREAK_BARS:
+            freshness = "fresh"
+        elif bars <= MATURE_BREAK_BARS:
+            freshness = "mature"
+        elif bars <= LATE_BREAK_BARS:
+            freshness = "late"
+        else:
+            freshness = "stale"
+        return {
+            "has_break": True,
+            "bars_since_break": bars,
+            "break_freshness": freshness,
+            "break_direction": direction,
+            "break_type": latest.get("type"),
+            "extension_pct_from_break": round(extension, 3) if extension is not None else None,
+            "extension_atr_from_break": round(extension_atr, 2) if extension_atr is not None else None,
+            "new_break_within_2_bars": bars <= FRESH_BREAK_BARS,
+        }
+    except (TypeError, ValueError, KeyError):
+        return {
+            "has_break": False,
+            "bars_since_break": None,
+            "break_freshness": "unknown",
+            "break_direction": None,
+            "break_type": None,
+            "extension_pct_from_break": None,
+            "extension_atr_from_break": None,
+            "new_break_within_2_bars": False,
+        }
+
+
+def _continuation_diagnostics(c3, structure):
+    s3 = (structure or {}).get("3m", {})
+    freshness = _break_freshness(c3, s3)
+    failed = s3.get("failed_breaks") or []
+    sweeps = s3.get("liquidity_sweeps") or []
+    exhaustion = s3.get("exhaustion_flags") or []
+    high_rejections = sum(1 for x in sweeps if "high" in str(x.get("type", "")))
+    low_rejections = sum(1 for x in sweeps if "low" in str(x.get("type", "")))
+    recent_failed = len(failed)
+    exhaustion_score = min(5, len(exhaustion) + min(2, recent_failed) + min(1, len(sweeps)))
+    extended = bool((freshness.get("extension_atr_from_break") or 0) >= LATE_EXTENSION_ATR)
+    late = freshness.get("break_freshness") in {"late", "stale"}
+    if late and extended and (recent_failed or exhaustion_score >= 2):
+        quality = "late_exhausted"
+    elif late and extended:
+        quality = "late_extended"
+    elif freshness.get("break_freshness") == "fresh":
+        quality = "fresh_continuation"
+    elif freshness.get("break_freshness") == "mature":
+        quality = "mature_continuation"
+    else:
+        quality = "mixed_or_unclear"
+    return {
+        **freshness,
+        "failed_break_count_3m": recent_failed,
+        "liquidity_sweep_count_3m": len(sweeps),
+        "high_rejection_sweeps_3m": high_rejections,
+        "low_reclaim_sweeps_3m": low_rejections,
+        "exhaustion_score_3m": exhaustion_score,
+        "extended_from_break": extended,
+        "late_continuation": late,
+        "continuation_quality": quality,
+    }
+
+
+
+def _entry_location_telemetry(snapshot, proposed_entry, direction):
+    """Observational entry-location telemetry only.
+
+    This function does NOT reject, downgrade, or score a trade. It records
+    where Gemini proposed entry relative to the current close, VWAP, recent
+    confirmed 3m swing levels, latest structural break, ATR, and 3m range.
+    The goal is to discover whether entry location predicts failure before
+    turning any of these measurements into a trading rule.
+    """
+    try:
+        entry = float(proposed_entry)
+    except (TypeError, ValueError):
+        return {}
+
+    ms = snapshot.get("market_structure") or {}
+    s3 = ms.get("3m") or {}
+    rng = ms.get("range") or {}
+    close = snapshot.get("close")
+    atr = ms.get("atr14_3m")
+    if close is None or entry <= 0:
+        return {}
+
+    out = {
+        "telemetry_only": True,
+        "proposed_entry": round(entry, 8),
+        "direction": str(direction or "").lower(),
+        "entry_vs_current_close_pct": round((entry - float(close)) / float(close) * 100, 4),
+        "entry_vs_vwap_pct": None,
+        "entry_vs_vwap_atr": None,
+        "entry_vs_recent_swing_high_pct": None,
+        "entry_vs_recent_swing_low_pct": None,
+        "entry_vs_recent_swing_high_atr": None,
+        "entry_vs_recent_swing_low_atr": None,
+        "entry_vs_latest_break_pct": None,
+        "entry_vs_latest_break_atr": None,
+        "entry_range_position_pct": None,
+        "entry_distance_to_range_high_pct": None,
+        "entry_distance_to_range_low_pct": None,
+        "nearest_boundary": None,
+        "nearest_boundary_distance_pct": None,
+        "nearest_boundary_distance_atr": None,
+        "entry_location_class": "unknown",
+    }
+
+    try:
+        vwap = s3.get("vwap")
+        if vwap is not None and float(vwap) > 0:
+            dv = (entry - float(vwap)) / entry * 100
+            out["entry_vs_vwap_pct"] = round(dv, 4)
+            if atr and float(atr) > 0:
+                out["entry_vs_vwap_atr"] = round((entry - float(vwap)) / float(atr), 3)
+    except (TypeError, ValueError):
+        pass
+
+    recent_high = (s3.get("swing_highs") or [])[-1] if s3.get("swing_highs") else None
+    recent_low = (s3.get("swing_lows") or [])[-1] if s3.get("swing_lows") else None
+
+    try:
+        if recent_high and float(recent_high.get("price")) > 0:
+            level = float(recent_high["price"])
+            out["entry_vs_recent_swing_high_pct"] = round((entry - level) / entry * 100, 4)
+            if atr and float(atr) > 0:
+                out["entry_vs_recent_swing_high_atr"] = round((entry - level) / float(atr), 3)
+        if recent_low and float(recent_low.get("price")) > 0:
+            level = float(recent_low["price"])
+            out["entry_vs_recent_swing_low_pct"] = round((entry - level) / entry * 100, 4)
+            if atr and float(atr) > 0:
+                out["entry_vs_recent_swing_low_atr"] = round((entry - level) / float(atr), 3)
+    except (TypeError, ValueError):
+        pass
+
+    latest_break = s3.get("latest_break") or {}
+    try:
+        level = float(latest_break.get("level"))
+        if level > 0:
+            out["entry_vs_latest_break_pct"] = round((entry - level) / entry * 100, 4)
+            if atr and float(atr) > 0:
+                out["entry_vs_latest_break_atr"] = round((entry - level) / float(atr), 3)
+            out["latest_break_direction"] = latest_break.get("direction")
+            out["latest_break_type"] = latest_break.get("type")
+            out["latest_break_time"] = latest_break.get("break_time")
+    except (TypeError, ValueError):
+        out["latest_break_direction"] = None
+        out["latest_break_type"] = None
+        out["latest_break_time"] = None
+
+    try:
+        rlo = float(rng.get("range_low"))
+        rhi = float(rng.get("range_high"))
+        width = rhi - rlo
+        if width > 0:
+            pos = (entry - rlo) / width * 100
+            out["entry_range_position_pct"] = round(max(0.0, min(100.0, pos)), 2)
+            out["entry_distance_to_range_high_pct"] = round((rhi - entry) / entry * 100, 4)
+            out["entry_distance_to_range_low_pct"] = round((entry - rlo) / entry * 100, 4)
+            dh = abs(entry - rhi)
+            dl = abs(entry - rlo)
+            if dh <= dl:
+                out["nearest_boundary"] = "high"
+                out["nearest_boundary_distance_pct"] = round(dh / entry * 100, 4)
+                if atr and float(atr) > 0:
+                    out["nearest_boundary_distance_atr"] = round(dh / float(atr), 3)
+            else:
+                out["nearest_boundary"] = "low"
+                out["nearest_boundary_distance_pct"] = round(dl / entry * 100, 4)
+                if atr and float(atr) > 0:
+                    out["nearest_boundary_distance_atr"] = round(dl / float(atr), 3)
+
+            # Descriptive classification only. Not a filter.
+            if out["entry_range_position_pct"] >= 80:
+                out["entry_location_class"] = "near_range_high"
+            elif out["entry_range_position_pct"] <= 20:
+                out["entry_location_class"] = "near_range_low"
+            else:
+                out["entry_location_class"] = "range_middle"
+    except (TypeError, ValueError):
+        pass
+
+    # Compact qualitative descriptors for later analysis; never used for scoring.
+    ext_atr = None
+    if out.get("entry_vs_latest_break_atr") is not None:
+        ext_atr = abs(float(out["entry_vs_latest_break_atr"]))
+    if ext_atr is not None:
+        if ext_atr < 0.5:
+            out["break_distance_class"] = "near_break"
+        elif ext_atr < 1.0:
+            out["break_distance_class"] = "moderately_away"
+        elif ext_atr < 2.0:
+            out["break_distance_class"] = "extended_1_to_2_atr"
+        else:
+            out["break_distance_class"] = "extended_over_2_atr"
+    else:
+        out["break_distance_class"] = "unknown"
+
+    return out
+
+
+def _session_context(candle_time):
+    try:
+        ts = pd.Timestamp(candle_time)
+        hour = int(ts.hour)
+    except Exception:
+        return {"utc_hour": None, "label": "unknown", "historically_weak_window": False}
+    weak = WEAK_SESSION_UTC_START <= hour < WEAK_SESSION_UTC_END
+    label = "weak-history-window" if weak else "normal-history-window"
+    return {"utc_hour": hour, "label": label, "historically_weak_window": weak}
+
+
+def _recent_signal_context(state, coin, now):
+    hist = (state.get("call_history") or {}).get(coin, [])[-5:]
+    ledger = state.get("ledger") or []
+    now_dt = utc_datetime(now)
+    recent = []
+    for h in hist:
+        try:
+            mins = (now_dt - utc_datetime(h["time"])).total_seconds() / 60
+            if mins <= REENTRY_LOOKBACK_MINUTES:
+                item = dict(h); item["minutes_ago"] = round(mins, 1); recent.append(item)
+        except Exception:
+            continue
+    same_take = {"long": 0, "short": 0}
+    for h in recent:
+        if h.get("take_trade") and str(h.get("direction", "")).lower() in same_take:
+            same_take[str(h.get("direction")).lower()] += 1
+
+    recent_closed = []
+    for e in ledger:
+        if e.get("coin") != coin or e.get("status") == "pending":
+            continue
+        try:
+            mins = (now_dt - utc_datetime(e["resolved_time"]) ).total_seconds() / 60
+            if 0 <= mins <= REENTRY_LOOKBACK_MINUTES:
+                x = dict(e); x["minutes_since_close"] = round(mins, 1); recent_closed.append(x)
+        except Exception:
+            continue
+    recent_closed.sort(key=lambda x: x.get("minutes_since_close", 1e9))
+    last = recent[-1] if recent else None
+    last_closed = recent_closed[0] if recent_closed else None
+    same_dir_closed = None
+    if last and last.get("direction"):
+        for e in recent_closed:
+            if str(e.get("direction", "")).lower() == str(last.get("direction")).lower():
+                same_dir_closed = e; break
+    return {
+        "recent_take_count_180m": sum(1 for x in recent if x.get("take_trade")),
+        "recent_long_take_count_180m": same_take["long"],
+        "recent_short_take_count_180m": same_take["short"],
+        "last_signal_minutes_ago": last.get("minutes_ago") if last else None,
+        "last_signal_direction": last.get("direction") if last else None,
+        "last_signal_take_trade": last.get("take_trade") if last else None,
+        "last_closed_trade_minutes_ago": last_closed.get("minutes_since_close") if last_closed else None,
+        "last_closed_trade_direction": last_closed.get("direction") if last_closed else None,
+        "last_closed_trade_pnl_inr": last_closed.get("resolved_pnl") if last_closed else None,
+        "last_closed_trade_r": round(float(last_closed.get("resolved_pnl")) / float(last_closed.get("max_loss_this_trade_inr")), 3) if last_closed and last_closed.get("max_loss_this_trade_inr") else None,
+        "same_direction_recent_close": bool(same_dir_closed),
+        "same_direction_cooldown_active": bool(same_dir_closed and same_dir_closed.get("minutes_since_close", 999) < REENTRY_COOLDOWN_MINUTES),
+        "same_direction_reentry_without_new_break": bool(
+            same_dir_closed and same_dir_closed.get("minutes_since_close", 999) < REENTRY_COOLDOWN_MINUTES
+        ),
+    }
+
+
+def _apply_entry_quality_context(snapshot):
+    """Build a compact, deterministic entry-quality view for Gemini.
+
+    This is not a long/short pre-filter. It tells Gemini whether a continuation
+    is fresh, mature, late, repeated, extended, or showing exhaustion pressure.
+    """
+    ms = snapshot.get("market_structure") or {}
+    diag = _continuation_diagnostics(snapshot.get("_candles_3m"), ms)
+    session = _session_context(snapshot.get("candle_time"))
+    return {"continuation": diag, "session": session}
+
+
 def build_coin_snapshot(coin, candles_3m, candles_15m, candles_1h=None, rvol_percentiles=None):
     row = candles_3m.iloc[-1]
     candle_time = candle_key(candles_3m.index[-1])
@@ -1082,6 +1538,11 @@ def build_coin_snapshot(coin, candles_3m, candles_15m, candles_1h=None, rvol_per
         "ctx_15m":candles_to_compact(candles_15m.tail(32)),
         "ctx_1h":candles_to_compact(candles_1h.tail(24)) if candles_1h is not None else [],
     }
+    diag = _continuation_diagnostics(candles_3m, structure)
+    snapshot["entry_quality_context"] = {
+        "continuation": diag,
+        "session": _session_context(candles_3m.index[-1]),
+    }
     return snapshot
 
 def _flush_pending_telegram(state):
@@ -1103,8 +1564,11 @@ def _build_message(candle_start_utc,now,scorecard,scan_stats=None,stale=None,pos
     lines=[f"📊 {ist.strftime('%H:%M')}→{end.strftime('%H:%M')} IST (detected {det.strftime('%H:%M:%S')})"]
     lines.append(f"Last 24h: {scorecard['total']} calls — {scorecard['target_hit']} hit target, {scorecard['stop_hit']} hit stop, {scorecard['expired']} expired, {scorecard.get('gemini_exit',0)} closed by Gemini, {scorecard['pending']} pending")
     lines.append(f"Realized {_format_pnl(scorecard['realized_pnl_inr'])} | Unrealized {_format_pnl(scorecard['unrealized_pnl_inr'])} | Total {_format_pnl(scorecard['total_pnl_inr'])}")
+    ds=scorecard.get('direction_stats',{})
+    qs=scorecard.get('quality_stats',{})
+    lines.append(f"Signal quality: LONG {ds.get('long',{}).get('trades',0)} / SHORT {ds.get('short',{}).get('trades',0)} | <0.5R MFE {qs.get('lt_0_5R',{}).get('trades',0)} trades / {_format_pnl(qs.get('lt_0_5R',{}).get('pnl_inr',0))} | ≥1R MFE {qs.get('gte_1R',{}).get('trades',0)} trades / {_format_pnl(qs.get('gte_1R',{}).get('pnl_inr',0))}")
     if scan_stats:
-        lines.append(f"\n🔎 Gemini scan: {scan_stats['scanned']} coins | proposals {scan_stats['proposals']} (LONG {scan_stats.get('long_proposals',0)} / SHORT {scan_stats.get('short_proposals',0)}) | TAKE {scan_stats['take']} | Python risk rejected {scan_stats['risk_rejected']}")
+        lines.append(f"\n🔎 Gemini scan: {scan_stats['scanned']} coins | proposals {scan_stats['proposals']} (LONG {scan_stats.get('long_proposals',0)} / SHORT {scan_stats.get('short_proposals',0)}) | TAKE {scan_stats['take']} (LONG {scan_stats.get('long_takes',0)} / SHORT {scan_stats.get('short_takes',0)}) | Python risk rejected {scan_stats['risk_rejected']} | quality-adjusted {scan_stats.get('quality_adjusted',0)}")
         reviewed=scan_stats.get('position_reviewed',0); missing=scan_stats.get('position_missing',0); acts=scan_stats.get('position_actions',{})
         if reviewed or missing or scan_stats.get('gemini_review_failed'):
             lines.append(f"📋 Position review: {reviewed} reviewed | HOLD {acts.get('hold',0)} | EXIT {acts.get('exit_now',0)} | TIGHTEN {acts.get('tighten_stop',0)} | TARGET {acts.get('move_target',0)} | missing {missing}")
@@ -1113,7 +1577,7 @@ def _build_message(candle_start_utc,now,scorecard,scan_stats=None,stale=None,pos
         for reason,count in sorted(scan_stats['risk_reasons'].items(),key=lambda x:-x[1])[:4]: lines.append(f"• Risk reject: {html.escape(reason)} ({count})")
         if scan_stats.get('short_proposals'):
             short_rej=sum(1 for g in (flagged or {}).values() if str(g.get('direction','')).lower()=='short' and g.get('risk_validation_error') and not g.get('take_trade'))
-            lines.append(f"↘️ Short diagnostics: Gemini proposed {scan_stats.get('short_proposals',0)} SHORT | Python rejected {short_rej}")
+            lines.append(f"↘️ Short diagnostics: Gemini proposed {scan_stats.get('short_proposals',0)} SHORT | TAKE {scan_stats.get('short_takes',0)} | Python rejected {scan_stats.get('short_risk_rejected',short_rej)}")
     if stale: lines.append(f"\n🟡 Stale/missing data: {', '.join(sorted(set(stale)))} — Gemini not called for this candle.")
     if position_summaries:
         lines.append("\n📋 Position updates:")
@@ -1215,6 +1679,7 @@ def main():
                 if mins<=180 and last.get('entry_price'):
                     ch=round((snap['close']-last['entry_price'])/last['entry_price']*100,3); fav=ch>0 if last.get('direction')=='long' else ch<0
                     snap['prior_call']={'direction':last.get('direction'),'take_trade':last.get('take_trade'),'minutes_ago':round(mins,1),'price_change_pct_since':ch,'moved_favorably':fav}
+            snap['recent_signal_context']=_recent_signal_context(state, coin, now)
             snap['ctx_daily_30d']=daily_candles.get(coin,[])[-30:]
             snapshots.append(snap); fresh_coins.append(coin)
         except Exception as e:
@@ -1259,6 +1724,7 @@ def main():
     position_summaries=apply_position_updates(ledger,position_updates,current_prices,now)
     protection_summaries=apply_python_profit_protection(ledger,current_prices,now,fetched=fetched)
     position_summaries.extend(protection_summaries)
+    shadow_failure_to_launch = log_failure_to_launch_shadow(ledger,current_prices,now,fetched=fetched)
     call_history=state.get('call_history',{})
     review_actions = {}
     for coin, upd in position_updates.items():
@@ -1268,16 +1734,35 @@ def main():
     missing_reviews = sorted(expected_review - set(position_updates))
     long_proposals=sum(1 for g in flagged.values() if str(g.get('direction','')).lower()=='long')
     short_proposals=sum(1 for g in flagged.values() if str(g.get('direction','')).lower()=='short')
-    stats={'scanned':len(snapshots),'proposals':len(flagged),'take':sum(1 for g in flagged.values() if g.get('take_trade')),'risk_rejected':0,'risk_reasons':{},'fresh':len(fresh_coins),'stale':len(stale),'position_reviewed':len(position_updates),'position_missing':len(missing_reviews),'position_actions':review_actions,'gemini_review_failed':gemini_review_failed,'long_proposals':long_proposals,'short_proposals':short_proposals}
+    long_takes=sum(1 for g in flagged.values() if str(g.get('direction','')).lower()=='long' and g.get('take_trade'))
+    short_takes=sum(1 for g in flagged.values() if str(g.get('direction','')).lower()=='short' and g.get('take_trade'))
+    quality_adjusted=0
+    stats={'scanned':len(snapshots),'proposals':len(flagged),'take':sum(1 for g in flagged.values() if g.get('take_trade')),'risk_rejected':0,'risk_reasons':{},'fresh':len(fresh_coins),'stale':len(stale),'position_reviewed':len(position_updates),'position_missing':len(missing_reviews),'position_actions':review_actions,'gemini_review_failed':gemini_review_failed,'long_proposals':long_proposals,'short_proposals':short_proposals,'long_takes':long_takes,'short_takes':short_takes,'quality_adjusted':quality_adjusted,'failure_to_launch_shadow_count':len(shadow_failure_to_launch),'failure_to_launch_shadow_coins':[x.get('coin') for x in shadow_failure_to_launch]}
     for coin,g in flagged.items():
+        quality = next((x for x in snapshots if x.get('coin') == coin), {})
+        g['_entry_quality_context'] = quality.get('entry_quality_context', {})
+        g['_recent_signal_context'] = quality.get('recent_signal_context', {})
+        g['_entry_location_telemetry'] = _entry_location_telemetry(
+            quality, g.get('entry_price'), g.get('direction')
+        )
         if g.get('risk_validation_error') and not g.get('take_trade'):
             stats['risk_rejected']+=1; r=g['risk_validation_error']; stats['risk_reasons'][r]=stats['risk_reasons'].get(r,0)+1
+            if str(g.get('direction','')).lower() == 'short':
+                stats['short_risk_rejected'] = stats.get('short_risk_rejected', 0) + 1
         h=call_history.get(coin,[])
         if h:
             mins=(now-utc_datetime(h[-1]['time'])).total_seconds()/60
             if mins<=15 and h[-1].get('direction')!=g.get('direction'):
                 g['whipsaw_warning']=f"reverses {h[-1].get('direction','?').upper()} call from {int(mins)} min ago"
-        h.append({'direction':g.get('direction'),'entry_price':g.get('entry_price'),'take_trade':g.get('take_trade'),'time':now.isoformat()}); call_history[coin]=h[-5:]
+        # Keep the existing lightweight call history only. We deliberately do
+        # not add signal-ID lifecycle machinery; the earlier "missing SHORT"
+        # concern was explained by the 26h operational ledger retention window.
+        h.append({
+            'direction':g.get('direction'),
+            'entry_price':g.get('entry_price'),
+            'take_trade':g.get('take_trade'),
+            'time':now.isoformat()
+        }); call_history[coin]=h[-5:]
         if g.get('take_trade'):
             opposite='short' if g.get('direction')=='long' else 'long'; old=find_pending_same_direction(ledger,coin,opposite,now)
             if old is not None:
@@ -1288,7 +1773,24 @@ def main():
             existing=find_pending_same_direction(ledger,coin,g.get('direction'),now)
             if existing is not None: existing['conviction']=g.get('conviction')
             else:
-                ledger.append({'coin':coin,'direction':g.get('direction'),'entry_price':g.get('entry_price'),'stop_loss':g.get('stop_loss'),'target_price':g.get('target_price'),'trade_amount_inr':g.get('trade_amount_inr'),'quantity':g.get('quantity'),'max_loss_this_trade_inr':g.get('max_loss_this_trade_inr'),'conviction':g.get('conviction'),'status':'pending','time':now.isoformat(),'reasoning':g.get('reasoning'),'level_history':[{'from':now.isoformat(),'stop':g.get('stop_loss'),'target':g.get('target_price')}],'peak_price':g.get('entry_price'),'trough_price':g.get('entry_price'),'mfe_pnl_inr':0.0,'mae_pnl_inr':0.0,'mfe_r':0.0,'mfe_time':now.isoformat(),'mae_time':now.isoformat(),'mfe_giveback_pct':0.0})
+                ledger.append({
+                    'coin':coin,'direction':g.get('direction'),
+                    'entry_price':g.get('entry_price'),'stop_loss':g.get('stop_loss'),'target_price':g.get('target_price'),
+                    'trade_amount_inr':g.get('trade_amount_inr'),'quantity':g.get('quantity'),
+                    'max_loss_this_trade_inr':g.get('max_loss_this_trade_inr'),
+                    'conviction':g.get('conviction'),
+                    'supporting_tags':g.get('supporting_tags',[]),
+                    'risk_tags':g.get('risk_tags',[]),
+                    'reason_tag_schema_version':g.get('reason_tag_schema_version'),
+                    'entry_location_telemetry':g.get('_entry_location_telemetry',{}),
+                    'entry_quality_context':g.get('_entry_quality_context',{}),
+                    'recent_signal_context':g.get('_recent_signal_context',{}),
+                    'status':'pending','time':now.isoformat(),'reasoning':g.get('reasoning'),
+                    'level_history':[{'from':now.isoformat(),'stop':g.get('stop_loss'),'target':g.get('target_price')}],
+                    'peak_price':g.get('entry_price'),'trough_price':g.get('entry_price'),
+                    'mfe_pnl_inr':0.0,'mae_pnl_inr':0.0,'mfe_r':0.0,
+                    'mfe_time':now.isoformat(),'mae_time':now.isoformat(),'mfe_giveback_pct':0.0
+                })
     state['call_history']=call_history; state['ledger']=ledger
     state['last_processed_candle_time']=expected_key if len(processed)>=len(coins) else state.get('last_processed_candle_time')
     scorecard=compute_scorecard(ledger,now,window_hours=24,current_prices=current_prices)
