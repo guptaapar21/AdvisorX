@@ -1,13 +1,13 @@
 # AdvisorX ResearchLab Audit
 
-**Audit cutoff (UTC):** `2026-08-16T15:49:23+00:00`
+**Audit cutoff (UTC):** `2026-08-16T15:30:38+00:00`
 **Research-only:** `True`
 
 ## Executive summary
 
-- Observations: **1,140**
+- Observations: **0**
 - Matured outcomes: **0**
-- Research analyses: **1**
+- Research analyses: **0**
 - Hypothesis batches: **0**
 - Validated memory: **0**
 - Rejected memory: **0**
@@ -37,6 +37,7 @@ No rejected hypotheses recorded yet.
 
 ## Warnings
 
+- No observations available at audit cutoff.
 - No matured outcomes available at audit cutoff.
 
 ## Safety
