@@ -5,6 +5,7 @@ import pandas as pd
 from .research_config import *
 from .research_time import utc_ts, completed_minute, canonical_minute
 from .research_fetcher import fetch_1m, store_candles, load_candles
+from .research_features import feature_snapshot
 from .outcomes import label_observation
 from .research_store import append_jsonl, read_jsonl, read_state, write_state, load_memory, write_memory
 from .research_discovery import discover_multi
@@ -20,7 +21,7 @@ def _gemini_key_pool(raw):
 
 
 def _discover_with_key_pool(raw_key_pool, rows, model, memory, discover_fn=discover_multi):
-    """Run the new multi-pass discovery engine with the complete configured key pool."""
+    """Run the multi-pass discovery engine with the complete configured key pool."""
     keys = _gemini_key_pool(raw_key_pool)
     if not keys:
         return discover_fn('', rows, model, memory)
@@ -101,7 +102,14 @@ def analyze_if_due(now=None, force=False, discover_fn=discover_multi, evaluate_f
         return False
 
     memory=load_memory()
-    d=_discover_with_key_pool(raw_key_pool,rows,GEMINI_MODEL,memory,discover_fn=discover_fn)
+    try:
+        d=_discover_with_key_pool(raw_key_pool,rows,GEMINI_MODEL,memory,discover_fn=discover_fn)
+    except Exception as exc:
+        status='discovery_error'
+        _mark_analysis_attempt(now,status,len(rows))
+        append_jsonl(ANALYSIS_FILE,{'time':now.isoformat(),'status':status,'rows':len(rows),'error':str(exc)})
+        return False
+
     if d.get('status')!='ok':
         status=str(d.get('status') or 'discovery_failed')
         _mark_analysis_attempt(now,status,len(rows))
