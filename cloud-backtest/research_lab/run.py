@@ -14,6 +14,41 @@ from .research_hypotheses import discover, evaluate, classify
 def _observation_id(symbol,t):return f'{symbol}:{canonical_minute(t).strftime("%Y%m%dT%H%M%SZ")}'
 
 
+def _gemini_key_pool(raw):
+    """Return the complete configured Gemini key pool without exposing keys."""
+    return [k.strip() for k in str(raw or '').split(',') if k.strip()]
+
+
+def _discover_with_key_pool(raw_key_pool, rows, model, memory, discover_fn=discover):
+    """Run Gemini discovery across the full configured key pool.
+
+    research_hypotheses.discover() accepts multiple keys and already rotates
+    across up to three retryable attempts. Chunking the complete pool into
+    groups of three lets ResearchLab actually use every configured key instead
+    of truncating the pool to key #1, while preserving its existing retry logic.
+    """
+    keys = _gemini_key_pool(raw_key_pool)
+    if not keys:
+        return discover_fn('', rows, model, memory)
+
+    last_error = None
+    for start in range(0, len(keys), 3):
+        group = keys[start:start + 3]
+        try:
+            result = discover_fn(','.join(group), rows, model, memory)
+            status = str(result.get('status') or '')
+            if status == 'ok':
+                return result
+            if status in {'insufficient_data', 'no_api_key'}:
+                return result
+            return result
+        except Exception as exc:
+            last_error = exc
+            continue
+
+    raise last_error or RuntimeError('Gemini discovery failed for all configured keys')
+
+
 def collect_once(now=None, fetch_fn=fetch_1m):
     now=utc_ts(now); cutoff=completed_minute(now); state=read_state(); state.setdefault('last_observation_minute',None)
     observations=read_jsonl(OBS_FILE); outcomes=read_jsonl(OUTCOME_FILE)
@@ -88,14 +123,14 @@ def analyze_if_due(now=None, force=False, discover_fn=discover, evaluate_fn=eval
     # cannot create an infinite retry loop within the same analysis day.
     _mark_analysis_attempt(now,'started',len(rows))
 
-    key=os.getenv('RESEARCH_GEMINI_KEY','').split(',')[0].strip()
-    memory=load_memory()
-    if not key:
+    raw_key_pool=os.getenv('RESEARCH_GEMINI_KEY','')
+    if not _gemini_key_pool(raw_key_pool):
         _mark_analysis_attempt(now,'no_api_key',len(rows))
         append_jsonl(ANALYSIS_FILE,{'time':now.isoformat(),'status':'no_api_key','rows':len(rows)})
         return False
 
-    d=discover_fn(key,rows,GEMINI_MODEL,memory)
+    memory=load_memory()
+    d=_discover_with_key_pool(raw_key_pool,rows,GEMINI_MODEL,memory,discover_fn=discover_fn)
     if d.get('status')!='ok':
         status=str(d.get('status') or 'discovery_failed')
         _mark_analysis_attempt(now,status,len(rows))
