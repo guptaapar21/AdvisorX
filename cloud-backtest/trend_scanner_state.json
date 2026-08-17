@@ -2,7 +2,7 @@
   "coins": {},
   "last_sent_at": "2026-08-16T01:54:35.860665+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-17T20:57:00Z",
+  "last_processed_candle_time": "2026-08-17T21:00:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -435,12 +435,6 @@
     "ZBT": [
       {
         "direction": "short",
-        "entry_price": 0.0864,
-        "take_trade": false,
-        "time": "2026-08-15T18:03:20.928776+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 0.0854,
         "take_trade": false,
         "time": "2026-08-15T20:03:22.423792+00:00"
@@ -462,6 +456,12 @@
         "entry_price": 0.0816,
         "take_trade": true,
         "time": "2026-08-17T04:21:21.666144+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 0.077,
+        "take_trade": true,
+        "time": "2026-08-17T21:03:24.851186+00:00"
       }
     ],
     "BTC": [
@@ -2798,42 +2798,126 @@
         }
       ],
       "peak_price": 0.1668,
-      "trough_price": 0.1593,
-      "mfe_pnl_inr": 1383.85,
+      "trough_price": 0.1591,
+      "mfe_pnl_inr": 1436.07,
       "mae_pnl_inr": -574.43,
-      "mfe_r": 1.538,
-      "mfe_time": "2026-08-17 20:56:00",
+      "mfe_r": 1.596,
+      "mfe_time": "2026-08-17 21:02:00",
       "mae_time": "2026-08-17 20:25:00",
-      "mfe_giveback_pct": 28.3,
+      "mfe_giveback_pct": 16.4,
       "revised_at": "2026-08-17T21:01:07.170565+00:00",
       "profit_health_score": 1,
       "profit_health_state": "healthy",
       "profit_health_reasons": [
         "recent failed break"
       ]
+    },
+    {
+      "coin": "ZBT",
+      "direction": "short",
+      "entry_price": 0.077,
+      "stop_loss": 0.0785,
+      "target_price": 0.074,
+      "trade_amount_inr": 42896.94,
+      "quantity": 5602.404103648953,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "RVOL",
+        "MOMENTUM",
+        "BOS",
+        "ADX_DI"
+      ],
+      "risk_tags": [
+        "RANGE_LOCATION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.077,
+        "direction": "short",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.9091,
+        "entry_vs_recent_swing_low_pct": -0.1299,
+        "entry_vs_recent_swing_high_atr": -4.256,
+        "entry_vs_recent_swing_low_atr": -0.608,
+        "entry_vs_latest_break_pct": -0.1299,
+        "entry_vs_latest_break_atr": -0.608,
+        "entry_range_position_pct": 0.0,
+        "entry_distance_to_range_high_pct": 1.5584,
+        "entry_distance_to_range_low_pct": 0.0,
+        "nearest_boundary": "low",
+        "nearest_boundary_distance_pct": 0.0,
+        "nearest_boundary_distance_atr": 0.0,
+        "entry_location_class": "near_range_low",
+        "latest_break_direction": "bearish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-08-17 21:00:00",
+        "break_distance_class": "moderately_away"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 0,
+          "break_freshness": "fresh",
+          "break_direction": "bearish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.13,
+          "extension_atr_from_break": 0.61,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 4,
+          "liquidity_sweep_count_3m": 2,
+          "high_rejection_sweeps_3m": 1,
+          "low_reclaim_sweeps_3m": 1,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 21,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": null,
+        "last_signal_direction": null,
+        "last_signal_take_trade": null,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-17T21:03:24.851186+00:00",
+      "reasoning": "ZBT exhibits massive volume expansion with 10.57 RVOL, strong negative momentum, and a bearish BOS break below 0.0771.",
+      "level_history": [
+        {
+          "from": "2026-08-17T21:03:24.851186+00:00",
+          "stop": 0.0785,
+          "target": 0.074
+        }
+      ],
+      "peak_price": 0.077,
+      "trough_price": 0.077,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-08-17T21:03:24.851186+00:00",
+      "mae_time": "2026-08-17T21:03:24.851186+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-17T20:36:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-17T20:39:00Z": [
       "ACE",
       "ADA",
@@ -2973,9 +3057,29 @@
       "XRP",
       "ZBT",
       "ZEC"
+    ],
+    "2026-08-17T21:00:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
     ]
   },
   "telegram_last_delivery_ok": true,
   "telegram_last_delivery_error": null,
-  "telegram_last_delivery_at": "2026-08-17T21:01:25.494244+00:00"
+  "telegram_last_delivery_at": "2026-08-17T21:03:46.921676+00:00"
 }
