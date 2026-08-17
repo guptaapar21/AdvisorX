@@ -13,6 +13,7 @@ from .research_hypotheses import discover, evaluate, classify
 
 def _observation_id(symbol,t):return f'{symbol}:{canonical_minute(t).strftime("%Y%m%dT%H%M%SZ")}'
 
+
 def collect_once(now=None, fetch_fn=fetch_1m):
     now=utc_ts(now); cutoff=completed_minute(now); state=read_state(); state.setdefault('last_observation_minute',None)
     observations=read_jsonl(OBS_FILE); outcomes=read_jsonl(OUTCOME_FILE)
@@ -32,6 +33,7 @@ def collect_once(now=None, fetch_fn=fetch_1m):
                 known.add(oid)
         except Exception as exc:
             append_jsonl(ERROR_FILE,{'time':now.isoformat(),'symbol':symbol,'stage':'collect','error':str(exc)})
+
     # Backfill every unresolved observation that has now matured. This is not limited to 70m,
     # so delayed CI runs cannot silently lose labels.
     all_obs=read_jsonl(OBS_FILE)
@@ -54,34 +56,63 @@ def collect_once(now=None, fetch_fn=fetch_1m):
 def _analysis_due(now,force=False):
     if force:return True
     state=read_state(); today=now.date().isoformat()
-    return now.hour>=ANALYSIS_UTC_HOUR and state.get('last_analysis_date')!=today
+    if now.hour<ANALYSIS_UTC_HOUR:
+        return False
+    # A research attempt is a daily checkpoint. This prevents a deterministic
+    # "insufficient_data" state from hammering Gemini every minute while the
+    # dataset is still warming up. The discovery/evaluation logic itself is unchanged.
+    return state.get('last_analysis_attempt_date')!=today
+
+
+def _mark_analysis_attempt(now, status, rows=None):
+    state=read_state()
+    state['last_analysis_attempt_date']=now.date().isoformat()
+    state['last_analysis_attempt_at']=now.isoformat()
+    state['last_analysis_attempt_status']=status
+    if rows is not None:
+        state['last_analysis_attempt_rows']=int(rows)
+    write_state(state)
 
 
 def analyze_if_due(now=None, force=False, discover_fn=discover, evaluate_fn=evaluate):
     now=utc_ts(now)
     if not _analysis_due(now,force):return False
+
     observations=read_jsonl(OBS_FILE); outcomes=read_jsonl(OUTCOME_FILE); byid={o['observation_id']:o for o in observations}
     rows=[]
     for y in outcomes:
         o=byid.get(y.get('observation_id'))
         if o:rows.append({'observation_id':y['observation_id'],'symbol':y.get('symbol',o.get('symbol')),'feature_time':o['features']['feature_time'],'feature':o['features'],'outcome':y})
+
+    # Mark the attempt before calling Gemini so even an unsuccessful discovery
+    # cannot create an infinite retry loop within the same analysis day.
+    _mark_analysis_attempt(now,'started',len(rows))
+
     key=os.getenv('RESEARCH_GEMINI_KEY','').split(',')[0].strip()
     memory=load_memory()
     if not key:
-        append_jsonl(ANALYSIS_FILE,{'time':now.isoformat(),'status':'no_api_key','rows':len(rows)}); return False
+        _mark_analysis_attempt(now,'no_api_key',len(rows))
+        append_jsonl(ANALYSIS_FILE,{'time':now.isoformat(),'status':'no_api_key','rows':len(rows)})
+        return False
+
     d=discover_fn(key,rows,GEMINI_MODEL,memory)
     if d.get('status')!='ok':
-        append_jsonl(ANALYSIS_FILE,{'time':now.isoformat(),'status':d.get('status'),'discovery':d}); return False
+        status=str(d.get('status') or 'discovery_failed')
+        _mark_analysis_attempt(now,status,len(rows))
+        append_jsonl(ANALYSIS_FILE,{'time':now.isoformat(),'status':status,'discovery':d})
+        return False
+
     evaluated=evaluate_fn(d['hypotheses'],rows)
     for item in evaluated:item['status']=classify(item)
     validated=[{'name':x['hypothesis'].get('name'),'direction':x['hypothesis'].get('direction'),'horizon_min':x['hypothesis'].get('horizon_min'),'status':x['status'],'validation':x['validation'],'holdout':x['holdout']} for x in evaluated if x['status']=='HOLDOUT_PASSED']
     rejected=[{'name':x['hypothesis'].get('name'),'direction':x['hypothesis'].get('direction'),'horizon_min':x['hypothesis'].get('horizon_min'),'status':x['status'],'validation':x['validation'],'holdout':x['holdout']} for x in evaluated if x['status']!='HOLDOUT_PASSED']
     memory['validated']=(memory.get('validated',[])+validated)[-100:]; memory['rejected']=(memory.get('rejected',[])+rejected)[-100:]; write_memory(memory)
     append_jsonl(HYPOTHESIS_FILE,{'generated_at':d['generated_at'],'research_only':True,'discovery':d,'evaluated':evaluated})
-    state=read_state(); state['last_analysis_date']=now.date().isoformat(); state['last_analysis_at']=now.isoformat(); write_state(state)
+    state=read_state(); state['last_analysis_date']=now.date().isoformat(); state['last_analysis_at']=now.isoformat(); state['last_analysis_status']='ok'; write_state(state)
     return True
 
 
 def main():
     now=utc_ts(); collect_once(now); analyze_if_due(now)
+
 if __name__=='__main__':main()
