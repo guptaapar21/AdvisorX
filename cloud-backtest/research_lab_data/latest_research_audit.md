@@ -1,13 +1,13 @@
 # AdvisorX ResearchLab Audit
 
-**Audit cutoff (UTC):** `2026-08-17T07:05:34+00:00`
+**Audit cutoff (UTC):** `2026-08-17T05:33:37+00:00`
 **Research-only:** `True`
 
 ## Executive summary
 
-- Observations: **11,595**
-- Matured outcomes: **51,660**
-- Raw outcome records: **51,660**
+- Observations: **10,215**
+- Matured outcomes: **44,760**
+- Raw outcome records: **44,760**
 - Research analyses: **317**
 - Hypothesis batches: **1**
 - Validated memory: **0**
@@ -29,18 +29,18 @@
 
 | Horizon | Matured |
 |---:|---:|
-| 5 min | 10,620 |
-| 10 min | 10,545 |
-| 15 min | 10,470 |
-| 30 min | 10,245 |
-| 60 min | 9,780 |
+| 5 min | 9,240 |
+| 10 min | 9,165 |
+| 15 min | 9,090 |
+| 30 min | 8,865 |
+| 60 min | 8,400 |
 
 ## LONG / SHORT research outcome summary
 
 | Direction | N | Positive rate | Avg net return | Median | Std |
 |---|---:|---:|---:|---:|---:|
-| LONG | 51,660 | 16.7% | -0.000973 | -0.001500 | 0.008735 |
-| SHORT | 51,660 | 13.3% | -0.001955 | -0.001500 | 0.008256 |
+| LONG | 44,760 | 17.4% | -0.000818 | -0.001500 | 0.008954 |
+| SHORT | 44,760 | 13.1% | -0.002107 | -0.001500 | 0.008392 |
 
 ## Holdout-passed hypotheses
 
