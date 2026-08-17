@@ -1,3 +1,4 @@
+
 name: AdvisorX ResearchLab Audit
 
 on:
@@ -7,7 +8,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: advisorx-researchlab-audit
+  group: advisorx-researchlab-data
   cancel-in-progress: false
 
 jobs:
@@ -27,7 +28,8 @@ jobs:
           mkdir -p cloud-backtest/research_lab_data
           if git ls-remote --exit-code --heads origin researchlab-data >/dev/null 2>&1; then
             git fetch origin researchlab-data
-            git archive origin/researchlab-data -- cloud-backtest/research_lab_data               | tar -x --strip-components=2 -C cloud-backtest/research_lab_data
+            git archive origin/researchlab-data -- cloud-backtest/research_lab_data \
+              | tar -x --strip-components=2 -C cloud-backtest/research_lab_data
             rm -rf cloud-backtest/research_lab_data/cloud-backtest
           fi
 
@@ -35,29 +37,25 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: researchlab-pip-${{ runner.os }}-${{ hashFiles('cloud-backtest/research_lab/requirements.txt') }}
+          restore-keys: |
+            researchlab-pip-${{ runner.os }}-
+
       - name: Install ResearchLab dependencies
         run: python -m pip install -r cloud-backtest/research_lab/requirements.txt
 
-      - name: Verify ResearchLab dataset is present
+      - name: Verify ResearchLab dataset
         shell: bash
         run: |
           set -euo pipefail
-          if [ ! -s cloud-backtest/research_lab_data/observations.jsonl ]; then
-            echo "::error::ResearchLab observations.jsonl is missing or empty. The collector must create observations before an audit can produce research results."
-            exit 1
-          fi
+          test -s cloud-backtest/research_lab_data/observations.jsonl
+          echo "Observations: $(wc -l < cloud-backtest/research_lab_data/observations.jsonl)"
 
-      - name: Verify ResearchLab dataset is present
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ ! -s cloud-backtest/research_lab_data/observations.jsonl ]; then
-            echo "::error::ResearchLab observations.jsonl is missing or empty. Run the minute-by-minute collector first."
-            exit 1
-          fi
-          echo "Observations available: $(wc -l < cloud-backtest/research_lab_data/observations.jsonl)"
-
-      - name: Run deterministic Research Scientist audit
+      - name: Run deterministic audit
         env:
           PYTHONPATH: cloud-backtest
           RESEARCH_AUDIT_OUTPUT_DIR: research_audit_output
@@ -72,42 +70,37 @@ jobs:
           path: research_audit_output/
           retention-days: 30
 
-      - name: Persist audit to isolated data branch
+      - name: Persist audit
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'advisorx-research-bot'
           git config user.email 'actions@github.com'
           rm -rf /tmp/researchlab-data-worktree
-          if git ls-remote --exit-code --heads origin researchlab-data >/dev/null 2>&1; then
-            git fetch origin researchlab-data
-            git worktree add /tmp/researchlab-data-worktree origin/researchlab-data
-          else
-            git worktree add -b researchlab-data /tmp/researchlab-data-worktree origin/main
-          fi
-          rm -rf /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data/cloud-backtest
-          mkdir -p /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data/audits
+
+          git fetch origin researchlab-data
+          git worktree add /tmp/researchlab-data-worktree origin/researchlab-data
+
           stamp="$(date -u +"%Y%m%dT%H%M%SZ")"
-          cp research_audit_output/research_audit.md "/tmp/researchlab-data-worktree/cloud-backtest/research_lab_data/audits/${stamp}.md"
-          cp research_audit_output/research_audit.json "/tmp/researchlab-data-worktree/cloud-backtest/research_lab_data/audits/${stamp}.json"
-          cp research_audit_output/research_audit.md /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data/latest_research_audit.md
-          cp research_audit_output/research_audit.json /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data/latest_research_audit.json
+          mkdir -p /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data/audits
+          cp research_audit_output/research_audit.md \
+            "/tmp/researchlab-data-worktree/cloud-backtest/research_lab_data/audits/${stamp}.md"
+          cp research_audit_output/research_audit.json \
+            "/tmp/researchlab-data-worktree/cloud-backtest/research_lab_data/audits/${stamp}.json"
+          cp research_audit_output/research_audit.md \
+            /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data/latest_research_audit.md
+          cp research_audit_output/research_audit.json \
+            /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data/latest_research_audit.json
+
           cd /tmp/researchlab-data-worktree
           git add cloud-backtest/research_lab_data
-          if git diff --cached --quiet; then
-            echo 'No audit changes.'
-            exit 0
-          fi
+          if git diff --cached --quiet; then exit 0; fi
           git commit -m 'Publish ResearchLab audit [skip ci]'
+
           for i in 1 2 3; do
-            if git push origin HEAD:researchlab-data; then
-              exit 0
-            fi
+            if git push origin HEAD:researchlab-data; then exit 0; fi
             git fetch origin researchlab-data || true
-            if git rebase origin/researchlab-data; then
-              continue
-            fi
+            if git rebase origin/researchlab-data; then continue; fi
             git rebase --abort || true
           done
-          echo 'ResearchLab audit push failed after retries.'
           exit 1

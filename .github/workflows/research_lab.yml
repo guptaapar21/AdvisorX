@@ -1,3 +1,4 @@
+
 name: AdvisorX ResearchLab
 
 on:
@@ -6,8 +7,9 @@ on:
 permissions:
   contents: write
 
+# Collector and audit both write researchlab-data; never let them race.
 concurrency:
-  group: advisorx-researchlab
+  group: advisorx-researchlab-data
   cancel-in-progress: false
 
 jobs:
@@ -27,13 +29,22 @@ jobs:
           mkdir -p cloud-backtest/research_lab_data
           if git ls-remote --exit-code --heads origin researchlab-data >/dev/null 2>&1; then
             git fetch origin researchlab-data
-            git archive origin/researchlab-data -- cloud-backtest/research_lab_data               | tar -x --strip-components=2 -C cloud-backtest/research_lab_data
+            git archive origin/researchlab-data -- cloud-backtest/research_lab_data \
+              | tar -x --strip-components=2 -C cloud-backtest/research_lab_data
             rm -rf cloud-backtest/research_lab_data/cloud-backtest
           fi
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: researchlab-pip-${{ runner.os }}-${{ hashFiles('cloud-backtest/research_lab/requirements.txt') }}
+          restore-keys: |
+            researchlab-pip-${{ runner.os }}-
 
       - name: Install ResearchLab dependencies
         run: python -m pip install -r cloud-backtest/research_lab/requirements.txt
@@ -42,59 +53,85 @@ jobs:
         env:
           PYTHONPATH: cloud-backtest
           RESEARCH_COINS: BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX,HYPE,ZEC,ADA,ACE,PAXG
-          RESEARCH_CANDLE_RETENTION_DAYS: '7'
-          RESEARCH_ANALYSIS_UTC_HOUR: '0'
+          RESEARCH_OBSERVATION_LOOKBACK_MIN: '120'
           RESEARCH_TAKER_FEE: '0.00075'
+          RESEARCH_ANALYSIS_UTC_HOUR: '0'
+          RESEARCH_ANALYSIS_INTERVAL_MIN: '60'
+          RESEARCH_MIN_NEW_OUTCOMES_FOR_ANALYSIS: '1000'
+          RESEARCH_PERSIST_EVERY_MINUTES: '5'
+          RESEARCH_HOLDOUT_TEST_BUDGET_PER_EPOCH: '10'
           RESEARCH_GEMINI_KEY: ${{ secrets.GEMINI_API_KEYS }}
           RESEARCH_GEMINI_MODEL: gemini-3.5-flash-lite
+          RESEARCH_GEMINI_MAX_PASSES: '2'
+          RESEARCH_DISCOVERY_PASSES: '2'
+          RESEARCH_DISCOVERY_PASS_CANDIDATES: '120'
+          RESEARCH_DISCOVERY_INPUT_CHAR_BUDGET: '100000'
+          RESEARCH_HOLDOUT_FINALISTS: '10'
         run: |
-          python -m pytest             cloud-backtest/research_lab/test_research_lab.py             cloud-backtest/research_lab/test_research_store_paths.py -q
+          python -m pytest \
+            cloud-backtest/research_lab/test_research_lab.py \
+            cloud-backtest/research_lab/test_research_store_paths.py \
+            cloud-backtest/research_lab/test_research_engine_v4.py -q
           python -m research_lab.run
 
-      - name: Verify collector produced persistent observations
+      - name: Verify persistent research data
         shell: bash
         run: |
           set -euo pipefail
-          if [ ! -s cloud-backtest/research_lab_data/observations.jsonl ]; then
-            echo "::error::ResearchLab collector completed without creating a non-empty observations.jsonl."
-            echo "::error::This indicates the observation persistence path or market-data collection is broken."
-            exit 1
+          test -s cloud-backtest/research_lab_data/observations.jsonl
+          echo "Observations: $(wc -l < cloud-backtest/research_lab_data/observations.jsonl)"
+          echo "Outcomes: $(wc -l < cloud-backtest/research_lab_data/outcomes.jsonl 2>/dev/null || echo 0)"
+
+      - name: Should persist this run
+        id: persist_gate
+        shell: bash
+        run: |
+          minute="$(date -u +%M)"
+          minute=$((10#$minute))
+          if [ $((minute % 5)) -eq 0 ]; then
+            echo "persist=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "persist=false" >> "$GITHUB_OUTPUT"
           fi
-          echo "Observations persisted: $(wc -l < cloud-backtest/research_lab_data/observations.jsonl)"
+
+      - name: Drop transient candle cache before Git persistence
+        if: steps.persist_gate.outputs.persist == 'true'
+        run: rm -rf cloud-backtest/research_lab_data/candles_1m
 
       - name: Persist ResearchLab data to isolated branch
+        if: steps.persist_gate.outputs.persist == 'true'
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'advisorx-research-bot'
           git config user.email 'actions@github.com'
           rm -rf /tmp/researchlab-data-worktree
+
           if git ls-remote --exit-code --heads origin researchlab-data >/dev/null 2>&1; then
             git fetch origin researchlab-data
             git worktree add /tmp/researchlab-data-worktree origin/researchlab-data
           else
             git worktree add -b researchlab-data /tmp/researchlab-data-worktree origin/main
           fi
+
           rm -rf /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data
           mkdir -p /tmp/researchlab-data-worktree/cloud-backtest
-          cp -a cloud-backtest/research_lab_data /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data
-          rm -rf /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data/cloud-backtest
+          cp -a cloud-backtest/research_lab_data \
+            /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data
+          rm -rf /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data/candles_1m
+
           cd /tmp/researchlab-data-worktree
           git add cloud-backtest/research_lab_data
           if git diff --cached --quiet; then
             echo 'No ResearchLab data changes.'
             exit 0
           fi
+
           git commit -m 'Update ResearchLab data [skip ci]'
           for i in 1 2 3; do
-            if git push origin HEAD:researchlab-data; then
-              exit 0
-            fi
+            if git push origin HEAD:researchlab-data; then exit 0; fi
             git fetch origin researchlab-data || true
-            if git rebase origin/researchlab-data; then
-              continue
-            fi
+            if git rebase origin/researchlab-data; then continue; fi
             git rebase --abort || true
           done
-          echo 'ResearchLab data push failed after retries.'
           exit 1
