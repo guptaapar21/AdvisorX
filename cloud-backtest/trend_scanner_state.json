@@ -2,7 +2,7 @@
   "coins": {},
   "last_sent_at": "2026-08-16T01:54:35.860665+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-17T02:57:00Z",
+  "last_processed_candle_time": "2026-08-17T03:00:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -157,12 +157,6 @@
     "LINK": [
       {
         "direction": "long",
-        "entry_price": 9.498,
-        "take_trade": true,
-        "time": "2026-08-15T14:15:37.466953+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 9.509,
         "take_trade": true,
         "time": "2026-08-15T15:45:37.618986+00:00"
@@ -184,6 +178,12 @@
         "entry_price": 9.602,
         "take_trade": true,
         "time": "2026-08-15T17:42:22.714580+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 9.539,
+        "take_trade": true,
+        "time": "2026-08-17T03:03:20.803216+00:00"
       }
     ],
     "ACE": [
@@ -1215,37 +1215,121 @@
           "target": 76.4
         }
       ],
-      "peak_price": 75.48,
+      "peak_price": 75.51,
       "trough_price": 75.48,
+      "mfe_pnl_inr": 57.99,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.055,
+      "mfe_time": "2026-08-17 03:02:00",
+      "mae_time": "2026-08-17T03:01:10.818036+00:00",
+      "mfe_giveback_pct": 66.7
+    },
+    {
+      "coin": "LINK",
+      "direction": "long",
+      "entry_price": 9.539,
+      "stop_loss": 9.47,
+      "target_price": 9.68,
+      "trade_amount_inr": 103051.91,
+      "quantity": 108.64058084643216,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "BOS",
+        "EMA_STRUCTURE",
+        "VWAP",
+        "MOMENTUM"
+      ],
+      "risk_tags": [
+        "RVOL"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 9.539,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": 0.2516,
+        "entry_vs_recent_swing_low_pct": 0.7862,
+        "entry_vs_recent_swing_high_atr": 1.27,
+        "entry_vs_recent_swing_low_atr": 3.969,
+        "entry_vs_latest_break_pct": 0.1258,
+        "entry_vs_latest_break_atr": 0.635,
+        "entry_range_position_pct": 84.5,
+        "entry_distance_to_range_high_pct": 0.2097,
+        "entry_distance_to_range_low_pct": 1.1427,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.2097,
+        "nearest_boundary_distance_atr": 1.058,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-08-17 02:57:00",
+        "break_distance_class": "moderately_away"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 1,
+          "break_freshness": "fresh",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.126,
+          "extension_atr_from_break": 0.63,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 2,
+          "liquidity_sweep_count_3m": 4,
+          "high_rejection_sweeps_3m": 2,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 3,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": null,
+        "last_signal_direction": null,
+        "last_signal_take_trade": null,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-17T03:03:20.803216+00:00",
+      "reasoning": "LINK shows clean bullish structure breaking above 9.527 resistance with strong momentum and positive EMA alignment.",
+      "level_history": [
+        {
+          "from": "2026-08-17T03:03:20.803216+00:00",
+          "stop": 9.47,
+          "target": 9.68
+        }
+      ],
+      "peak_price": 9.539,
+      "trough_price": 9.539,
       "mfe_pnl_inr": 0.0,
       "mae_pnl_inr": 0.0,
       "mfe_r": 0.0,
-      "mfe_time": "2026-08-17T03:01:10.818036+00:00",
-      "mae_time": "2026-08-17T03:01:10.818036+00:00",
+      "mfe_time": "2026-08-17T03:03:20.803216+00:00",
+      "mae_time": "2026-08-17T03:03:20.803216+00:00",
       "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-17T02:36:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-17T02:39:00Z": [
       "ACE",
       "ADA",
@@ -1385,9 +1469,29 @@
       "XRP",
       "ZBT",
       "ZEC"
+    ],
+    "2026-08-17T03:00:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
     ]
   },
   "telegram_last_delivery_ok": true,
   "telegram_last_delivery_error": null,
-  "telegram_last_delivery_at": "2026-08-17T03:01:27.704714+00:00"
+  "telegram_last_delivery_at": "2026-08-17T03:03:39.400677+00:00"
 }
