@@ -5,10 +5,10 @@ import pandas as pd
 from .research_config import *
 from .research_time import utc_ts, completed_minute, canonical_minute
 from .research_fetcher import fetch_1m, store_candles, load_candles
-from .research_features import feature_snapshot
 from .outcomes import label_observation
 from .research_store import append_jsonl, read_jsonl, read_state, write_state, load_memory, write_memory
-from .research_hypotheses import discover, evaluate, classify
+from .research_discovery import discover_multi
+from .research_hypotheses import evaluate, classify
 
 
 def _observation_id(symbol,t):return f'{symbol}:{canonical_minute(t).strftime("%Y%m%dT%H%M%SZ")}'
@@ -19,34 +19,12 @@ def _gemini_key_pool(raw):
     return [k.strip() for k in str(raw or '').split(',') if k.strip()]
 
 
-def _discover_with_key_pool(raw_key_pool, rows, model, memory, discover_fn=discover):
-    """Run Gemini discovery across the full configured key pool.
-
-    research_hypotheses.discover() accepts multiple keys and already rotates
-    across up to three retryable attempts. Chunking the complete pool into
-    groups of three lets ResearchLab actually use every configured key instead
-    of truncating the pool to key #1, while preserving its existing retry logic.
-    """
+def _discover_with_key_pool(raw_key_pool, rows, model, memory, discover_fn=discover_multi):
+    """Run the new multi-pass discovery engine with the complete configured key pool."""
     keys = _gemini_key_pool(raw_key_pool)
     if not keys:
         return discover_fn('', rows, model, memory)
-
-    last_error = None
-    for start in range(0, len(keys), 3):
-        group = keys[start:start + 3]
-        try:
-            result = discover_fn(','.join(group), rows, model, memory)
-            status = str(result.get('status') or '')
-            if status == 'ok':
-                return result
-            if status in {'insufficient_data', 'no_api_key'}:
-                return result
-            return result
-        except Exception as exc:
-            last_error = exc
-            continue
-
-    raise last_error or RuntimeError('Gemini discovery failed for all configured keys')
+    return discover_fn(','.join(keys), rows, model, memory)
 
 
 def collect_once(now=None, fetch_fn=fetch_1m):
@@ -69,8 +47,6 @@ def collect_once(now=None, fetch_fn=fetch_1m):
         except Exception as exc:
             append_jsonl(ERROR_FILE,{'time':now.isoformat(),'symbol':symbol,'stage':'collect','error':str(exc)})
 
-    # Backfill every unresolved observation that has now matured. This is not limited to 70m,
-    # so delayed CI runs cannot silently lose labels.
     all_obs=read_jsonl(OBS_FILE)
     by_symbol={s:load_candles(s,CANDLE_DIR) for s in COINS}
     for obs in all_obs:
@@ -93,9 +69,6 @@ def _analysis_due(now,force=False):
     state=read_state(); today=now.date().isoformat()
     if now.hour<ANALYSIS_UTC_HOUR:
         return False
-    # A research attempt is a daily checkpoint. This prevents a deterministic
-    # "insufficient_data" state from hammering Gemini every minute while the
-    # dataset is still warming up. The discovery/evaluation logic itself is unchanged.
     return state.get('last_analysis_attempt_date')!=today
 
 
@@ -109,7 +82,7 @@ def _mark_analysis_attempt(now, status, rows=None):
     write_state(state)
 
 
-def analyze_if_due(now=None, force=False, discover_fn=discover, evaluate_fn=evaluate):
+def analyze_if_due(now=None, force=False, discover_fn=discover_multi, evaluate_fn=evaluate):
     now=utc_ts(now)
     if not _analysis_due(now,force):return False
 
@@ -119,8 +92,6 @@ def analyze_if_due(now=None, force=False, discover_fn=discover, evaluate_fn=eval
         o=byid.get(y.get('observation_id'))
         if o:rows.append({'observation_id':y['observation_id'],'symbol':y.get('symbol',o.get('symbol')),'feature_time':o['features']['feature_time'],'feature':o['features'],'outcome':y})
 
-    # Mark the attempt before calling Gemini so even an unsuccessful discovery
-    # cannot create an infinite retry loop within the same analysis day.
     _mark_analysis_attempt(now,'started',len(rows))
 
     raw_key_pool=os.getenv('RESEARCH_GEMINI_KEY','')
@@ -134,7 +105,7 @@ def analyze_if_due(now=None, force=False, discover_fn=discover, evaluate_fn=eval
     if d.get('status')!='ok':
         status=str(d.get('status') or 'discovery_failed')
         _mark_analysis_attempt(now,status,len(rows))
-        append_jsonl(ANALYSIS_FILE,{'time':now.isoformat(),'status':status,'discovery':d})
+        append_jsonl(ANALYSIS_FILE,{'time':now.isoformat(),'status':status,'rows':len(rows),'discovery':d})
         return False
 
     evaluated=evaluate_fn(d['hypotheses'],rows)
@@ -149,5 +120,6 @@ def analyze_if_due(now=None, force=False, discover_fn=discover, evaluate_fn=eval
 
 def main():
     now=utc_ts(); collect_once(now); analyze_if_due(now)
+
 
 if __name__=='__main__':main()
