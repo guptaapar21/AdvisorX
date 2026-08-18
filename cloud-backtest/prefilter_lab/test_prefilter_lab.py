@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from run_prefilter_lab import (
+from prefilter_lab.run_prefilter_lab import (
     HORIZONS,
     evaluate_rule,
     split_research_and_recent,
@@ -72,7 +72,7 @@ def test_research_split_is_chronological_and_purged():
 
 
 def test_persistent_condition_is_sampled_every_horizon():
-    from run_prefilter_lab import evaluate_rule
+    from prefilter_lab.run_prefilter_lab import evaluate_rule
 
     d = synthetic()
     metric = evaluate_rule(
