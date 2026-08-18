@@ -3,12 +3,14 @@ name: AdvisorX CoinDCX Pre-Filter Lab
 on:
   workflow_dispatch:
     inputs:
-      days_back:
-        description: "Fresh CoinDCX history to study (15-30 days)"
+      research_days:
+        description: "Historical research window (15-30 days)"
         required: false
-        default: "15"
-  schedule:
-    - cron: "17 * * * *"
+        default: "30"
+      recent_oos_days:
+        description: "Frozen recent out-of-sample window (3-7 days)"
+        required: false
+        default: "3"
 
 permissions:
   contents: read
@@ -19,21 +21,24 @@ concurrency:
 
 jobs:
   prefilter:
-    name: CoinDCX 1m pre-filter research
+    name: CoinDCX pre-filter research
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
+
     env:
-      PREFILTER_DAYS: ${{ inputs.days_back || '15' }}
+      PREFILTER_RESEARCH_DAYS: ${{ inputs.research_days || '30' }}
+      PREFILTER_RECENT_OOS_DAYS: ${{ inputs.recent_oos_days || '3' }}
       PREFILTER_COINS: BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX,HYPE,ZEC,ADA,ACE,PAXG
-      PREFILTER_HORIZON_MIN: "15"
+      PREFILTER_TARGET_HORIZON: "15"
       PREFILTER_MIN_TRADES: "40"
       PREFILTER_MIN_COINS: "4"
       PREFILTER_MIN_BLOCKS: "8"
       PREFILTER_MIN_BLOCK_POSITIVE: "0.60"
       PREFILTER_MIN_COIN_POSITIVE: "0.60"
       PREFILTER_FEE_RATE: "0.00059"
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -46,14 +51,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r cloud-backtest/requirements.txt
 
-      - name: Verify existing CoinDCX components
+      - name: Verify research engine inputs
         run: |
           test -f cloud-backtest/coindcx_fetcher.py
-          test -f cloud-backtest/indicators.py
-          test -f cloud-backtest/fee_model.py
-          echo "Using repository CoinDCX fetcher + indicator + fee components."
+          test -f cloud-backtest/prefilter_lab/run_prefilter_lab.py
+          test -f cloud-backtest/prefilter_lab/test_prefilter_lab.py
 
-      - name: Run isolated pre-filter study
+      - name: Run unit tests
+        working-directory: cloud-backtest
+        run: |
+          PYTHONPATH=. python -m pytest prefilter_lab/test_prefilter_lab.py -q
+
+      - name: Run 30-day research + frozen recent OOS study
         working-directory: cloud-backtest
         run: |
           PYTHONPATH=. python prefilter_lab/run_prefilter_lab.py
@@ -65,4 +74,4 @@ jobs:
           name: advisorx-prefilter-${{ github.run_id }}
           path: cloud-backtest/prefilter_output/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 30
