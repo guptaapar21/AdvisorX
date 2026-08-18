@@ -1,0 +1,68 @@
+name: AdvisorX CoinDCX Pre-Filter Lab
+
+on:
+  workflow_dispatch:
+    inputs:
+      days_back:
+        description: "Fresh CoinDCX history to study (15-30 days)"
+        required: false
+        default: "15"
+  schedule:
+    - cron: "17 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: advisorx-coindcx-prefilter-lab
+  cancel-in-progress: false
+
+jobs:
+  prefilter:
+    name: CoinDCX 1m pre-filter research
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PREFILTER_DAYS: ${{ inputs.days_back || '15' }}
+      PREFILTER_COINS: BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX,HYPE,ZEC,ADA,ACE,PAXG
+      PREFILTER_HORIZON_MIN: "15"
+      PREFILTER_MIN_TRADES: "40"
+      PREFILTER_MIN_COINS: "4"
+      PREFILTER_MIN_BLOCKS: "8"
+      PREFILTER_MIN_BLOCK_POSITIVE: "0.60"
+      PREFILTER_MIN_COIN_POSITIVE: "0.60"
+      PREFILTER_FEE_RATE: "0.00059"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install existing backtest dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r cloud-backtest/requirements.txt
+
+      - name: Verify existing CoinDCX components
+        run: |
+          test -f cloud-backtest/coindcx_fetcher.py
+          test -f cloud-backtest/indicators.py
+          test -f cloud-backtest/fee_model.py
+          echo "Using repository CoinDCX fetcher + indicator + fee components."
+
+      - name: Run isolated pre-filter study
+        working-directory: cloud-backtest
+        run: |
+          PYTHONPATH=. python prefilter_lab/run_prefilter_lab.py
+
+      - name: Upload research artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: advisorx-prefilter-${{ github.run_id }}
+          path: cloud-backtest/prefilter_output/
+          if-no-files-found: warn
+          retention-days: 14
