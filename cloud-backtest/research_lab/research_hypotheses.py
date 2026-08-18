@@ -308,15 +308,29 @@ def evaluate_one(rule, grouped):
 
 def _validation_rank(item):
     v = item["validation"]
-    r = v.get("robustness", {})
+    r = v.get("robustness", {}) or {}
     if v["n"] <= 0:
-        return -1e99
+        return (
+            float("-inf"),
+            float("-inf"),
+            float("-inf"),
+            float("-inf"),
+            float("-inf"),
+        )
+
+    def _rank_float(value, default=float("-inf")):
+        try:
+            number = float(value)
+            return number if np.isfinite(number) else default
+        except (TypeError, ValueError):
+            return default
+
     return (
-        r.get("block_ci95_low", -1e99),
-        v["profit_factor"],
-        v["avg_net_return"],
-        r.get("positive_block_fraction", 0.0),
-        r.get("positive_coin_fraction", 0.0),
+        _rank_float(r.get("block_ci95_low")),
+        _rank_float(v.get("profit_factor")),
+        _rank_float(v.get("avg_net_return")),
+        _rank_float(r.get("positive_block_fraction"), 0.0),
+        _rank_float(r.get("positive_coin_fraction"), 0.0),
     )
 
 def evaluate(hypotheses, rows, holdout_budget=None):

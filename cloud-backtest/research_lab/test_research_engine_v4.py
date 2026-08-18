@@ -127,3 +127,23 @@ def test_holdout_budget_is_bounded():
     ]
     evaluated = evaluate(rules, rows(1100), holdout_budget=3)
     assert sum(bool(x.get("holdout_tested")) for x in evaluated) == 3
+
+
+def test_validation_rank_mixed_empty_and_nonempty_candidates():
+    from .research_hypotheses import _validation_rank
+    empty = {"validation": {"n": 0, "robustness": {}}}
+    populated = {
+        "validation": {
+            "n": 100,
+            "profit_factor": 1.2,
+            "avg_net_return": 0.001,
+            "robustness": {
+                "block_ci95_low": 0.0001,
+                "positive_block_fraction": 0.6,
+                "positive_coin_fraction": 0.8,
+            },
+        }
+    }
+    assert isinstance(_validation_rank(empty), tuple)
+    assert isinstance(_validation_rank(populated), tuple)
+    assert sorted([empty, populated], key=_validation_rank, reverse=True)[0] is populated
