@@ -267,23 +267,33 @@ def match_atom(df: pd.DataFrame, atom):
 
 
 def select_events(z: pd.DataFrame, horizon: int):
-    """De-duplicate persistent conditions by selected event, not prior raw bar."""
+    """Greedily sample persistent conditions at least `horizon` apart."""
     if z.empty:
         return z
 
     z = z.sort_values(["symbol", "feature_time"]).copy()
-    selected = []
+    keep_parts = []
+    gap = pd.Timedelta(minutes=horizon)
 
     for _, group in z.groupby("symbol", sort=False):
-        last_event = None
-        for idx, ts in group["feature_time"].items():
-            if last_event is None or ts >= last_event + pd.Timedelta(minutes=horizon):
-                selected.append(idx)
-                last_event = ts
+        times = group["feature_time"].to_numpy()
+        if len(times) == 0:
+            continue
 
-    if not selected:
+        # Greedy event selection using searchsorted rather than iterating
+        # through every qualifying row.
+        pos = 0
+        keep = []
+        while pos < len(times):
+            keep.append(pos)
+            target = times[pos] + gap.to_timedelta64()
+            pos = int(times.searchsorted(target, side="left"))
+
+        keep_parts.append(group.iloc[keep])
+
+    if not keep_parts:
         return z.iloc[0:0]
-    return z.loc[selected].sort_values(["symbol", "feature_time"])
+    return pd.concat(keep_parts, ignore_index=False)
 
 
 def evaluate_rule(
@@ -340,12 +350,13 @@ def evaluate_rule(
 
 def discovery_score(metric):
     # Breadth first, raw return second.
+    # Ranking only; this is NOT an approval score.
     return (
         metric["coin_pos"] * 2.0
         + metric["block_pos"] * 2.0
-        + min(metric["pf"], 3.0) * 0.5
-        + np.tanh(metric["avg"] * 500.0) * 0.5
-        + min(metric["n"], 200) / 200.0 * 0.5
+        + np.tanh(metric["avg"] * 500.0) * 0.75
+        + min(max(metric["pf"], 0.0), 3.0) * 0.15
+        + min(metric["n"], 500) / 500.0 * 0.75
     )
 
 
@@ -358,11 +369,9 @@ def rank_singles(discovery, direction):
             direction,
             TARGET_HORIZON,
         )
-        if (
-            metric
-            and metric["avg"] > 0
-            and metric["pf"] >= DISCOVERY_MIN_PF
-        ):
+        # Discovery is permissive: an individual filter need not be
+        # profitable by itself; synergy can emerge only after combination.
+        if metric:
             rows.append((atom, metric, discovery_score(metric)))
 
     rows.sort(key=lambda x: x[2], reverse=True)
@@ -403,17 +412,27 @@ def mine_candidates(discovery, direction):
             TARGET_HORIZON,
         )
 
-        if (
-            metric
-            and metric["avg"] > 0
-            and metric["pf"] >= DISCOVERY_MIN_PF
-        ):
+        # Do not require a profitable pair before it can be considered.
+        # Validation/holdout are the approval gates.
+        if metric:
             pairs.append(
                 ([a, b], metric, 2, discovery_score(metric))
             )
 
     pairs.sort(key=lambda x: x[3], reverse=True)
-    pairs = pairs[:MAX_PAIRS]
+
+    # Preserve feature diversity in the pair beam.
+    pair_counts = {}
+    selected_pairs = []
+    for item in pairs:
+        key = item[0][0][0]
+        if pair_counts.get(key, 0) >= max(6, MAX_PAIRS // 16):
+            continue
+        selected_pairs.append(item)
+        pair_counts[key] = pair_counts.get(key, 0) + 1
+        if len(selected_pairs) >= MAX_PAIRS:
+            break
+    pairs = selected_pairs
     candidates.extend(pairs)
 
     triples = []
@@ -432,11 +451,7 @@ def mine_candidates(discovery, direction):
                 direction,
                 TARGET_HORIZON,
             )
-            if (
-                metric
-                and metric["avg"] > 0
-                and metric["pf"] >= DISCOVERY_MIN_PF
-            ):
+            if metric:
                 triples.append(
                     (rule, metric, 3, discovery_score(metric))
                 )
