@@ -1,0 +1,92 @@
+
+name: AdvisorX CoinDCX Trade-Path Replay
+
+on:
+  workflow_dispatch:
+    inputs:
+      research_days:
+        description: "Historical research window (15-30 days)"
+        required: false
+        default: "30"
+      recent_oos_days:
+        description: "Frozen recent OOS window (3-7 days)"
+        required: false
+        default: "3"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: advisorx-coindcx-trade-path-replay
+  cancel-in-progress: false
+
+jobs:
+  replay:
+    name: AdvisorX trade-path research
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      PREFILTER_RESEARCH_DAYS: ${{ inputs.research_days || '30' }}
+      PREFILTER_RECENT_OOS_DAYS: ${{ inputs.recent_oos_days || '3' }}
+      PREFILTER_COINS: BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX,HYPE,ZEC,ADA,ACE,PAXG
+      PREFILTER_TARGET_HORIZON: "15"
+      PREFILTER_MIN_TRADES: "40"
+      PREFILTER_MIN_COINS: "4"
+      PREFILTER_MIN_BLOCKS: "8"
+      PREFILTER_MIN_BLOCK_POSITIVE: "0.60"
+      PREFILTER_MIN_COIN_POSITIVE: "0.60"
+      PREFILTER_FEE_RATE: "0.00059"
+      TRADEPATH_TAKER_FEE: "0.00075"
+      TRADEPATH_MIN_RR: "1.5"
+      TRADEPATH_MIN_STOP_ATR: "1.2"
+      TRADEPATH_MAX_STOP_PCT: "0.08"
+      TRADEPATH_HOLD_MINUTES: "120"
+      TRADEPATH_COOLDOWN_MINUTES: "30"
+      TRADEPATH_RECENT_OOS_DAYS: "3"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r cloud-backtest/requirements.txt
+          pip install "pytest>=8.0"
+
+      - name: Verify research inputs
+        run: |
+          test -f cloud-backtest/prefilter_lab/run_prefilter_lab.py
+          test -f cloud-backtest/prefilter_lab/run_trade_path_replay.py
+          test -f cloud-backtest/prefilter_lab/test_trade_path_replay.py
+          test -f cloud-backtest/coindcx_fetcher.py
+
+      - name: Run trade-path unit tests
+        working-directory: cloud-backtest/prefilter_lab
+        run: |
+          PYTHONPATH=. python -m pytest test_trade_path_replay.py -q
+
+      - name: Run fresh CoinDCX discovery
+        working-directory: cloud-backtest
+        run: |
+          PYTHONPATH=. python prefilter_lab/run_prefilter_lab.py
+
+      - name: Run AdvisorX-style trade-path replay
+        working-directory: cloud-backtest
+        run: |
+          PYTHONPATH=. python prefilter_lab/run_trade_path_replay.py
+
+      - name: Upload trade-path research
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: advisorx-trade-path-replay-${{ github.run_id }}
+          path: cloud-backtest/trade_path_output/
+          if-no-files-found: warn
+          retention-days: 30
