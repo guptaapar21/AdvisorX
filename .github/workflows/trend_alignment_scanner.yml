@@ -16,49 +16,16 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+
       - name: Ensure freshest state
         run: git fetch origin main && git reset --hard origin/main
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
-
-      - name: Flush any queued Telegram message
-        continue-on-error: true
-        working-directory: cloud-backtest
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          python - <<'PY'
-          import html, json, os, re, requests
-          from datetime import datetime, timezone
-          from pathlib import Path
-          p=Path('trend_scanner_state.json')
-          if not p.exists(): raise SystemExit(0)
-          s=json.loads(p.read_text(encoding='utf-8')); pending=s.get('pending_telegram')
-          if not pending: raise SystemExit(0)
-          token=os.environ.get('TELEGRAM_BOT_TOKEN'); chat=os.environ.get('TELEGRAM_CHAT_ID')
-          text=html.unescape(re.sub(r'</?b>','',str(pending.get('text','')),flags=re.I)); markup=pending.get('reply_markup')
-          delivered=False; error=None
-          if token and chat:
-              try:
-                  parts=[]; cur=''
-                  for line in text.splitlines(True):
-                      if cur and len(cur)+len(line)>3900: parts.append(cur.rstrip()); cur=''
-                      while len(line)>3900: parts.append(line[:3900]); line=line[3900:]
-                      cur+=line
-                  if cur.strip() or not parts: parts.append(cur.rstrip())
-                  for i,part in enumerate(parts):
-                      payload={'chat_id':chat,'text':part}
-                      if i==len(parts)-1 and markup: payload['reply_markup']=markup
-                      r=requests.post(f'https://api.telegram.org/bot{token}/sendMessage',json=payload,timeout=15); r.raise_for_status()
-                  delivered=True
-              except Exception as e: error=str(e)
-          else: error='Missing Telegram credentials'
-          s['pending_telegram']=None; s['telegram_last_delivery_ok']=delivered; s['telegram_last_delivery_error']=error; s['telegram_last_delivery_at']=datetime.now(timezone.utc).isoformat(); p.write_text(json.dumps(s,indent=2),encoding='utf-8')
-          PY
 
       - name: Run trend alignment scanner with quality gate
         working-directory: cloud-backtest
@@ -71,9 +38,8 @@ jobs:
           MIN_RR: "1.5"
           MIN_STOP_ATR_MULTIPLIER: "2.0"
           MAX_STOP_PCT: "0.08"
-          MAX_NOTIONAL_INR: "100000"
           MAX_ENTRY_DISTANCE_ATR: "1.0"
-          BREAKOUT_MAX_BARS: "5"
+          BREAKOUT_MAX_BARS: "8"
           BREAKOUT_MAX_EXTENSION_ATR: "1.0"
         run: >
           python trend_alignment_scanner_live.py
@@ -88,42 +54,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Flush current Telegram update
-        continue-on-error: true
-        working-directory: cloud-backtest
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          python - <<'PY'
-          import html, json, os, re, requests
-          from datetime import datetime, timezone
-          from pathlib import Path
-          p=Path('trend_scanner_state.json')
-          if not p.exists(): raise SystemExit(0)
-          s=json.loads(p.read_text(encoding='utf-8')); pending=s.get('pending_telegram')
-          if not pending: raise SystemExit(0)
-          token=os.environ.get('TELEGRAM_BOT_TOKEN'); chat=os.environ.get('TELEGRAM_CHAT_ID')
-          text=html.unescape(re.sub(r'</?b>','',str(pending.get('text','')),flags=re.I)); markup=pending.get('reply_markup')
-          delivered=False; error=None
-          if token and chat:
-              try:
-                  parts=[]; cur=''
-                  for line in text.splitlines(True):
-                      if cur and len(cur)+len(line)>3900: parts.append(cur.rstrip()); cur=''
-                      while len(line)>3900: parts.append(line[:3900]); line=line[3900:]
-                      cur+=line
-                  if cur.strip() or not parts: parts.append(cur.rstrip())
-                  for i,part in enumerate(parts):
-                      payload={'chat_id':chat,'text':part}
-                      if i==len(parts)-1 and markup: payload['reply_markup']=markup
-                      r=requests.post(f'https://api.telegram.org/bot{token}/sendMessage',json=payload,timeout=15); r.raise_for_status()
-                  delivered=True
-              except Exception as e: error=str(e)
-          else: error='Missing Telegram credentials'
-          s['pending_telegram']=None; s['telegram_last_delivery_ok']=delivered; s['telegram_last_delivery_error']=error; s['telegram_last_delivery_at']=datetime.now(timezone.utc).isoformat(); p.write_text(json.dumps(s,indent=2),encoding='utf-8')
-          PY
-
       - name: Persist scanner state
         working-directory: cloud-backtest
         run: |
@@ -134,7 +64,6 @@ jobs:
           git commit -m "Update trend alignment scanner state [skip ci]"
           for i in 1 2 3; do
             if git push; then exit 0; fi
-            echo "Push rejected (attempt $i), pulling and retrying..."
             if git pull --rebase; then continue; fi
             git rebase --abort
             git fetch origin main
@@ -142,5 +71,4 @@ jobs:
             git add trend_scanner_state.json
             git commit -m "Update trend alignment scanner state [skip ci]" --allow-empty
           done
-          echo "Failed to push state after 3 attempts."
           exit 1
