@@ -30,7 +30,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
 
-      - name: Run trend alignment scanner
+      - name: Run trend alignment scanner with entry-quality gate
         working-directory: cloud-backtest
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -40,9 +40,12 @@ jobs:
           GEMINI_RAW_LOG_PATH: "gemini_raw_responses.log"
           MIN_RR: "1.5"
           MAX_STOP_PCT: "0.08"
-          MIN_STOP_ATR_MULTIPLIER: "1.2"
+          MIN_STOP_ATR_MULTIPLIER: "2.0"
+          MAX_ENTRY_DISTANCE_ATR: "1.0"
+          BREAKOUT_MAX_BARS: "8"
+          BREAKOUT_MAX_EXTENSION_ATR: "1.0"
         run: >
-          python trend_alignment_scanner.py
+          python trend_alignment_scanner_live.py
           --coins BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX,HEI,BICO,HYPE,ZEC,ZBT,ADA,ACE,PAXG
 
       - name: Upload Gemini raw-response diagnostics
@@ -78,4 +81,3 @@ jobs:
           done
           echo "Failed to push state after 3 attempts."
           exit 1
-
