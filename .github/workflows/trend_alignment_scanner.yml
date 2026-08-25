@@ -17,6 +17,7 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -38,12 +39,15 @@ jobs:
           GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
           USDT_INR_RATE: "99.44"
           GEMINI_RAW_LOG_PATH: "gemini_raw_responses.log"
+
           MIN_RR: "1.5"
           MAX_STOP_PCT: "0.08"
           MIN_STOP_ATR_MULTIPLIER: "2.0"
+
           MAX_ENTRY_DISTANCE_ATR: "1.0"
           BREAKOUT_MAX_BARS: "8"
           BREAKOUT_MAX_EXTENSION_ATR: "1.0"
+
         run: >
           python trend_alignment_scanner_live.py
           --coins BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX,HEI,BICO,HYPE,ZEC,ZBT,ADA,ACE,PAXG
@@ -64,20 +68,26 @@ jobs:
           git config user.email "actions@github.com"
           git add trend_scanner_state.json
           git diff --staged --quiet && exit 0
+
           git commit -m "Update trend alignment scanner state [skip ci]"
+
           for i in 1 2 3; do
             if git push; then
               exit 0
             fi
+
             echo "Push rejected (attempt $i), pulling and retrying..."
+
             if git pull --rebase; then
               continue
             fi
+
             git rebase --abort
             git fetch origin main
             git reset --soft origin/main
             git add trend_scanner_state.json
             git commit -m "Update trend alignment scanner state [skip ci]" --allow-empty
           done
+
           echo "Failed to push state after 3 attempts."
           exit 1
