@@ -1,9 +1,6 @@
 name: Trend Alignment Scanner (advisory only)
 
 on:
-  # The live scanner is triggered externally by cron-job.org every minute.
-  # Do NOT add a GitHub schedule here; that would create a second scheduler
-  # and can cause duplicate/competing runs.
   workflow_dispatch: {}
 
 permissions:
@@ -31,7 +28,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
 
-      - name: Run trend alignment scanner with entry-quality gate
+      - name: Run trend alignment scanner with balanced entry-quality gate
         working-directory: cloud-backtest
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -40,13 +37,15 @@ jobs:
           USDT_INR_RATE: "99.44"
           GEMINI_RAW_LOG_PATH: "gemini_raw_responses.log"
 
+          # Keep risk geometry conservative.
           MIN_RR: "1.5"
           MAX_STOP_PCT: "0.08"
           MIN_STOP_ATR_MULTIPLIER: "2.0"
 
-          MAX_ENTRY_DISTANCE_ATR: "1.0"
-          BREAKOUT_MAX_BARS: "8"
-          BREAKOUT_MAX_EXTENSION_ATR: "1.0"
+          # Controlled frequency increase: relax only opportunity-entry vetoes.
+          MAX_ENTRY_DISTANCE_ATR: "1.5"
+          BREAKOUT_MAX_BARS: "12"
+          BREAKOUT_MAX_EXTENSION_ATR: "1.5"
 
         run: >
           python trend_alignment_scanner_live.py
@@ -77,7 +76,6 @@ jobs:
             fi
 
             echo "Push rejected (attempt $i), pulling and retrying..."
-
             if git pull --rebase; then
               continue
             fi
