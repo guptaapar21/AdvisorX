@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-27T08:36:47.449197+00:00",
+  "last_sent_at": "2026-08-27T08:39:49.389655+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-27T08:33:00Z",
+  "last_processed_candle_time": "2026-08-27T08:36:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -233,12 +233,6 @@
     "ETH": [
       {
         "direction": "long",
-        "entry_price": 2503.2,
-        "take_trade": false,
-        "time": "2026-08-27T08:03:20.237467+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 2507.57,
         "take_trade": false,
         "time": "2026-08-27T08:06:25.390318+00:00"
@@ -260,6 +254,12 @@
         "entry_price": 2538.1,
         "take_trade": false,
         "time": "2026-08-27T08:33:24.034761+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 2529.73,
+        "take_trade": false,
+        "time": "2026-08-27T08:39:25.830074+00:00"
       }
     ],
     "SOL": [
@@ -360,12 +360,6 @@
     ],
     "BNB": [
       {
-        "direction": "long",
-        "entry_price": 612.35,
-        "take_trade": true,
-        "time": "2026-08-15T12:12:24.612027+00:00"
-      },
-      {
         "direction": "short",
         "entry_price": 602.48,
         "take_trade": false,
@@ -388,6 +382,12 @@
         "entry_price": 706.26,
         "take_trade": true,
         "time": "2026-08-27T07:33:22.665101+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 711.01,
+        "take_trade": true,
+        "time": "2026-08-27T08:39:25.830074+00:00"
       }
     ],
     "HEI": [
@@ -556,6 +556,12 @@
         "entry_price": 0.08636,
         "take_trade": false,
         "time": "2026-08-26T08:57:23.901396+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.08857,
+        "take_trade": true,
+        "time": "2026-08-27T08:39:25.830074+00:00"
       }
     ]
   },
@@ -2069,7 +2075,7 @@
       "mfe_r": 0.779,
       "mfe_time": "2026-08-27 08:30:00",
       "mae_time": "2026-08-27 08:25:00",
-      "mfe_giveback_pct": 54.1
+      "mfe_giveback_pct": 70.5
     },
     {
       "coin": "AVAX",
@@ -2167,37 +2173,223 @@
           "target": 7.56
         }
       ],
-      "peak_price": 7.439,
-      "trough_price": 7.439,
+      "peak_price": 7.442,
+      "trough_price": 7.427,
+      "mfe_pnl_inr": 38.48,
+      "mae_pnl_inr": -153.94,
+      "mfe_r": 0.043,
+      "mfe_time": "2026-08-27 08:37:00",
+      "mae_time": "2026-08-27 08:37:00",
+      "mfe_giveback_pct": 200.0
+    },
+    {
+      "coin": "BNB",
+      "direction": "long",
+      "entry_price": 711.01,
+      "stop_loss": 706.0,
+      "target_price": 722.0,
+      "trade_amount_inr": 105308.55,
+      "quantity": 1.4894530548258182,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "BOS",
+        "EMA_STRUCTURE"
+      ],
+      "risk_tags": [
+        "RVOL"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 711.01,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.2729,
+        "entry_vs_recent_swing_low_pct": 0.3924,
+        "entry_vs_recent_swing_high_atr": -1.843,
+        "entry_vs_recent_swing_low_atr": 2.65,
+        "entry_vs_latest_break_pct": -0.1266,
+        "entry_vs_latest_break_atr": -0.855,
+        "entry_range_position_pct": 78.03,
+        "entry_distance_to_range_high_pct": 0.2729,
+        "entry_distance_to_range_low_pct": 0.969,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.2729,
+        "nearest_boundary_distance_atr": 1.843,
+        "entry_location_class": "range_middle",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-08-27 08:30:00",
+        "break_distance_class": "moderately_away"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 2,
+          "break_freshness": "fresh",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": -0.126,
+          "extension_atr_from_break": -0.85,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 2,
+          "liquidity_sweep_count_3m": 3,
+          "high_rejection_sweeps_3m": 1,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 8,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 1,
+        "recent_long_take_count_180m": 1,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 66.1,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": true,
+        "last_closed_trade_minutes_ago": 30.4,
+        "last_closed_trade_direction": "long",
+        "last_closed_trade_pnl_inr": 1174.92,
+        "last_closed_trade_r": 1.305,
+        "same_direction_recent_close": true,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-27T08:39:25.830074+00:00",
+      "reasoning": "BNB exhibits strong trend structure with a fresh break above resistance and rising EMAs.",
+      "level_history": [
+        {
+          "from": "2026-08-27T08:39:25.830074+00:00",
+          "stop": 706.0,
+          "target": 722.0
+        }
+      ],
+      "peak_price": 711.01,
+      "trough_price": 711.01,
       "mfe_pnl_inr": 0.0,
       "mae_pnl_inr": 0.0,
       "mfe_r": 0.0,
-      "mfe_time": "2026-08-27T08:36:24.087294+00:00",
-      "mae_time": "2026-08-27T08:36:24.087294+00:00",
+      "mfe_time": "2026-08-27T08:39:25.830074+00:00",
+      "mae_time": "2026-08-27T08:39:25.830074+00:00",
+      "mfe_giveback_pct": 0.0
+    },
+    {
+      "coin": "DOGE",
+      "direction": "long",
+      "entry_price": 0.08857,
+      "stop_loss": 0.0875,
+      "target_price": 0.091,
+      "trade_amount_inr": 66269.83,
+      "quantity": 7524.334877807284,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "BREAKOUT",
+        "BOS"
+      ],
+      "risk_tags": [
+        "EXHAUSTION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.08857,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.271,
+        "entry_vs_recent_swing_low_pct": 0.6887,
+        "entry_vs_recent_swing_high_atr": -0.936,
+        "entry_vs_recent_swing_low_atr": 2.379,
+        "entry_vs_latest_break_pct": -0.271,
+        "entry_vs_latest_break_atr": -0.936,
+        "entry_range_position_pct": 83.2,
+        "entry_distance_to_range_high_pct": 0.4855,
+        "entry_distance_to_range_low_pct": 2.4049,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.4855,
+        "nearest_boundary_distance_atr": 1.677,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-08-27 08:30:00",
+        "break_distance_class": "moderately_away"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 2,
+          "break_freshness": "fresh",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": -0.27,
+          "extension_atr_from_break": -0.94,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 3,
+          "liquidity_sweep_count_3m": 3,
+          "high_rejection_sweeps_3m": 2,
+          "low_reclaim_sweeps_3m": 1,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 8,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": null,
+        "last_signal_direction": null,
+        "last_signal_take_trade": null,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-27T08:39:25.830074+00:00",
+      "reasoning": "DOGE broke out cleanly with strong momentum expansion and solid volume backing the bullish continuation.",
+      "level_history": [
+        {
+          "from": "2026-08-27T08:39:25.830074+00:00",
+          "stop": 0.0875,
+          "target": 0.091
+        }
+      ],
+      "peak_price": 0.08857,
+      "trough_price": 0.08857,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-08-27T08:39:25.830074+00:00",
+      "mae_time": "2026-08-27T08:39:25.830074+00:00",
       "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-27T08:12:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-27T08:15:00Z": [
       "ACE",
       "ADA",
@@ -2319,6 +2511,26 @@
       "ZEC"
     ],
     "2026-08-27T08:33:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-27T08:36:00Z": [
       "ACE",
       "ADA",
       "AVAX",
