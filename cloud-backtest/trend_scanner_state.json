@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-27T17:12:53.052108+00:00",
+  "last_sent_at": "2026-08-27T17:16:00.099308+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-27T17:09:00Z",
+  "last_processed_candle_time": "2026-08-27T17:12:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -329,12 +329,6 @@
     "ZEC": [
       {
         "direction": "long",
-        "entry_price": 789.5,
-        "take_trade": false,
-        "time": "2026-08-27T13:48:27.868440+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 790.2,
         "take_trade": false,
         "time": "2026-08-27T14:15:38.985416+00:00"
@@ -356,6 +350,12 @@
         "entry_price": 816.61,
         "take_trade": false,
         "time": "2026-08-27T16:48:28.748975+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 822.52,
+        "take_trade": false,
+        "time": "2026-08-27T17:15:42.202947+00:00"
       }
     ],
     "BNB": [
@@ -521,12 +521,6 @@
     "BTC": [
       {
         "direction": "long",
-        "entry_price": 80708.0,
-        "take_trade": false,
-        "time": "2026-08-27T15:18:02.977321+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 80562.9,
         "take_trade": false,
         "time": "2026-08-27T15:21:24.058670+00:00"
@@ -548,6 +542,12 @@
         "entry_price": 80517.95,
         "take_trade": false,
         "time": "2026-08-27T16:54:28.467968+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 80623.72,
+        "take_trade": false,
+        "time": "2026-08-27T17:15:42.202947+00:00"
       }
     ],
     "DOGE": [
@@ -4586,7 +4586,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "target_hit",
       "time": "2026-08-27T16:01:11.612407+00:00",
       "reasoning": "ZEC is in a clean TREND_UP regime showing a fresh BOS above 803.77 with supportive volume acceleration.",
       "level_history": [
@@ -4601,12 +4601,12 @@
           "target": 825.0
         }
       ],
-      "peak_price": 823.14,
+      "peak_price": 827.9,
       "trough_price": 798.8,
-      "mfe_pnl_inr": 1352.2,
+      "mfe_pnl_inr": 1683.64,
       "mae_pnl_inr": -342.58,
-      "mfe_r": 1.502,
-      "mfe_time": "2026-08-27 17:08:00",
+      "mfe_r": 1.871,
+      "mfe_time": "2026-08-27 17:13:00",
       "mae_time": "2026-08-27 16:08:00",
       "mfe_giveback_pct": 16.0,
       "profit_health_score": 1,
@@ -4614,7 +4614,9 @@
       "profit_health_reasons": [
         "recent failed break"
       ],
-      "revised_at": "2026-08-27T17:09:22.484561+00:00"
+      "revised_at": "2026-08-27T17:09:22.484561+00:00",
+      "resolved_pnl": 1397.77,
+      "resolved_time": "2026-08-27 17:12:00"
     },
     {
       "coin": "XRP",
@@ -4836,7 +4838,7 @@
       "mfe_r": 1.405,
       "mfe_time": "2026-08-27 17:09:00",
       "mae_time": "2026-08-27T16:37:35.084421+00:00",
-      "mfe_giveback_pct": 34.2,
+      "mfe_giveback_pct": 19.7,
       "profit_health_score": 2,
       "profit_health_state": "weakening",
       "profit_health_reasons": [
@@ -5047,14 +5049,14 @@
           "target": 7.62
         }
       ],
-      "peak_price": 7.549,
+      "peak_price": 7.562,
       "trough_price": 7.518,
-      "mfe_pnl_inr": 99.3,
+      "mfe_pnl_inr": 357.49,
       "mae_pnl_inr": -516.37,
-      "mfe_r": 0.11,
-      "mfe_time": "2026-08-27 17:11:00",
+      "mfe_r": 0.397,
+      "mfe_time": "2026-08-27 17:13:00",
       "mae_time": "2026-08-27 17:02:00",
-      "mfe_giveback_pct": 20.0
+      "mfe_giveback_pct": 16.7
     },
     {
       "coin": "PAXG",
@@ -5158,13 +5160,13 @@
       "mfe_r": 0.163,
       "mfe_time": "2026-08-27 17:00:00",
       "mae_time": "2026-08-27 17:10:00",
-      "mfe_giveback_pct": 202.8
+      "mfe_giveback_pct": 201.4
     },
     {
       "coin": "HYPE",
       "direction": "long",
       "entry_price": 84.74,
-      "stop_loss": 84.1,
+      "stop_loss": 85.0,
       "target_price": 86.5,
       "trade_amount_inr": 99419.9,
       "quantity": 11.798417214538835,
@@ -5253,39 +5255,32 @@
           "from": "2026-08-27T17:01:13.638094+00:00",
           "stop": 84.1,
           "target": 86.5
+        },
+        {
+          "from": "2026-08-27T17:15:42.202947+00:00",
+          "stop": 85.0,
+          "target": 86.5
         }
       ],
-      "peak_price": 85.4,
+      "peak_price": 85.827,
       "trough_price": 84.571,
-      "mfe_pnl_inr": 774.33,
+      "mfe_pnl_inr": 1275.31,
       "mae_pnl_inr": -198.28,
-      "mfe_r": 0.86,
-      "mfe_time": "2026-08-27 17:09:00",
+      "mfe_r": 1.417,
+      "mfe_time": "2026-08-27 17:13:00",
       "mae_time": "2026-08-27 17:03:00",
-      "mfe_giveback_pct": 33.8
+      "mfe_giveback_pct": 16.0,
+      "revised_at": "2026-08-27T17:15:42.202947+00:00",
+      "profit_health_score": 3,
+      "profit_health_state": "severe",
+      "profit_health_reasons": [
+        "ADX slope weakening",
+        "rejection wick against position",
+        "recent failed break"
+      ]
     }
   ],
   "processed_candle_coins": {
-    "2026-08-27T16:48:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-27T16:51:00Z": [
       "ACE",
       "ADA",
@@ -5388,6 +5383,26 @@
       "ZEC"
     ],
     "2026-08-27T17:09:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-27T17:12:00Z": [
       "ACE",
       "ADA",
       "AVAX",
