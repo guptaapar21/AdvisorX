@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-27T10:06:42.667787+00:00",
+  "last_sent_at": "2026-08-27T10:09:43.145317+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-27T10:03:00Z",
+  "last_processed_candle_time": "2026-08-27T10:06:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -72,12 +72,6 @@
     ],
     "PAXG": [
       {
-        "direction": "long",
-        "entry_price": 4591.9,
-        "take_trade": false,
-        "time": "2026-08-27T09:21:23.279995+00:00"
-      },
-      {
         "direction": "short",
         "entry_price": 4592.01,
         "take_trade": false,
@@ -100,6 +94,12 @@
         "entry_price": 4567.05,
         "take_trade": false,
         "time": "2026-08-27T10:06:23.656431+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 4570.67,
+        "take_trade": true,
+        "time": "2026-08-27T10:09:21.532907+00:00"
       }
     ],
     "XRP": [
@@ -3208,29 +3208,112 @@
       "resolved_pnl": -411.68,
       "resolved_time": "2026-08-27T10:01:07.894231+00:00",
       "exit_reasoning": "The breakout failed with price dropping below entry and losing short-term structure."
+    },
+    {
+      "coin": "PAXG",
+      "direction": "short",
+      "entry_price": 4570.67,
+      "stop_loss": 4580.93,
+      "target_price": 4550.15,
+      "trade_amount_inr": 240336.63,
+      "quantity": 0.5287848320589282,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "BOS",
+        "ADX_DI",
+        "MOMENTUM"
+      ],
+      "risk_tags": [
+        "RANGE_LOCATION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 4570.67,
+        "direction": "short",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.2162,
+        "entry_vs_recent_swing_low_pct": -0.1024,
+        "entry_vs_recent_swing_high_atr": -2.887,
+        "entry_vs_recent_swing_low_atr": -1.368,
+        "entry_vs_latest_break_pct": -0.1024,
+        "entry_vs_latest_break_atr": -1.368,
+        "entry_range_position_pct": 14.03,
+        "entry_distance_to_range_high_pct": 0.6651,
+        "entry_distance_to_range_low_pct": 0.1085,
+        "nearest_boundary": "low",
+        "nearest_boundary_distance_pct": 0.1085,
+        "nearest_boundary_distance_atr": 1.449,
+        "entry_location_class": "near_range_low",
+        "latest_break_direction": "bearish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-08-27 10:00:00",
+        "break_distance_class": "extended_1_to_2_atr"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 2,
+          "break_freshness": "fresh",
+          "break_direction": "bearish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.102,
+          "extension_atr_from_break": 1.37,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 2,
+          "liquidity_sweep_count_3m": 3,
+          "high_rejection_sweeps_3m": 2,
+          "low_reclaim_sweeps_3m": 1,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": true,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 10,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 3.0,
+        "last_signal_direction": "short",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-27T10:09:21.532907+00:00",
+      "reasoning": "PAXG is in a breakdown transition with a fresh BOS at 4575.35, strong minus DI dominance, and weak momentum.",
+      "level_history": [
+        {
+          "from": "2026-08-27T10:09:21.532907+00:00",
+          "stop": 4580.93,
+          "target": 4550.15
+        }
+      ],
+      "peak_price": 4570.67,
+      "trough_price": 4570.67,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-08-27T10:09:21.532907+00:00",
+      "mae_time": "2026-08-27T10:09:21.532907+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-27T09:42:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-27T09:45:00Z": [
       "ACE",
       "ADA",
@@ -3352,6 +3435,26 @@
       "ZEC"
     ],
     "2026-08-27T10:03:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-27T10:06:00Z": [
       "ACE",
       "ADA",
       "AVAX",
