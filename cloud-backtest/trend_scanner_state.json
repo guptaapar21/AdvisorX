@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-27T17:27:40.185749+00:00",
+  "last_sent_at": "2026-08-27T17:31:14.449182+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-27T17:24:00Z",
+  "last_processed_candle_time": "2026-08-27T17:27:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -329,12 +329,6 @@
     "ZEC": [
       {
         "direction": "long",
-        "entry_price": 803.72,
-        "take_trade": true,
-        "time": "2026-08-27T16:01:11.612407+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 816.61,
         "take_trade": false,
         "time": "2026-08-27T16:48:28.748975+00:00"
@@ -356,6 +350,12 @@
         "entry_price": 823.22,
         "take_trade": false,
         "time": "2026-08-27T17:24:26.130372+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 824.4,
+        "take_trade": false,
+        "time": "2026-08-27T17:30:56.601995+00:00"
       }
     ],
     "BNB": [
@@ -4810,7 +4810,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "stop_hit",
       "time": "2026-08-27T16:37:35.084421+00:00",
       "reasoning": "SOL is in a clean TREND_UP regime with positive momentum, supporting EMA structure, and a recent bullish BOS continuation.",
       "level_history": [
@@ -4837,19 +4837,21 @@
         }
       ],
       "peak_price": 109.62,
-      "trough_price": 108.07,
+      "trough_price": 108.06,
       "mfe_pnl_inr": 1289.15,
-      "mae_pnl_inr": 0.0,
+      "mae_pnl_inr": -8.32,
       "mfe_r": 1.432,
       "mfe_time": "2026-08-27 17:18:00",
-      "mae_time": "2026-08-27T16:37:35.084421+00:00",
+      "mae_time": "2026-08-27 17:29:00",
       "mfe_giveback_pct": 24.5,
       "profit_health_score": 1,
       "profit_health_state": "healthy",
       "profit_health_reasons": [
         "recent failed break"
       ],
-      "revised_at": "2026-08-27T17:21:27.187981+00:00"
+      "revised_at": "2026-08-27T17:21:27.187981+00:00",
+      "resolved_pnl": -741.97,
+      "resolved_time": "2026-08-27 17:27:00"
     },
     {
       "coin": "ADA",
@@ -5043,7 +5045,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-08-27T16:57:22.844123+00:00",
       "reasoning": "AVAX exhibits a strong TREND_UP regime with aligned 15m/1h bullish structure and positive momentum continuation.",
       "level_history": [
@@ -5070,8 +5072,11 @@
       "mfe_r": 0.861,
       "mfe_time": "2026-08-27 17:19:00",
       "mae_time": "2026-08-27 17:02:00",
-      "mfe_giveback_pct": 53.8,
-      "revised_at": "2026-08-27T17:27:22.647771+00:00"
+      "mfe_giveback_pct": 107.7,
+      "revised_at": "2026-08-27T17:27:22.647771+00:00",
+      "resolved_pnl": -284.32,
+      "resolved_time": "2026-08-27T17:30:56.601995+00:00",
+      "exit_reasoning": "AVAX price action has broken down below key supports with multiple rejection wicks, invalidating the continuation thesis."
     },
     {
       "coin": "PAXG",
@@ -5297,37 +5302,18 @@
       "mfe_r": 1.856,
       "mfe_time": "2026-08-27 17:18:00",
       "mae_time": "2026-08-27 17:03:00",
-      "mfe_giveback_pct": 34.3,
+      "mfe_giveback_pct": 50.3,
       "revised_at": "2026-08-27T17:27:22.647771+00:00",
-      "profit_health_score": 2,
-      "profit_health_state": "weakening",
+      "profit_health_score": 3,
+      "profit_health_state": "severe",
       "profit_health_reasons": [
-        "rejection wick against position",
+        "3m lost EMA9",
+        "ADX slope weakening",
         "recent failed break"
       ]
     }
   ],
   "processed_candle_coins": {
-    "2026-08-27T17:03:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-27T17:06:00Z": [
       "ACE",
       "ADA",
@@ -5449,6 +5435,26 @@
       "ZEC"
     ],
     "2026-08-27T17:24:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-27T17:27:00Z": [
       "ACE",
       "ADA",
       "AVAX",
