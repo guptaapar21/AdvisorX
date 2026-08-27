@@ -173,6 +173,79 @@ def _safe_send_telegram(text, reply_markup=None, parse_mode="HTML"):
 
 _scanner.send_telegram = _safe_send_telegram
 
+
+# Telegram Bot API limits sendMessage text to 4096 characters. Split large
+# reports into bounded chunks and retain only the unsent remainder on failure.
+TELEGRAM_CHUNK_LIMIT = 3800
+
+
+def _split_telegram_message(text: str, max_chars: int = TELEGRAM_CHUNK_LIMIT):
+    lines = str(text).splitlines()
+    chunks = []
+    current = ""
+
+    for line in lines:
+        candidate = line if not current else f"{current}\n{line}"
+        if len(candidate) <= max_chars:
+            current = candidate
+            continue
+
+        if current:
+            chunks.append(current)
+            current = ""
+
+        while len(line) > max_chars:
+            chunks.append(line[:max_chars])
+            line = line[max_chars:]
+        current = line
+
+    if current:
+        chunks.append(current)
+
+    return chunks or [""]
+
+
+def _flush_pending_telegram_chunked(state):
+    pending = state.get("pending_telegram")
+    if not pending:
+        return True
+
+    text = pending.get("text", "")
+    markup = pending.get("reply_markup")
+    chunks = _split_telegram_message(text)
+
+    for index, chunk in enumerate(chunks):
+        try:
+            _safe_send_telegram(
+                chunk,
+                markup if index == len(chunks) - 1 else None,
+            )
+        except Exception as exc:
+            state["pending_telegram"] = {
+                "text": "\n".join(chunks[index:]),
+                "reply_markup": markup,
+                "chunk_index": index,
+                "chunk_count": len(chunks),
+            }
+            try:
+                _scanner.save_state(state)
+            except Exception as save_exc:
+                print(f"Failed to persist Telegram retry state: {save_exc}")
+
+            raise RuntimeError(
+                f"Telegram delivery failed on chunk {index + 1}/{len(chunks)}: {exc}"
+            ) from exc
+
+    state["pending_telegram"] = None
+    state["last_sent_at"] = _scanner.now_utc().isoformat()
+    state["last_telegram_chunk_count"] = len(chunks)
+    return True
+
+
+# main() resolves _flush_pending_telegram inside the loaded scanner module,
+# so replace that reference for both retry-before-scan and post-scan delivery.
+_scanner._flush_pending_telegram = _flush_pending_telegram_chunked
+
 main = _scanner.main
 
 if __name__ == "__main__":
