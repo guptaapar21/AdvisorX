@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-28T01:21:38.332257+00:00",
+  "last_sent_at": "2026-08-28T01:24:40.631263+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-28T01:18:00Z",
+  "last_processed_candle_time": "2026-08-28T01:21:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -105,12 +105,6 @@
     "XRP": [
       {
         "direction": "long",
-        "entry_price": 1.4568,
-        "take_trade": false,
-        "time": "2026-08-27T23:27:22.834328+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 1.4509,
         "take_trade": false,
         "time": "2026-08-28T00:06:20.771481+00:00"
@@ -132,6 +126,12 @@
         "entry_price": 1.4571,
         "take_trade": false,
         "time": "2026-08-28T01:18:24.276695+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 1.4653,
+        "take_trade": true,
+        "time": "2026-08-28T01:24:24.876421+00:00"
       }
     ],
     "HYPE": [
@@ -6730,7 +6730,7 @@
       "mfe_r": 1.082,
       "mfe_time": "2026-08-28 01:20:00",
       "mae_time": "2026-08-28 01:08:00",
-      "mfe_giveback_pct": 6.1,
+      "mfe_giveback_pct": 24.9,
       "profit_health_score": 1,
       "profit_health_state": "healthy",
       "profit_health_reasons": [
@@ -6839,7 +6839,7 @@
       "mfe_r": 0.56,
       "mfe_time": "2026-08-28 01:19:00",
       "mae_time": "2026-08-28T01:15:34.160852+00:00",
-      "mfe_giveback_pct": 6.7
+      "mfe_giveback_pct": 33.5
     },
     {
       "coin": "ADA",
@@ -6936,37 +6936,121 @@
           "target": 0.221
         }
       ],
-      "peak_price": 0.2164,
-      "trough_price": 0.2164,
+      "peak_price": 0.2166,
+      "trough_price": 0.2162,
+      "mfe_pnl_inr": 66.06,
+      "mae_pnl_inr": -66.06,
+      "mfe_r": 0.073,
+      "mfe_time": "2026-08-28 01:23:00",
+      "mae_time": "2026-08-28 01:23:00",
+      "mfe_giveback_pct": 0.0
+    },
+    {
+      "coin": "XRP",
+      "direction": "long",
+      "entry_price": 1.4653,
+      "stop_loss": 1.448,
+      "target_price": 1.495,
+      "trade_amount_inr": 67636.34,
+      "quantity": 464.18643136559734,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "BOS",
+        "EMA_STRUCTURE"
+      ],
+      "risk_tags": [
+        "EXHAUSTION",
+        "RVOL"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 1.4653,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": 0.6006,
+        "entry_vs_recent_swing_low_pct": 1.399,
+        "entry_vs_recent_swing_high_atr": 2.263,
+        "entry_vs_recent_swing_low_atr": 5.272,
+        "entry_vs_latest_break_pct": 0.4572,
+        "entry_vs_latest_break_atr": 1.723,
+        "entry_range_position_pct": 95.08,
+        "entry_distance_to_range_high_pct": 0.0819,
+        "entry_distance_to_range_low_pct": 1.5833,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.0819,
+        "nearest_boundary_distance_atr": 0.309,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-08-28 01:18:00",
+        "break_distance_class": "extended_1_to_2_atr"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 1,
+          "break_freshness": "fresh",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.459,
+          "extension_atr_from_break": 1.72,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 5,
+          "liquidity_sweep_count_3m": 5,
+          "high_rejection_sweeps_3m": 3,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": true,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 1,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 6.0,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-28T01:24:24.876421+00:00",
+      "reasoning": "XRP shows strong momentum and a fresh structural BOS above 1.4586 with supportive EMA structure.",
+      "level_history": [
+        {
+          "from": "2026-08-28T01:24:24.876421+00:00",
+          "stop": 1.448,
+          "target": 1.495
+        }
+      ],
+      "peak_price": 1.4653,
+      "trough_price": 1.4653,
       "mfe_pnl_inr": 0.0,
       "mae_pnl_inr": 0.0,
       "mfe_r": 0.0,
-      "mfe_time": "2026-08-28T01:21:22.918382+00:00",
-      "mae_time": "2026-08-28T01:21:22.918382+00:00",
+      "mfe_time": "2026-08-28T01:24:24.876421+00:00",
+      "mae_time": "2026-08-28T01:24:24.876421+00:00",
       "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-28T00:57:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-28T01:00:00Z": [
       "ACE",
       "ADA",
@@ -7088,6 +7172,26 @@
       "ZEC"
     ],
     "2026-08-28T01:18:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-28T01:21:00Z": [
       "ACE",
       "ADA",
       "AVAX",
