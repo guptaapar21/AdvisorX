@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-28T11:55:31.736303+00:00",
+  "last_sent_at": "2026-08-28T11:58:14.147302+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-28T11:51:00Z",
+  "last_processed_candle_time": "2026-08-28T11:54:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -265,12 +265,6 @@
     "SOL": [
       {
         "direction": "short",
-        "entry_price": 105.3,
-        "take_trade": false,
-        "time": "2026-08-28T10:15:35.790691+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 106.34,
         "take_trade": false,
         "time": "2026-08-28T11:24:21.932936+00:00"
@@ -292,6 +286,12 @@
         "entry_price": 105.67,
         "take_trade": false,
         "time": "2026-08-28T11:54:24.080917+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 105.81,
+        "take_trade": true,
+        "time": "2026-08-28T11:57:21.380042+00:00"
       }
     ],
     "AVAX": [
@@ -8249,29 +8249,113 @@
       "resolved_pnl": 324.72,
       "resolved_time": "2026-08-28T11:51:21.141650+00:00",
       "exit_reasoning": "Bearish thesis invalidated as a 3m bullish CHoCH formed above support."
+    },
+    {
+      "coin": "SOL",
+      "direction": "short",
+      "entry_price": 105.81,
+      "stop_loss": 106.4,
+      "target_price": 104.5,
+      "trade_amount_inr": 127189.92,
+      "quantity": 12.088289708961154,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "BOS",
+        "EMA_STRUCTURE",
+        "CONTINUATION"
+      ],
+      "risk_tags": [
+        "RVOL"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 105.81,
+        "direction": "short",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.2079,
+        "entry_vs_recent_swing_low_pct": 0.0189,
+        "entry_vs_recent_swing_high_atr": -1.119,
+        "entry_vs_recent_swing_low_atr": 0.102,
+        "entry_vs_latest_break_pct": 0.0189,
+        "entry_vs_latest_break_atr": 0.102,
+        "entry_range_position_pct": 50.79,
+        "entry_distance_to_range_high_pct": 1.1719,
+        "entry_distance_to_range_low_pct": 1.2097,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 1.1719,
+        "nearest_boundary_distance_atr": 6.31,
+        "entry_location_class": "range_middle",
+        "latest_break_direction": "bearish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-08-28 11:51:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 1,
+          "break_freshness": "fresh",
+          "break_direction": "bearish",
+          "break_type": "BOS",
+          "extension_pct_from_break": -0.019,
+          "extension_atr_from_break": -0.1,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 2,
+          "liquidity_sweep_count_3m": 5,
+          "high_rejection_sweeps_3m": 2,
+          "low_reclaim_sweeps_3m": 3,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 11,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 3.0,
+        "last_signal_direction": "short",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": 111.4,
+        "last_closed_trade_direction": "short",
+        "last_closed_trade_pnl_inr": 1293.46,
+        "last_closed_trade_r": 1.437,
+        "same_direction_recent_close": true,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-28T11:57:21.380042+00:00",
+      "reasoning": "SOL shows continuation in a trend down regime with a fresh bearish BOS at 105.79 and negative momentum.",
+      "level_history": [
+        {
+          "from": "2026-08-28T11:57:21.380042+00:00",
+          "stop": 106.4,
+          "target": 104.5
+        }
+      ],
+      "peak_price": 105.81,
+      "trough_price": 105.81,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-08-28T11:57:21.380042+00:00",
+      "mae_time": "2026-08-28T11:57:21.380042+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-28T11:30:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-28T11:33:00Z": [
       "ACE",
       "ADA",
@@ -8393,6 +8477,26 @@
       "ZEC"
     ],
     "2026-08-28T11:51:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-28T11:54:00Z": [
       "ACE",
       "ADA",
       "AVAX",
