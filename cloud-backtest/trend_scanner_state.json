@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-28T03:18:40.690508+00:00",
+  "last_sent_at": "2026-08-28T03:21:52.644717+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-28T03:15:00Z",
+  "last_processed_candle_time": "2026-08-28T03:18:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -201,12 +201,6 @@
     "ACE": [
       {
         "direction": "long",
-        "entry_price": 4587.96,
-        "take_trade": false,
-        "time": "2026-08-28T01:06:23.327550+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 0.2119,
         "take_trade": false,
         "time": "2026-08-28T01:12:24.654640+00:00"
@@ -228,6 +222,12 @@
         "entry_price": 0.213,
         "take_trade": true,
         "time": "2026-08-28T03:16:22.909241+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.2155,
+        "take_trade": true,
+        "time": "2026-08-28T03:21:22.845304+00:00"
       }
     ],
     "ETH": [
@@ -7150,7 +7150,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-08-28T02:03:19.723681+00:00",
       "reasoning": "SOL registers a fresh bearish BOS at 108.22 with oversold RSI and minus DI strength supporting downside continuation.",
       "level_history": [
@@ -7177,14 +7177,17 @@
       "mfe_r": 1.242,
       "mfe_time": "2026-08-28 03:09:00",
       "mae_time": "2026-08-28 02:06:00",
-      "mfe_giveback_pct": 30.4,
+      "mfe_giveback_pct": 66.0,
       "revised_at": "2026-08-28T03:16:22.909241+00:00",
       "profit_health_score": 2,
       "profit_health_state": "weakening",
       "profit_health_reasons": [
         "3m lost EMA9",
         "recent failed break"
-      ]
+      ],
+      "resolved_pnl": 287.17,
+      "resolved_time": "2026-08-28T03:21:22.845304+00:00",
+      "exit_reasoning": "A 3m bullish CHoCH has formed, invalidating the short continuation structure."
     },
     {
       "coin": "ZEC",
@@ -7271,7 +7274,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-08-28T02:21:22.771820+00:00",
       "reasoning": "ZEC breaks structural support at 797.64 with strong minus DI and heavily oversold momentum.",
       "level_history": [
@@ -7298,8 +7301,11 @@
       "mfe_r": 0.836,
       "mfe_time": "2026-08-28 03:10:00",
       "mae_time": "2026-08-28T02:21:22.771820+00:00",
-      "mfe_giveback_pct": 43.3,
-      "revised_at": "2026-08-28T03:16:22.909241+00:00"
+      "mfe_giveback_pct": 57.0,
+      "revised_at": "2026-08-28T03:16:22.909241+00:00",
+      "resolved_pnl": 259.39,
+      "resolved_time": "2026-08-28T03:21:22.845304+00:00",
+      "exit_reasoning": "3m structural reversal with a bullish CHoCH breaks down the original short thesis."
     },
     {
       "coin": "ACE",
@@ -7396,37 +7402,17 @@
           "target": 0.223
         }
       ],
-      "peak_price": 0.2146,
+      "peak_price": 0.2161,
       "trough_price": 0.213,
-      "mfe_pnl_inr": 227.87,
+      "mfe_pnl_inr": 441.49,
       "mae_pnl_inr": 0.0,
-      "mfe_r": 0.253,
-      "mfe_time": "2026-08-28 03:17:00",
+      "mfe_r": 0.491,
+      "mfe_time": "2026-08-28 03:20:00",
       "mae_time": "2026-08-28T03:16:22.909241+00:00",
-      "mfe_giveback_pct": 25.0
+      "mfe_giveback_pct": 19.4
     }
   ],
   "processed_candle_coins": {
-    "2026-08-28T02:54:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-28T02:57:00Z": [
       "ACE",
       "ADA",
@@ -7548,6 +7534,26 @@
       "ZEC"
     ],
     "2026-08-28T03:15:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-28T03:18:00Z": [
       "ACE",
       "ADA",
       "AVAX",
