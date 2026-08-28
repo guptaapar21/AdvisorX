@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-28T03:27:40.317331+00:00",
+  "last_sent_at": "2026-08-28T03:31:39.813303+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-28T03:24:00Z",
+  "last_processed_candle_time": "2026-08-28T03:27:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -488,12 +488,6 @@
     ],
     "ZBT": [
       {
-        "direction": "short",
-        "entry_price": 0.0788,
-        "take_trade": true,
-        "time": "2026-08-28T00:06:20.771481+00:00"
-      },
-      {
         "direction": "long",
         "entry_price": 0.0796,
         "take_trade": false,
@@ -516,6 +510,12 @@
         "entry_price": 0.0783,
         "take_trade": false,
         "time": "2026-08-28T02:45:35.203207+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.0787,
+        "take_trade": true,
+        "time": "2026-08-28T03:30:52.491180+00:00"
       }
     ],
     "BTC": [
@@ -7409,7 +7409,7 @@
       "mfe_r": 0.491,
       "mfe_time": "2026-08-28 03:20:00",
       "mae_time": "2026-08-28T03:16:22.909241+00:00",
-      "mfe_giveback_pct": 9.7
+      "mfe_giveback_pct": 32.3
     },
     {
       "coin": "HEI",
@@ -7513,30 +7513,114 @@
       "mfe_r": 0.22,
       "mfe_time": "2026-08-28 03:26:00",
       "mae_time": "2026-08-28 03:25:00",
-      "mfe_giveback_pct": 87.5
+      "mfe_giveback_pct": 50.0
+    },
+    {
+      "coin": "ZBT",
+      "direction": "long",
+      "entry_price": 0.0787,
+      "stop_loss": 0.0775,
+      "target_price": 0.081,
+      "trade_amount_inr": 53738.48,
+      "quantity": 6866.722680812447,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "RVOL",
+        "MOMENTUM",
+        "BOS",
+        "CONTINUATION"
+      ],
+      "risk_tags": [
+        "RANGE_LOCATION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.0787,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.1271,
+        "entry_vs_recent_swing_low_pct": 0.7624,
+        "entry_vs_recent_swing_high_atr": -0.65,
+        "entry_vs_recent_swing_low_atr": 3.902,
+        "entry_vs_latest_break_pct": 0.3812,
+        "entry_vs_latest_break_atr": 1.951,
+        "entry_range_position_pct": 42.86,
+        "entry_distance_to_range_high_pct": 1.5248,
+        "entry_distance_to_range_low_pct": 1.1436,
+        "nearest_boundary": "low",
+        "nearest_boundary_distance_pct": 1.1436,
+        "nearest_boundary_distance_atr": 5.853,
+        "entry_location_class": "range_middle",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-08-28 03:18:00",
+        "break_distance_class": "extended_1_to_2_atr"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 3,
+          "break_freshness": "mature",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.383,
+          "extension_atr_from_break": 1.95,
+          "new_break_within_2_bars": false,
+          "failed_break_count_3m": 1,
+          "liquidity_sweep_count_3m": 2,
+          "high_rejection_sweeps_3m": 2,
+          "low_reclaim_sweeps_3m": 0,
+          "exhaustion_score_3m": 2,
+          "extended_from_break": true,
+          "late_continuation": false,
+          "continuation_quality": "mature_continuation"
+        },
+        "session": {
+          "utc_hour": 3,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 45.3,
+        "last_signal_direction": "short",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-28T03:30:52.491180+00:00",
+      "reasoning": "ZBT shows strong relative volume and a fresh bullish BOS continuation with supportive momentum.",
+      "level_history": [
+        {
+          "from": "2026-08-28T03:30:52.491180+00:00",
+          "stop": 0.0775,
+          "target": 0.081
+        }
+      ],
+      "peak_price": 0.0787,
+      "trough_price": 0.0787,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-08-28T03:30:52.491180+00:00",
+      "mae_time": "2026-08-28T03:30:52.491180+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-28T03:03:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-28T03:06:00Z": [
       "ACE",
       "ADA",
@@ -7658,6 +7742,26 @@
       "ZEC"
     ],
     "2026-08-28T03:24:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-28T03:27:00Z": [
       "ACE",
       "ADA",
       "AVAX",
