@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-29T13:39:35.277725+00:00",
+  "last_sent_at": "2026-08-29T13:42:45.594020+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-29T13:36:00Z",
+  "last_processed_candle_time": "2026-08-29T13:39:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -553,12 +553,6 @@
     "DOGE": [
       {
         "direction": "short",
-        "entry_price": 0.08444,
-        "take_trade": false,
-        "time": "2026-08-29T07:21:22.614946+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 0.08447,
         "take_trade": false,
         "time": "2026-08-29T07:33:20.691437+00:00"
@@ -580,6 +574,12 @@
         "entry_price": 0.08475,
         "take_trade": false,
         "time": "2026-08-29T13:15:39.509343+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.08483,
+        "take_trade": true,
+        "time": "2026-08-29T13:42:27.439558+00:00"
       }
     ]
   },
@@ -7296,7 +7296,7 @@
       "mfe_r": 0.504,
       "mfe_time": "2026-08-29 13:19:00",
       "mae_time": "2026-08-29 13:27:00",
-      "mfe_giveback_pct": 137.5
+      "mfe_giveback_pct": 100.0
     },
     {
       "coin": "SOL",
@@ -7400,7 +7400,7 @@
       "mfe_r": 0.206,
       "mfe_time": "2026-08-29 13:37:00",
       "mae_time": "2026-08-29 13:34:00",
-      "mfe_giveback_pct": 60.0
+      "mfe_giveback_pct": 140.0
     },
     {
       "coin": "ZBT",
@@ -7487,7 +7487,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-08-29T13:24:24.573078+00:00",
       "reasoning": "Fresh bullish BOS at 0.0808 with strong RSI and positive momentum alignment.",
       "level_history": [
@@ -7498,36 +7498,122 @@
         }
       ],
       "peak_price": 0.081,
-      "trough_price": 0.0806,
+      "trough_price": 0.0804,
       "mfe_pnl_inr": 124.77,
-      "mae_pnl_inr": -374.3,
+      "mae_pnl_inr": -623.83,
       "mfe_r": 0.139,
       "mfe_time": "2026-08-29 13:35:00",
-      "mae_time": "2026-08-29 13:37:00",
-      "mfe_giveback_pct": 300.0
+      "mae_time": "2026-08-29 13:39:00",
+      "mfe_giveback_pct": 500.0,
+      "resolved_pnl": -650.47,
+      "resolved_time": "2026-08-29T13:42:27.439558+00:00",
+      "exit_reasoning": "Bearish CHoCH triggered at 0.0807, invalidating the original bullish continuation thesis."
+    },
+    {
+      "coin": "DOGE",
+      "direction": "long",
+      "entry_price": 0.08483,
+      "stop_loss": 0.0844,
+      "target_price": 0.0855,
+      "trade_amount_inr": 137007.96,
+      "quantity": 16241.839459205366,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "BOS",
+        "ADX_DI",
+        "CONTINUATION"
+      ],
+      "risk_tags": [
+        "RVOL"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.08483,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.1532,
+        "entry_vs_recent_swing_low_pct": 0.0589,
+        "entry_vs_recent_swing_high_atr": -1.693,
+        "entry_vs_recent_swing_low_atr": 0.651,
+        "entry_vs_latest_break_pct": -0.0118,
+        "entry_vs_latest_break_atr": -0.13,
+        "entry_range_position_pct": 66.67,
+        "entry_distance_to_range_high_pct": 0.2476,
+        "entry_distance_to_range_low_pct": 0.4951,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.2476,
+        "nearest_boundary_distance_atr": 2.734,
+        "entry_location_class": "range_middle",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-08-29 13:21:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 6,
+          "break_freshness": "late",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": -0.012,
+          "extension_atr_from_break": -0.13,
+          "new_break_within_2_bars": false,
+          "failed_break_count_3m": 3,
+          "liquidity_sweep_count_3m": 5,
+          "high_rejection_sweeps_3m": 2,
+          "low_reclaim_sweeps_3m": 3,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": true,
+          "continuation_quality": "mixed_or_unclear"
+        },
+        "session": {
+          "utc_hour": 13,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 1,
+        "recent_long_take_count_180m": 1,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 26.8,
+        "last_signal_direction": "short",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": 30.0,
+        "last_closed_trade_direction": "long",
+        "last_closed_trade_pnl_inr": -356.91,
+        "last_closed_trade_r": -0.397,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-29T13:42:27.439558+00:00",
+      "reasoning": "Fresh bullish BOS at 0.0848 with strong ADX and plus DI dominance in an established uptrend.",
+      "level_history": [
+        {
+          "from": "2026-08-29T13:42:27.439558+00:00",
+          "stop": 0.0844,
+          "target": 0.0855
+        }
+      ],
+      "peak_price": 0.08483,
+      "trough_price": 0.08483,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-08-29T13:42:27.439558+00:00",
+      "mae_time": "2026-08-29T13:42:27.439558+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-29T13:15:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-29T13:18:00Z": [
       "ACE",
       "ADA",
@@ -7649,6 +7735,26 @@
       "ZEC"
     ],
     "2026-08-29T13:36:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-29T13:39:00Z": [
       "ACE",
       "ADA",
       "AVAX",
