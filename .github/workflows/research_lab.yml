@@ -6,7 +6,6 @@ on:
 permissions:
   contents: write
 
-# ResearchLab and Audit both write researchlab-data; serialize their writes.
 concurrency:
   group: advisorx-researchlab-data
   cancel-in-progress: false
@@ -49,7 +48,49 @@ jobs:
       - name: Install ResearchLab dependencies
         run: python -m pip install -r cloud-backtest/research_lab/requirements.txt
 
-      - name: Run ResearchLab tests and collector
+      - name: Preflight CoinDCX candles API
+        working-directory: cloud-backtest
+        env:
+          PREFLIGHT_PAIR: B-BTC_USDT
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+          from datetime import datetime, timezone, timedelta
+
+          now = datetime.now(timezone.utc)
+          params = {
+              "pair": os.environ["PREFLIGHT_PAIR"],
+              "interval": "1m",
+              "startTime": int((now - timedelta(minutes=5)).timestamp() * 1000),
+              "endTime": int(now.timestamp() * 1000),
+              "limit": 10,
+          }
+          url = "https://api.coindcx.com/market_data/candles"
+          response = requests.get(url, params=params, timeout=20)
+          print(f"CoinDCX preflight HTTP {response.status_code}")
+          response.raise_for_status()
+          data = response.json()
+          if not isinstance(data, list) or not data:
+              raise RuntimeError(f"CoinDCX preflight returned no candle rows: {str(data)[:500]}")
+          if not all(isinstance(row, dict) and "time" in row for row in data):
+              raise RuntimeError(f"CoinDCX preflight returned malformed candle rows: {str(data)[:500]}")
+          print(f"CoinDCX preflight OK: {len(data)} candle row(s)")
+          PY
+
+      - name: Run ResearchLab tests
+        env:
+          PYTHONPATH: cloud-backtest
+        run: |
+          python -m pytest \
+            cloud-backtest/research_lab/test_research_lab.py \
+            cloud-backtest/research_lab/test_research_store_paths.py \
+            cloud-backtest/research_lab/test_research_engine_v4.py \
+            cloud-backtest/research_lab/test_research_cadence.py -q
+
+      - name: Run ResearchLab collector
+        id: collector
+        continue-on-error: true
         env:
           PYTHONPATH: cloud-backtest
           RESEARCH_COINS: BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX,HYPE,ZEC,ADA,ACE,PAXG
@@ -66,15 +107,47 @@ jobs:
           RESEARCH_DISCOVERY_PASS_CANDIDATES: '120'
           RESEARCH_DISCOVERY_INPUT_CHAR_BUDGET: '100000'
           RESEARCH_HOLDOUT_FINALISTS: '10'
+        run: python -m research_lab.run
+
+      - name: Show collector diagnostics
+        if: always()
+        shell: bash
         run: |
-          python -m pytest \
-            cloud-backtest/research_lab/test_research_lab.py \
-            cloud-backtest/research_lab/test_research_store_paths.py \
-            cloud-backtest/research_lab/test_research_engine_v4.py \
-            cloud-backtest/research_lab/test_research_cadence.py -q
-          python -m research_lab.run
+          set +e
+          echo '--- ResearchLab file inventory ---'
+          find cloud-backtest/research_lab_data -maxdepth 2 -type f -printf '%p %s bytes\n' 2>/dev/null | sort
+          echo '--- ResearchLab errors ---'
+          if test -s cloud-backtest/research_lab_data/errors.jsonl; then
+            tail -n 50 cloud-backtest/research_lab_data/errors.jsonl
+          else
+            echo 'No errors.jsonl records.'
+          fi
+          echo '--- Observation/outcome counts ---'
+          for f in observations.jsonl outcomes.jsonl; do
+            if test -f "cloud-backtest/research_lab_data/$f"; then
+              wc -l "cloud-backtest/research_lab_data/$f"
+            else
+              echo "$f missing"
+            fi
+          done
+
+      - name: Upload ResearchLab diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: researchlab-diagnostics-${{ github.run_id }}
+          path: |
+            cloud-backtest/research_lab_data/errors.jsonl
+            cloud-backtest/research_lab_data/observations.jsonl
+            cloud-backtest/research_lab_data/outcomes.jsonl
+            cloud-backtest/research_lab_data/analysis_log.jsonl
+            cloud-backtest/research_lab_data/state.json
+            cloud-backtest/research_lab_data/research_memory.json
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Verify persistent research data
+        if: steps.collector.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
@@ -82,13 +155,18 @@ jobs:
           echo "Observations: $(wc -l < cloud-backtest/research_lab_data/observations.jsonl)"
           echo "Outcomes: $(wc -l < cloud-backtest/research_lab_data/outcomes.jsonl 2>/dev/null || echo 0)"
 
-      # The external cron controls the 5-minute execution cadence.
-      # Persistence is therefore performed on every successful run.
-      # Research timing is handled independently inside run.py.
+      - name: Fail if collector failed
+        if: steps.collector.outcome != 'success'
+        run: |
+          echo 'ResearchLab collector failed; diagnostics were uploaded above.'
+          exit 1
+
       - name: Drop transient candle cache before Git persistence
+        if: steps.collector.outcome == 'success'
         run: rm -rf cloud-backtest/research_lab_data/candles_1m
 
       - name: Persist ResearchLab data to isolated branch
+        if: steps.collector.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
@@ -105,14 +183,11 @@ jobs:
 
           rm -rf /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data
           mkdir -p /tmp/researchlab-data-worktree/cloud-backtest
-
-          cp -a cloud-backtest/research_lab_data \
-            /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data
+          cp -a cloud-backtest/research_lab_data /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data
           rm -rf /tmp/researchlab-data-worktree/cloud-backtest/research_lab_data/candles_1m
 
           cd /tmp/researchlab-data-worktree
           git add cloud-backtest/research_lab_data
-
           if git diff --cached --quiet; then
             echo 'No ResearchLab data changes.'
             exit 0
@@ -124,13 +199,10 @@ jobs:
             if git push origin HEAD:researchlab-data; then
               exit 0
             fi
-
             git fetch origin researchlab-data || true
-
             if git rebase origin/researchlab-data; then
               continue
             fi
-
             git rebase --abort || true
           done
 
