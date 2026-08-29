@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-29T07:03:36.071392+00:00",
+  "last_sent_at": "2026-08-29T07:06:41.205759+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-29T07:00:00Z",
+  "last_processed_candle_time": "2026-08-29T07:03:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -425,12 +425,6 @@
     "TRX": [
       {
         "direction": "short",
-        "entry_price": 0.3401,
-        "take_trade": true,
-        "time": "2026-08-29T05:27:19.664085+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 0.3396,
         "take_trade": true,
         "time": "2026-08-29T06:01:07.432247+00:00"
@@ -452,6 +446,12 @@
         "entry_price": 0.3379,
         "take_trade": false,
         "time": "2026-08-29T06:48:21.343122+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 0.3385,
+        "take_trade": false,
+        "time": "2026-08-29T07:06:26.194902+00:00"
       }
     ],
     "LTC": [
@@ -7499,7 +7499,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "stop_hit",
       "time": "2026-08-29T05:27:19.664085+00:00",
       "reasoning": "TRX shows massive volume expansion with an RVOL of 5.08 and clean bearish BOS continuation under a TREND_DOWN regime.",
       "level_history": [
@@ -7544,7 +7544,9 @@
         "3m lost EMA9",
         "ADX slope weakening",
         "recent failed break"
-      ]
+      ],
+      "resolved_pnl": -859.28,
+      "resolved_time": "2026-08-29 07:03:00"
     },
     {
       "coin": "BNB",
@@ -7631,7 +7633,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-08-29T06:30:50.498765+00:00",
       "reasoning": "BNB continues downward in a TREND_DOWN regime following a bearish BOS break below 688.0 with strong minus DI dominance.",
       "level_history": [
@@ -7641,14 +7643,17 @@
           "target": 683.0
         }
       ],
-      "peak_price": 688.04,
+      "peak_price": 688.18,
       "trough_price": 687.14,
       "mfe_pnl_inr": 209.33,
-      "mae_pnl_inr": -85.04,
+      "mae_pnl_inr": -130.83,
       "mfe_r": 0.233,
       "mfe_time": "2026-08-29 06:57:00",
-      "mae_time": "2026-08-29 06:32:00",
-      "mfe_giveback_pct": 100.0
+      "mae_time": "2026-08-29 07:04:00",
+      "mfe_giveback_pct": 160.9,
+      "resolved_pnl": -464.99,
+      "resolved_time": "2026-08-29T07:06:26.194902+00:00",
+      "exit_reasoning": "A bullish 3m CHoCH and market transition against the short bias invalidate the original downside continuation thesis."
     },
     {
       "coin": "SOL",
@@ -7758,26 +7763,6 @@
     }
   ],
   "processed_candle_coins": {
-    "2026-08-29T06:39:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-29T06:42:00Z": [
       "ACE",
       "ADA",
@@ -7899,6 +7884,26 @@
       "ZEC"
     ],
     "2026-08-29T07:00:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-29T07:03:00Z": [
       "ACE",
       "ADA",
       "AVAX",
