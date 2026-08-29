@@ -28,7 +28,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
 
-      - name: Run trend alignment scanner with balanced entry-quality gate
+      - name: Verify V2 integration
+        working-directory: cloud-backtest
+        run: |
+          python -m py_compile trend_alignment_scanner_live.py v2_live_integration.py candidate_funnel.py trade_counterfactuals.py portfolio_risk.py test_v2_integration.py test_v2_invariants.py
+          PYTHONPATH=. python -m unittest -v test_v2_integration.py test_v2_invariants.py
+
+      - name: Run trend alignment scanner with V2 research telemetry
         working-directory: cloud-backtest
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -37,28 +43,39 @@ jobs:
           USDT_INR_RATE: "99.44"
           GEMINI_RAW_LOG_PATH: "gemini_raw_responses.log"
 
-          # Keep risk geometry conservative.
+          # Production risk geometry: workflow is the runtime source of truth.
           MIN_RR: "1.5"
           MAX_STOP_PCT: "0.08"
           MIN_STOP_ATR_MULTIPLIER: "2.0"
 
-          # Controlled frequency increase: relax only opportunity-entry vetoes.
+          # Controlled opportunity-frequency configuration only.
           MAX_ENTRY_DISTANCE_ATR: "1.5"
           BREAKOUT_MAX_BARS: "12"
           BREAKOUT_MAX_EXTENSION_ATR: "1.5"
+
+          # Research files are runner-local and uploaded as artifacts.
+          CANDIDATE_FUNNEL_FILE: "candidate_funnel.jsonl"
+          COUNTERFACTUAL_FILE: "trade_counterfactuals.jsonl"
+          RESOLVED_TRADES_FILE: "resolved_trades.jsonl"
+          FAILURE_TO_LAUNCH_SHADOW_FILE: "failure_to_launch_shadow.jsonl"
 
         run: >
           python trend_alignment_scanner_live.py
           --coins BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX,HEI,BICO,HYPE,ZEC,ZBT,ADA,ACE,PAXG
 
-      - name: Upload Gemini raw-response diagnostics
+      - name: Upload research and operational diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gemini-raw-responses-${{ github.run_id }}
-          path: cloud-backtest/gemini_raw_responses.log
+          name: advisorx-v2-telemetry-${{ github.run_id }}
+          path: |
+            cloud-backtest/candidate_funnel.jsonl
+            cloud-backtest/trade_counterfactuals.jsonl
+            cloud-backtest/resolved_trades.jsonl
+            cloud-backtest/failure_to_launch_shadow.jsonl
+            cloud-backtest/gemini_raw_responses.log
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 30
 
       - name: Persist scanner state
         working-directory: cloud-backtest
