@@ -1,18 +1,12 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-30T04:39:51.256190+00:00",
+  "last_sent_at": "2026-08-30T04:42:39.335310+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-30T04:36:00Z",
+  "last_processed_candle_time": "2026-08-30T04:39:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
     "BICO": [
-      {
-        "direction": "long",
-        "entry_price": 0.02505,
-        "take_trade": false,
-        "time": "2026-08-30T04:21:23.215620+00:00"
-      },
       {
         "direction": "long",
         "entry_price": 0.02523,
@@ -36,6 +30,12 @@
         "entry_price": 0.02541,
         "take_trade": false,
         "time": "2026-08-30T04:39:22.950580+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.02527,
+        "take_trade": true,
+        "time": "2026-08-30T04:42:22.081155+00:00"
       }
     ],
     "ADA": [
@@ -521,12 +521,6 @@
     "BTC": [
       {
         "direction": "long",
-        "entry_price": 78171.93,
-        "take_trade": false,
-        "time": "2026-08-30T03:48:21.302419+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 78160.01,
         "take_trade": false,
         "time": "2026-08-30T03:51:25.589531+00:00"
@@ -548,6 +542,12 @@
         "entry_price": 78070.0,
         "take_trade": false,
         "time": "2026-08-30T04:39:22.950580+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 78050.94,
+        "take_trade": false,
+        "time": "2026-08-30T04:42:22.081155+00:00"
       }
     ],
     "DOGE": [
@@ -8047,29 +8047,113 @@
       "resolved_pnl": -251.51,
       "resolved_time": "2026-08-30T04:18:25.221002+00:00",
       "exit_reasoning": "Exiting short position immediately as 3m structure has broken bullishly with a BOS, invalidating the original bearish continuation thesis."
+    },
+    {
+      "coin": "BICO",
+      "direction": "long",
+      "entry_price": 0.02527,
+      "stop_loss": 0.0245,
+      "target_price": 0.0265,
+      "trade_amount_inr": 28150.59,
+      "quantity": 11202.658517331733,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "BOS",
+        "CONTINUATION",
+        "EMA_STRUCTURE"
+      ],
+      "risk_tags": [
+        "EXHAUSTION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.02527,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.9102,
+        "entry_vs_recent_swing_low_pct": 1.3455,
+        "entry_vs_recent_swing_high_atr": -0.794,
+        "entry_vs_recent_swing_low_atr": 1.173,
+        "entry_vs_latest_break_pct": 0.7915,
+        "entry_vs_latest_break_atr": 0.69,
+        "entry_range_position_pct": 86.39,
+        "entry_distance_to_range_high_pct": 1.0289,
+        "entry_distance_to_range_low_pct": 6.5295,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 1.0289,
+        "nearest_boundary_distance_atr": 0.897,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-08-30 04:12:00",
+        "break_distance_class": "moderately_away"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 9,
+          "break_freshness": "late",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.798,
+          "extension_atr_from_break": 0.69,
+          "new_break_within_2_bars": false,
+          "failed_break_count_3m": 3,
+          "liquidity_sweep_count_3m": 5,
+          "high_rejection_sweeps_3m": 3,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": true,
+          "continuation_quality": "mixed_or_unclear"
+        },
+        "session": {
+          "utc_hour": 4,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 3.0,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": 39.0,
+        "last_closed_trade_direction": "long",
+        "last_closed_trade_pnl_inr": 262.39,
+        "last_closed_trade_r": 0.292,
+        "same_direction_recent_close": true,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-30T04:42:22.081155+00:00",
+      "reasoning": "Strong trend alignment in TREND_UP with positive momentum and fresh BOS on execution timeframes.",
+      "level_history": [
+        {
+          "from": "2026-08-30T04:42:22.081155+00:00",
+          "stop": 0.0245,
+          "target": 0.0265
+        }
+      ],
+      "peak_price": 0.02527,
+      "trough_price": 0.02527,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-08-30T04:42:22.081155+00:00",
+      "mae_time": "2026-08-30T04:42:22.081155+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-30T04:15:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-30T04:18:00Z": [
       "ACE",
       "ADA",
@@ -8209,10 +8293,30 @@
       "XRP",
       "ZBT",
       "ZEC"
+    ],
+    "2026-08-30T04:39:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
     ]
   },
   "telegram_last_delivery_ok": true,
   "telegram_last_delivery_error": null,
   "telegram_last_delivery_at": "2026-08-22T13:24:41.690271+00:00",
-  "last_telegram_chunk_count": 2
+  "last_telegram_chunk_count": 1
 }
