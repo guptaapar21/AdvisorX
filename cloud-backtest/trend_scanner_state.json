@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-30T01:57:39.103885+00:00",
+  "last_sent_at": "2026-08-30T02:01:23.261648+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-30T01:54:00Z",
+  "last_processed_candle_time": "2026-08-30T01:57:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -296,12 +296,6 @@
     ],
     "AVAX": [
       {
-        "direction": "long",
-        "entry_price": 7.334,
-        "take_trade": false,
-        "time": "2026-08-29T23:57:23.148041+00:00"
-      },
-      {
         "direction": "short",
         "entry_price": 7.299,
         "take_trade": false,
@@ -324,15 +318,15 @@
         "entry_price": 7.283,
         "take_trade": false,
         "time": "2026-08-30T01:33:19.309319+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 7.279,
+        "take_trade": false,
+        "time": "2026-08-30T02:01:03.880808+00:00"
       }
     ],
     "ZEC": [
-      {
-        "direction": "short",
-        "entry_price": 836.16,
-        "take_trade": false,
-        "time": "2026-08-30T01:12:24.707449+00:00"
-      },
       {
         "direction": "short",
         "entry_price": 835.22,
@@ -356,6 +350,12 @@
         "entry_price": 833.25,
         "take_trade": false,
         "time": "2026-08-30T01:36:21.072587+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 831.9,
+        "take_trade": true,
+        "time": "2026-08-30T02:01:03.880808+00:00"
       }
     ],
     "BNB": [
@@ -7789,29 +7789,113 @@
       "resolved_pnl": -454.55,
       "resolved_time": "2026-08-30T01:57:20.054557+00:00",
       "exit_reasoning": "A bearish BOS has formed on 3m structure and price has slipped below entry, invalidating the original long continuation thesis."
+    },
+    {
+      "coin": "ZEC",
+      "direction": "short",
+      "entry_price": 831.9,
+      "stop_loss": 838.5,
+      "target_price": 815.0,
+      "trade_amount_inr": 95403.2,
+      "quantity": 1.1532692176130872,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "BOS",
+        "ADX_DI",
+        "EMA_STRUCTURE"
+      ],
+      "risk_tags": [
+        "RVOL"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 831.9,
+        "direction": "short",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.4051,
+        "entry_vs_recent_swing_low_pct": 0.6864,
+        "entry_vs_recent_swing_high_atr": -1.269,
+        "entry_vs_recent_swing_low_atr": 2.15,
+        "entry_vs_latest_break_pct": -0.3101,
+        "entry_vs_latest_break_atr": -0.971,
+        "entry_range_position_pct": 29.83,
+        "entry_distance_to_range_high_pct": 1.6144,
+        "entry_distance_to_range_low_pct": 0.6864,
+        "nearest_boundary": "low",
+        "nearest_boundary_distance_pct": 0.6864,
+        "nearest_boundary_distance_atr": 2.15,
+        "entry_location_class": "range_middle",
+        "latest_break_direction": "bearish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-08-30 01:27:00",
+        "break_distance_class": "moderately_away"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 10,
+          "break_freshness": "late",
+          "break_direction": "bearish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.309,
+          "extension_atr_from_break": 0.97,
+          "new_break_within_2_bars": false,
+          "failed_break_count_3m": 3,
+          "liquidity_sweep_count_3m": 4,
+          "high_rejection_sweeps_3m": 2,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": true,
+          "continuation_quality": "mixed_or_unclear"
+        },
+        "session": {
+          "utc_hour": 1,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 24.7,
+        "last_signal_direction": "short",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-30T02:01:03.880808+00:00",
+      "reasoning": "ZEC shows persistent bear continuation with minus DI dominance and recent BOS confirmations aligning with a downtrend across 3m and 15m timeframes.",
+      "level_history": [
+        {
+          "from": "2026-08-30T02:01:03.880808+00:00",
+          "stop": 838.5,
+          "target": 815.0
+        }
+      ],
+      "peak_price": 831.9,
+      "trough_price": 831.9,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-08-30T02:01:03.880808+00:00",
+      "mae_time": "2026-08-30T02:01:03.880808+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-30T01:33:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-30T01:36:00Z": [
       "ACE",
       "ADA",
@@ -7933,6 +8017,26 @@
       "ZEC"
     ],
     "2026-08-30T01:54:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-30T01:57:00Z": [
       "ACE",
       "ADA",
       "AVAX",
