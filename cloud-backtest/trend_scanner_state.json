@@ -1,18 +1,12 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-30T03:36:35.571467+00:00",
+  "last_sent_at": "2026-08-30T03:39:38.881130+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-30T03:33:00Z",
+  "last_processed_candle_time": "2026-08-30T03:36:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
     "BICO": [
-      {
-        "direction": "long",
-        "entry_price": 0.02434,
-        "take_trade": false,
-        "time": "2026-08-30T03:06:26.213623+00:00"
-      },
       {
         "direction": "long",
         "entry_price": 0.02445,
@@ -36,6 +30,12 @@
         "entry_price": 0.02447,
         "take_trade": false,
         "time": "2026-08-30T03:27:24.300549+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.02456,
+        "take_trade": true,
+        "time": "2026-08-30T03:39:21.638740+00:00"
       }
     ],
     "ADA": [
@@ -7688,7 +7688,7 @@
       "coin": "BNB",
       "direction": "long",
       "entry_price": 694.19,
-      "stop_loss": 693.5,
+      "stop_loss": 694.2,
       "target_price": 698.0,
       "trade_amount_inr": 228746.18,
       "quantity": 3.3137090524953314,
@@ -7782,6 +7782,11 @@
           "from": "2026-08-30T03:36:20.546723+00:00",
           "stop": 693.5,
           "target": 698.0
+        },
+        {
+          "from": "2026-08-30T03:39:21.638740+00:00",
+          "stop": 694.2,
+          "target": 698.0
         }
       ],
       "peak_price": 695.56,
@@ -7791,8 +7796,8 @@
       "mfe_r": 0.502,
       "mfe_time": "2026-08-30 03:15:00",
       "mae_time": "2026-08-30 03:04:00",
-      "mfe_giveback_pct": 3.7,
-      "revised_at": "2026-08-30T03:36:20.546723+00:00"
+      "mfe_giveback_pct": 32.1,
+      "revised_at": "2026-08-30T03:39:21.638740+00:00"
     },
     {
       "coin": "ZBT",
@@ -7897,30 +7902,115 @@
       "mfe_r": 0.139,
       "mfe_time": "2026-08-30 03:34:00",
       "mae_time": "2026-08-30 03:31:00",
+      "mfe_giveback_pct": 100.0
+    },
+    {
+      "coin": "BICO",
+      "direction": "long",
+      "entry_price": 0.02456,
+      "stop_loss": 0.0239,
+      "target_price": 0.0258,
+      "trade_amount_inr": 31720.34,
+      "quantity": 12988.180686305215,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "RVOL",
+        "BOS",
+        "CONTINUATION",
+        "EMA_STRUCTURE"
+      ],
+      "risk_tags": [
+        "EXHAUSTION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.02456,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -1.5879,
+        "entry_vs_recent_swing_low_pct": 1.3436,
+        "entry_vs_recent_swing_high_atr": -1.222,
+        "entry_vs_recent_swing_low_atr": 1.034,
+        "entry_vs_latest_break_pct": -0.3257,
+        "entry_vs_latest_break_atr": -0.251,
+        "entry_range_position_pct": 81.34,
+        "entry_distance_to_range_high_pct": 1.5879,
+        "entry_distance_to_range_low_pct": 6.9218,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 1.5879,
+        "nearest_boundary_distance_atr": 1.222,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-08-30 03:33:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 1,
+          "break_freshness": "fresh",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": -0.325,
+          "extension_atr_from_break": -0.25,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 1,
+          "liquidity_sweep_count_3m": 4,
+          "high_rejection_sweeps_3m": 1,
+          "low_reclaim_sweeps_3m": 3,
+          "exhaustion_score_3m": 2,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 3,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 12.0,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": 30.4,
+        "last_closed_trade_direction": "long",
+        "last_closed_trade_pnl_inr": 1776.12,
+        "last_closed_trade_r": 1.973,
+        "same_direction_recent_close": true,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-30T03:39:21.638740+00:00",
+      "reasoning": "BICO demonstrates strong momentum in a TREND_UP regime with supportive volume acceleration and a fresh BOS break.",
+      "level_history": [
+        {
+          "from": "2026-08-30T03:39:21.638740+00:00",
+          "stop": 0.0239,
+          "target": 0.0258
+        }
+      ],
+      "peak_price": 0.02456,
+      "trough_price": 0.02456,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-08-30T03:39:21.638740+00:00",
+      "mae_time": "2026-08-30T03:39:21.638740+00:00",
       "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-30T03:12:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-30T03:15:00Z": [
       "ACE",
       "ADA",
@@ -8042,6 +8132,26 @@
       "ZEC"
     ],
     "2026-08-30T03:33:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-30T03:36:00Z": [
       "ACE",
       "ADA",
       "AVAX",
