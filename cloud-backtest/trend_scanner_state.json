@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-30T09:06:39.231813+00:00",
+  "last_sent_at": "2026-08-30T09:09:39.166174+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-30T09:03:00Z",
+  "last_processed_candle_time": "2026-08-30T09:06:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -361,12 +361,6 @@
     "BNB": [
       {
         "direction": "long",
-        "entry_price": 694.41,
-        "take_trade": false,
-        "time": "2026-08-30T05:30:52.535927+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 694.59,
         "take_trade": false,
         "time": "2026-08-30T07:01:06.631815+00:00"
@@ -388,15 +382,15 @@
         "entry_price": 694.62,
         "take_trade": false,
         "time": "2026-08-30T09:06:22.510390+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 694.53,
+        "take_trade": false,
+        "time": "2026-08-30T09:09:22.705021+00:00"
       }
     ],
     "HEI": [
-      {
-        "direction": "short",
-        "entry_price": 0.1477,
-        "take_trade": false,
-        "time": "2026-08-30T07:01:06.631815+00:00"
-      },
       {
         "direction": "short",
         "entry_price": 0.1471,
@@ -420,6 +414,12 @@
         "entry_price": 0.1454,
         "take_trade": false,
         "time": "2026-08-30T09:06:22.510390+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.1453,
+        "take_trade": false,
+        "time": "2026-08-30T09:09:22.705021+00:00"
       }
     ],
     "TRX": [
@@ -457,12 +457,6 @@
     "LTC": [
       {
         "direction": "long",
-        "entry_price": 48.94,
-        "take_trade": false,
-        "time": "2026-08-30T05:30:52.535927+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 48.93,
         "take_trade": false,
         "time": "2026-08-30T06:06:22.487100+00:00"
@@ -484,15 +478,15 @@
         "entry_price": 48.99,
         "take_trade": false,
         "time": "2026-08-30T08:03:19.338911+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 49.11,
+        "take_trade": true,
+        "time": "2026-08-30T09:09:22.705021+00:00"
       }
     ],
     "ZBT": [
-      {
-        "direction": "long",
-        "entry_price": 0.08,
-        "take_trade": false,
-        "time": "2026-08-30T07:01:06.631815+00:00"
-      },
       {
         "direction": "short",
         "entry_price": 0.0798,
@@ -516,6 +510,12 @@
         "entry_price": 0.0826,
         "take_trade": false,
         "time": "2026-08-30T09:06:22.510390+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.0827,
+        "take_trade": false,
+        "time": "2026-08-30T09:09:22.705021+00:00"
       }
     ],
     "BTC": [
@@ -7387,29 +7387,113 @@
       "resolved_pnl": -780.95,
       "resolved_time": "2026-08-30T07:27:21.394545+00:00",
       "exit_reasoning": "Price retraced near the stop loss with weakening momentum and severe health score, invalidating the immediate breakout continuation thesis."
+    },
+    {
+      "coin": "LTC",
+      "direction": "long",
+      "entry_price": 49.11,
+      "stop_loss": 48.8,
+      "target_price": 49.7,
+      "trade_amount_inr": 115202.06,
+      "quantity": 23.59006901709783,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "BOS",
+        "CONTINUATION",
+        "ADX_DI"
+      ],
+      "risk_tags": [
+        "RVOL"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 49.11,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": 0.1425,
+        "entry_vs_recent_swing_low_pct": 0.3665,
+        "entry_vs_recent_swing_high_atr": 1.701,
+        "entry_vs_recent_swing_low_atr": 4.373,
+        "entry_vs_latest_break_pct": 0.1425,
+        "entry_vs_latest_break_atr": 1.701,
+        "entry_range_position_pct": 89.66,
+        "entry_distance_to_range_high_pct": 0.0611,
+        "entry_distance_to_range_low_pct": 0.5294,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.0611,
+        "nearest_boundary_distance_atr": 0.729,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-08-30 09:00:00",
+        "break_distance_class": "extended_1_to_2_atr"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 2,
+          "break_freshness": "fresh",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.143,
+          "extension_atr_from_break": 1.7,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 3,
+          "liquidity_sweep_count_3m": 5,
+          "high_rejection_sweeps_3m": 2,
+          "low_reclaim_sweeps_3m": 3,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": true,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 9,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 66.1,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-30T09:09:22.705021+00:00",
+      "reasoning": "LTC displays robust upside momentum with a fresh 3m BOS, strong plus_di dominance, and rising volume.",
+      "level_history": [
+        {
+          "from": "2026-08-30T09:09:22.705021+00:00",
+          "stop": 48.8,
+          "target": 49.7
+        }
+      ],
+      "peak_price": 49.11,
+      "trough_price": 49.11,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-08-30T09:09:22.705021+00:00",
+      "mae_time": "2026-08-30T09:09:22.705021+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-30T08:42:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-30T08:45:00Z": [
       "ACE",
       "ADA",
@@ -7512,6 +7596,26 @@
       "ZEC"
     ],
     "2026-08-30T09:03:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-30T09:06:00Z": [
       "ACE",
       "ADA",
       "AVAX",
