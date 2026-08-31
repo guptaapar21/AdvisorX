@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-31T18:51:44.484941+00:00",
+  "last_sent_at": "2026-08-31T18:54:48.948306+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-31T18:48:00Z",
+  "last_processed_candle_time": "2026-08-31T18:51:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -9725,7 +9725,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "python_profit_exit",
       "time": "2026-08-31T18:03:22.278721+00:00",
       "reasoning": "XRP maintains a TREND_UP regime with bullish BOS structure and supportive EMA alignment above VWAP.",
       "level_history": [
@@ -9748,14 +9748,18 @@
       "mfe_r": 1.184,
       "mfe_time": "2026-08-31 18:44:00",
       "mae_time": "2026-08-31 18:26:00",
-      "mfe_giveback_pct": 54.5,
-      "profit_health_score": 2,
-      "profit_health_state": "weakening",
+      "mfe_giveback_pct": 65.7,
+      "profit_health_score": 3,
+      "profit_health_state": "severe",
       "profit_health_reasons": [
+        "3m lost EMA9",
         "rejection wick against position",
         "recent failed break"
       ],
-      "revised_at": "2026-08-31T18:51:24.183267+00:00"
+      "revised_at": "2026-08-31T18:51:24.183267+00:00",
+      "resolved_pnl": 210.74,
+      "resolved_time": "2026-08-31T18:54:29.380208+00:00",
+      "exit_reasoning": "Deterministic profit protection: 66% MFE giveback, health score 3 (3m lost EMA9, rejection wick against position, recent failed break)."
     },
     {
       "coin": "ZEC",
@@ -9859,7 +9863,7 @@
       "mfe_r": 0.974,
       "mfe_time": "2026-08-31 18:21:00",
       "mae_time": "2026-08-31 18:33:00",
-      "mfe_giveback_pct": 45.3
+      "mfe_giveback_pct": 84.5
     },
     {
       "coin": "BNB",
@@ -9947,7 +9951,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-08-31T18:18:24.951164+00:00",
       "reasoning": "BNB shows strong trend continuation with a fresh BOS at 693.21 and supportive EMA structure above VWAP.",
       "level_history": [
@@ -9964,7 +9968,10 @@
       "mfe_r": 0.214,
       "mfe_time": "2026-08-31 18:44:00",
       "mae_time": "2026-08-31 18:25:00",
-      "mfe_giveback_pct": 169.4
+      "mfe_giveback_pct": 204.2,
+      "resolved_pnl": -479.56,
+      "resolved_time": "2026-08-31T18:54:29.380208+00:00",
+      "exit_reasoning": "Exiting position as profit health is severe and price broke below entry."
     },
     {
       "coin": "ETH",
@@ -10070,7 +10077,7 @@
       "mfe_r": 0.924,
       "mfe_time": "2026-08-31 18:44:00",
       "mae_time": "2026-08-31 18:25:00",
-      "mfe_giveback_pct": 84.4
+      "mfe_giveback_pct": 102.6
     },
     {
       "coin": "SOL",
@@ -10175,7 +10182,7 @@
       "mfe_r": 1.025,
       "mfe_time": "2026-08-31 18:43:00",
       "mae_time": "2026-08-31 18:25:00",
-      "mfe_giveback_pct": 54.5,
+      "mfe_giveback_pct": 65.7,
       "profit_health_score": 1,
       "profit_health_state": "healthy",
       "profit_health_reasons": [
@@ -10280,13 +10287,13 @@
         }
       ],
       "peak_price": 79212.0,
-      "trough_price": 79018.01,
+      "trough_price": 79006.0,
       "mfe_pnl_inr": 211.15,
-      "mae_pnl_inr": -195.04,
+      "mae_pnl_inr": -220.19,
       "mfe_r": 0.235,
       "mfe_time": "2026-08-31 18:44:00",
-      "mae_time": "2026-08-31 18:47:00",
-      "mfe_giveback_pct": 162.6
+      "mae_time": "2026-08-31 18:53:00",
+      "mfe_giveback_pct": 200.3
     },
     {
       "coin": "ADA",
@@ -10384,36 +10391,16 @@
         }
       ],
       "peak_price": 0.2007,
-      "trough_price": 0.1996,
+      "trough_price": 0.1994,
       "mfe_pnl_inr": 0.0,
-      "mae_pnl_inr": -299.9,
+      "mae_pnl_inr": -354.43,
       "mfe_r": 0.0,
       "mfe_time": "2026-08-31T18:45:40.098346+00:00",
-      "mae_time": "2026-08-31 18:46:00",
+      "mae_time": "2026-08-31 18:53:00",
       "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-31T18:27:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-31T18:30:00Z": [
       "ACE",
       "ADA",
@@ -10535,6 +10522,26 @@
       "ZEC"
     ],
     "2026-08-31T18:48:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-31T18:51:00Z": [
       "ACE",
       "ADA",
       "AVAX",
