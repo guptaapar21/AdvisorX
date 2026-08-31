@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-31T12:24:56.904295+00:00",
+  "last_sent_at": "2026-08-31T12:27:43.576997+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-31T12:21:00Z",
+  "last_processed_candle_time": "2026-08-31T12:24:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -521,12 +521,6 @@
     "BTC": [
       {
         "direction": "short",
-        "entry_price": 78402.58,
-        "take_trade": false,
-        "time": "2026-08-31T11:42:25.599214+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 78387.85,
         "take_trade": false,
         "time": "2026-08-31T11:45:38.984097+00:00"
@@ -548,6 +542,12 @@
         "entry_price": 78330.0,
         "take_trade": false,
         "time": "2026-08-31T12:24:28.966356+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 78094.02,
+        "take_trade": false,
+        "time": "2026-08-31T12:27:19.983248+00:00"
       }
     ],
     "DOGE": [
@@ -11024,7 +11024,7 @@
       "mfe_r": 0.411,
       "mfe_time": "2026-08-31 12:00:00",
       "mae_time": "2026-08-31 11:43:00",
-      "mfe_giveback_pct": 85.7
+      "mfe_giveback_pct": 71.4
     },
     {
       "coin": "HEI",
@@ -11219,7 +11219,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "stop_hit",
       "time": "2026-08-31T12:06:28.860760+00:00",
       "reasoning": "ZEC shows strong upside momentum with ADX at 48.95, a recent bullish BOS clearing 841.51, and positive momentum acceleration.",
       "level_history": [
@@ -11230,13 +11230,15 @@
         }
       ],
       "peak_price": 843.83,
-      "trough_price": 838.51,
+      "trough_price": 830.52,
       "mfe_pnl_inr": 81.38,
-      "mae_pnl_inr": -389.21,
+      "mae_pnl_inr": -1095.99,
       "mfe_r": 0.09,
       "mfe_time": "2026-08-31 12:11:00",
-      "mae_time": "2026-08-31 12:17:00",
-      "mfe_giveback_pct": 282.6
+      "mae_time": "2026-08-31 12:26:00",
+      "mfe_giveback_pct": 282.6,
+      "resolved_pnl": -900.0,
+      "resolved_time": "2026-08-31 12:24:00"
     },
     {
       "coin": "HYPE",
@@ -11323,7 +11325,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-08-31T12:18:24.412945+00:00",
       "reasoning": "HYPE is in a TREND_UP regime with bullish EMA structure and a recent BOS continuation.",
       "level_history": [
@@ -11334,36 +11336,19 @@
         }
       ],
       "peak_price": 82.034,
-      "trough_price": 81.892,
+      "trough_price": 81.543,
       "mfe_pnl_inr": 77.36,
-      "mae_pnl_inr": -133.89,
+      "mae_pnl_inr": -653.09,
       "mfe_r": 0.086,
       "mfe_time": "2026-08-31 12:20:00",
-      "mae_time": "2026-08-31 12:22:00",
-      "mfe_giveback_pct": 207.7
+      "mae_time": "2026-08-31 12:25:00",
+      "mfe_giveback_pct": 700.0,
+      "resolved_pnl": -647.1,
+      "resolved_time": "2026-08-31T12:27:19.983248+00:00",
+      "exit_reasoning": "Original bullish thesis invalidated as price broke below key supports and lost EMA structure."
     }
   ],
   "processed_candle_coins": {
-    "2026-08-31T12:00:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-31T12:03:00Z": [
       "ACE",
       "ADA",
@@ -11503,10 +11488,30 @@
       "XRP",
       "ZBT",
       "ZEC"
+    ],
+    "2026-08-31T12:24:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
     ]
   },
   "telegram_last_delivery_ok": true,
   "telegram_last_delivery_error": null,
   "telegram_last_delivery_at": "2026-08-22T13:24:41.690271+00:00",
-  "last_telegram_chunk_count": 2
+  "last_telegram_chunk_count": 1
 }
