@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-31T01:01:38.038980+00:00",
+  "last_sent_at": "2026-08-31T01:03:33.666140+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-31T00:57:00Z",
+  "last_processed_candle_time": "2026-08-31T01:00:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -105,12 +105,6 @@
     "XRP": [
       {
         "direction": "short",
-        "entry_price": 1.3487,
-        "take_trade": false,
-        "time": "2026-08-30T23:45:35.572621+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 1.3412,
         "take_trade": false,
         "time": "2026-08-30T23:48:26.263424+00:00"
@@ -132,6 +126,12 @@
         "entry_price": 1.3638,
         "take_trade": false,
         "time": "2026-08-31T00:33:21.230984+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 1.3651,
+        "take_trade": true,
+        "time": "2026-08-31T01:03:18.120968+00:00"
       }
     ],
     "HYPE": [
@@ -233,12 +233,6 @@
     "ETH": [
       {
         "direction": "short",
-        "entry_price": 2430.17,
-        "take_trade": false,
-        "time": "2026-08-31T00:27:26.382055+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 2430.48,
         "take_trade": false,
         "time": "2026-08-31T00:30:50.891076+00:00"
@@ -260,6 +254,12 @@
         "entry_price": 2428.25,
         "take_trade": false,
         "time": "2026-08-31T01:01:03.922762+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 2428.56,
+        "take_trade": true,
+        "time": "2026-08-31T01:03:18.120968+00:00"
       }
     ],
     "SOL": [
@@ -9475,29 +9475,215 @@
       "resolved_pnl": -301.1,
       "resolved_time": "2026-08-31T00:39:20.762980+00:00",
       "exit_reasoning": "Price broke above entry and formed a 3m bullish CHoCH, invalidating the original short continuation thesis."
+    },
+    {
+      "coin": "ETH",
+      "direction": "short",
+      "entry_price": 2428.56,
+      "stop_loss": 2445.0,
+      "target_price": 2390.0,
+      "trade_amount_inr": 108834.41,
+      "quantity": 0.45066752657716075,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "BOS",
+        "CONTINUATION",
+        "EMA_STRUCTURE"
+      ],
+      "risk_tags": [
+        "RVOL"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 2428.56,
+        "direction": "short",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.2071,
+        "entry_vs_recent_swing_low_pct": 0.0074,
+        "entry_vs_recent_swing_high_atr": -0.868,
+        "entry_vs_recent_swing_low_atr": 0.031,
+        "entry_vs_latest_break_pct": 0.0074,
+        "entry_vs_latest_break_atr": 0.031,
+        "entry_range_position_pct": 50.72,
+        "entry_distance_to_range_high_pct": 1.6516,
+        "entry_distance_to_range_low_pct": 1.6998,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 1.6516,
+        "nearest_boundary_distance_atr": 6.919,
+        "entry_location_class": "range_middle",
+        "latest_break_direction": "bearish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-08-31 00:57:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 1,
+          "break_freshness": "fresh",
+          "break_direction": "bearish",
+          "break_type": "BOS",
+          "extension_pct_from_break": -0.007,
+          "extension_atr_from_break": -0.03,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 4,
+          "liquidity_sweep_count_3m": 4,
+          "high_rejection_sweeps_3m": 2,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 1,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 2.2,
+        "last_signal_direction": "short",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": 102.3,
+        "last_closed_trade_direction": "short",
+        "last_closed_trade_pnl_inr": 1165.05,
+        "last_closed_trade_r": 1.294,
+        "same_direction_recent_close": true,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-31T01:03:18.120968+00:00",
+      "reasoning": "Fresh 3m bearish BOS with aligned 15m downtrend structure and negative momentum support continuation.",
+      "level_history": [
+        {
+          "from": "2026-08-31T01:03:18.120968+00:00",
+          "stop": 2445.0,
+          "target": 2390.0
+        }
+      ],
+      "peak_price": 2428.56,
+      "trough_price": 2428.56,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-08-31T01:03:18.120968+00:00",
+      "mae_time": "2026-08-31T01:03:18.120968+00:00",
+      "mfe_giveback_pct": 0.0
+    },
+    {
+      "coin": "XRP",
+      "direction": "short",
+      "entry_price": 1.3651,
+      "stop_loss": 1.378,
+      "target_price": 1.34,
+      "trade_amount_inr": 82192.85,
+      "quantity": 605.4920893548447,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "BOS",
+        "CONTINUATION",
+        "EMA_STRUCTURE"
+      ],
+      "risk_tags": [
+        "RVOL"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 1.3651,
+        "direction": "short",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.2124,
+        "entry_vs_recent_swing_low_pct": -0.0293,
+        "entry_vs_recent_swing_high_atr": -0.767,
+        "entry_vs_recent_swing_low_atr": -0.106,
+        "entry_vs_latest_break_pct": -0.0293,
+        "entry_vs_latest_break_atr": -0.106,
+        "entry_range_position_pct": 59.09,
+        "entry_distance_to_range_high_pct": 1.5164,
+        "entry_distance_to_range_low_pct": 2.1903,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 1.5164,
+        "nearest_boundary_distance_atr": 5.477,
+        "entry_location_class": "range_middle",
+        "latest_break_direction": "bearish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-08-31 00:57:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 1,
+          "break_freshness": "fresh",
+          "break_direction": "bearish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.029,
+          "extension_atr_from_break": 0.11,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 1,
+          "liquidity_sweep_count_3m": 5,
+          "high_rejection_sweeps_3m": 2,
+          "low_reclaim_sweeps_3m": 3,
+          "exhaustion_score_3m": 2,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 1,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 1,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 1,
+        "last_signal_minutes_ago": 29.9,
+        "last_signal_direction": "short",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": 41.9,
+        "last_closed_trade_direction": "short",
+        "last_closed_trade_pnl_inr": -316.25,
+        "last_closed_trade_r": -0.351,
+        "same_direction_recent_close": true,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-31T01:03:18.120968+00:00",
+      "reasoning": "Bearish 3m BOS confirms continuation of the 15m bear trend below key EMA structure.",
+      "level_history": [
+        {
+          "from": "2026-08-31T01:03:18.120968+00:00",
+          "stop": 1.378,
+          "target": 1.34
+        }
+      ],
+      "peak_price": 1.3651,
+      "trough_price": 1.3651,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-08-31T01:03:18.120968+00:00",
+      "mae_time": "2026-08-31T01:03:18.120968+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-31T00:36:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-31T00:39:00Z": [
       "ACE",
       "ADA",
@@ -9619,6 +9805,26 @@
       "ZEC"
     ],
     "2026-08-31T00:57:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-31T01:00:00Z": [
       "ACE",
       "ADA",
       "AVAX",
