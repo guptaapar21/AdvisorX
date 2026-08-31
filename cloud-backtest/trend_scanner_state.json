@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-31T12:03:46.135293+00:00",
+  "last_sent_at": "2026-08-31T12:06:41.344936+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-31T12:00:00Z",
+  "last_processed_candle_time": "2026-08-31T12:03:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -329,12 +329,6 @@
     "ZEC": [
       {
         "direction": "long",
-        "entry_price": 838.11,
-        "take_trade": false,
-        "time": "2026-08-31T11:12:27.085662+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 839.13,
         "take_trade": false,
         "time": "2026-08-31T11:18:22.205203+00:00"
@@ -356,6 +350,12 @@
         "entry_price": 838.1,
         "take_trade": false,
         "time": "2026-08-31T11:30:54.945717+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 842.91,
+        "take_trade": true,
+        "time": "2026-08-31T12:06:28.860760+00:00"
       }
     ],
     "BNB": [
@@ -11024,7 +11024,7 @@
       "mfe_r": 0.411,
       "mfe_time": "2026-08-31 12:00:00",
       "mae_time": "2026-08-31 11:43:00",
-      "mfe_giveback_pct": 42.9
+      "mfe_giveback_pct": 57.1
     },
     {
       "coin": "HEI",
@@ -11111,7 +11111,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "stop_hit",
       "time": "2026-08-31T12:01:08.146424+00:00",
       "reasoning": "HEI exhibits continuous downside momentum under a TREND_DOWN regime with a fresh bearish BOS break at 0.1367 and dominant minus DI.",
       "level_history": [
@@ -11121,37 +11121,125 @@
           "target": 0.1345
         }
       ],
-      "peak_price": 0.1377,
+      "peak_price": 0.1385,
       "trough_price": 0.1367,
       "mfe_pnl_inr": 0.0,
-      "mae_pnl_inr": -689.63,
+      "mae_pnl_inr": -1241.33,
       "mfe_r": 0.0,
       "mfe_time": "2026-08-31T12:01:08.146424+00:00",
-      "mae_time": "2026-08-31 12:02:00",
+      "mae_time": "2026-08-31 12:05:00",
+      "mfe_giveback_pct": 0.0,
+      "resolved_pnl": -900.0,
+      "resolved_time": "2026-08-31 12:03:00"
+    },
+    {
+      "coin": "ZEC",
+      "direction": "long",
+      "entry_price": 842.91,
+      "stop_loss": 834.0,
+      "target_price": 860.0,
+      "trade_amount_inr": 74561.8,
+      "quantity": 0.8895576116489746,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "RVOL",
+        "BOS",
+        "CONTINUATION",
+        "ADX_DI",
+        "EMA_STRUCTURE"
+      ],
+      "risk_tags": [
+        "RANGE_LOCATION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 842.91,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": 0.1661,
+        "entry_vs_recent_swing_low_pct": 0.8577,
+        "entry_vs_recent_swing_high_atr": 0.501,
+        "entry_vs_recent_swing_low_atr": 2.586,
+        "entry_vs_latest_break_pct": 0.1661,
+        "entry_vs_latest_break_atr": 0.501,
+        "entry_range_position_pct": 85.28,
+        "entry_distance_to_range_high_pct": 0.4152,
+        "entry_distance_to_range_low_pct": 2.4048,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.4152,
+        "nearest_boundary_distance_atr": 1.252,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-08-31 12:00:00",
+        "break_distance_class": "moderately_away"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 1,
+          "break_freshness": "fresh",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.166,
+          "extension_atr_from_break": 0.5,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 4,
+          "liquidity_sweep_count_3m": 5,
+          "high_rejection_sweeps_3m": 3,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 12,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 35.6,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-31T12:06:28.860760+00:00",
+      "reasoning": "ZEC shows strong upside momentum with ADX at 48.95, a recent bullish BOS clearing 841.51, and positive momentum acceleration.",
+      "level_history": [
+        {
+          "from": "2026-08-31T12:06:28.860760+00:00",
+          "stop": 834.0,
+          "target": 860.0
+        }
+      ],
+      "peak_price": 842.91,
+      "trough_price": 842.91,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-08-31T12:06:28.860760+00:00",
+      "mae_time": "2026-08-31T12:06:28.860760+00:00",
       "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-31T11:39:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-31T11:42:00Z": [
       "ACE",
       "ADA",
@@ -11273,6 +11361,26 @@
       "ZEC"
     ],
     "2026-08-31T12:00:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-31T12:03:00Z": [
       "ACE",
       "ADA",
       "AVAX",
