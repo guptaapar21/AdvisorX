@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-31T12:42:44.293394+00:00",
+  "last_sent_at": "2026-08-31T12:47:02.656794+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-31T12:39:00Z",
+  "last_processed_candle_time": "2026-08-31T12:42:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -521,12 +521,6 @@
     "BTC": [
       {
         "direction": "short",
-        "entry_price": 78094.02,
-        "take_trade": false,
-        "time": "2026-08-31T12:27:19.983248+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 78092.01,
         "take_trade": false,
         "time": "2026-08-31T12:30:58.454842+00:00"
@@ -548,6 +542,12 @@
         "entry_price": 77803.19,
         "take_trade": false,
         "time": "2026-08-31T12:42:21.712839+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 77885.56,
+        "take_trade": true,
+        "time": "2026-08-31T12:45:44.664354+00:00"
       }
     ],
     "DOGE": [
@@ -11427,37 +11427,121 @@
           "target": 101.0
         }
       ],
-      "peak_price": 102.75,
-      "trough_price": 102.75,
+      "peak_price": 102.84,
+      "trough_price": 102.7,
+      "mfe_pnl_inr": 49.77,
+      "mae_pnl_inr": -89.59,
+      "mfe_r": 0.055,
+      "mfe_time": "2026-08-31 12:44:00",
+      "mae_time": "2026-08-31 12:43:00",
+      "mfe_giveback_pct": 140.0
+    },
+    {
+      "coin": "BTC",
+      "direction": "short",
+      "entry_price": 77885.56,
+      "stop_loss": 78150.0,
+      "target_price": 77200.0,
+      "trade_amount_inr": 183852.15,
+      "quantity": 0.023738356637335364,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "BOS",
+        "CONTINUATION",
+        "ADX_DI"
+      ],
+      "risk_tags": [
+        "REJECTION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 77885.56,
+        "direction": "short",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.3501,
+        "entry_vs_recent_swing_low_pct": -0.0185,
+        "entry_vs_recent_swing_high_atr": -2.255,
+        "entry_vs_recent_swing_low_atr": -0.119,
+        "entry_vs_latest_break_pct": -0.0185,
+        "entry_vs_latest_break_atr": -0.119,
+        "entry_range_position_pct": 19.92,
+        "entry_distance_to_range_high_pct": 1.0868,
+        "entry_distance_to_range_low_pct": 0.2703,
+        "nearest_boundary": "low",
+        "nearest_boundary_distance_pct": 0.2703,
+        "nearest_boundary_distance_atr": 1.741,
+        "entry_location_class": "near_range_low",
+        "latest_break_direction": "bearish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-08-31 12:39:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 1,
+          "break_freshness": "fresh",
+          "break_direction": "bearish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.019,
+          "extension_atr_from_break": 0.12,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 1,
+          "liquidity_sweep_count_3m": 3,
+          "high_rejection_sweeps_3m": 3,
+          "low_reclaim_sweeps_3m": 0,
+          "exhaustion_score_3m": 2,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 12,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 3.4,
+        "last_signal_direction": "short",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": 171.3,
+        "last_closed_trade_direction": "long",
+        "last_closed_trade_pnl_inr": -25.66,
+        "last_closed_trade_r": -0.029,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-08-31T12:45:44.664354+00:00",
+      "reasoning": "BTC exhibits bearish continuation following a fresh 3m BOS at 77900 with dominant minus DI and negative momentum.",
+      "level_history": [
+        {
+          "from": "2026-08-31T12:45:44.664354+00:00",
+          "stop": 78150.0,
+          "target": 77200.0
+        }
+      ],
+      "peak_price": 77885.56,
+      "trough_price": 77885.56,
       "mfe_pnl_inr": 0.0,
       "mae_pnl_inr": 0.0,
       "mfe_r": 0.0,
-      "mfe_time": "2026-08-31T12:42:21.712839+00:00",
-      "mae_time": "2026-08-31T12:42:21.712839+00:00",
+      "mfe_time": "2026-08-31T12:45:44.664354+00:00",
+      "mae_time": "2026-08-31T12:45:44.664354+00:00",
       "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-08-31T12:18:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-31T12:21:00Z": [
       "ACE",
       "ADA",
@@ -11579,6 +11663,26 @@
       "ZEC"
     ],
     "2026-08-31T12:39:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-31T12:42:00Z": [
       "ACE",
       "ADA",
       "AVAX",
