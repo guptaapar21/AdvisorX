@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-08-31T06:48:47.652044+00:00",
+  "last_sent_at": "2026-08-31T06:51:47.037286+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-08-31T06:45:00Z",
+  "last_processed_candle_time": "2026-08-31T06:48:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -584,114 +584,6 @@
     ]
   },
   "ledger": [
-    {
-      "coin": "BNB",
-      "direction": "short",
-      "entry_price": 692.45,
-      "stop_loss": 694.5,
-      "target_price": 687.0,
-      "trade_amount_inr": 201770.99,
-      "quantity": 2.9302804048483653,
-      "max_loss_this_trade_inr": 900.0,
-      "conviction": 6,
-      "supporting_tags": [
-        "BOS",
-        "CONTINUATION",
-        "ADX_DI",
-        "MOMENTUM"
-      ],
-      "risk_tags": [
-        "RVOL",
-        "EXHAUSTION"
-      ],
-      "reason_tag_schema_version": "2026-08-15-tags-v1",
-      "entry_location_telemetry": {
-        "telemetry_only": true,
-        "proposed_entry": 692.45,
-        "direction": "short",
-        "entry_vs_current_close_pct": 0.0,
-        "entry_vs_vwap_pct": null,
-        "entry_vs_vwap_atr": null,
-        "entry_vs_recent_swing_high_pct": -0.3293,
-        "entry_vs_recent_swing_low_pct": -0.2657,
-        "entry_vs_recent_swing_high_atr": -6.859,
-        "entry_vs_recent_swing_low_atr": -5.535,
-        "entry_vs_latest_break_pct": -0.091,
-        "entry_vs_latest_break_atr": -1.895,
-        "entry_range_position_pct": 0.96,
-        "entry_distance_to_range_high_pct": 0.4491,
-        "entry_distance_to_range_low_pct": 0.0043,
-        "nearest_boundary": "low",
-        "nearest_boundary_distance_pct": 0.0043,
-        "nearest_boundary_distance_atr": 0.09,
-        "entry_location_class": "near_range_low",
-        "latest_break_direction": "bearish",
-        "latest_break_type": "BOS",
-        "latest_break_time": "2026-08-30 04:42:00",
-        "break_distance_class": "extended_1_to_2_atr"
-      },
-      "entry_quality_context": {
-        "continuation": {
-          "has_break": true,
-          "bars_since_break": 2,
-          "break_freshness": "fresh",
-          "break_direction": "bearish",
-          "break_type": "BOS",
-          "extension_pct_from_break": 0.091,
-          "extension_atr_from_break": 1.9,
-          "new_break_within_2_bars": true,
-          "failed_break_count_3m": 4,
-          "liquidity_sweep_count_3m": 4,
-          "high_rejection_sweeps_3m": 2,
-          "low_reclaim_sweeps_3m": 2,
-          "exhaustion_score_3m": 3,
-          "extended_from_break": true,
-          "late_continuation": false,
-          "continuation_quality": "fresh_continuation"
-        },
-        "session": {
-          "utc_hour": 4,
-          "label": "normal-history-window",
-          "historically_weak_window": false
-        }
-      },
-      "recent_signal_context": {
-        "recent_take_count_180m": 1,
-        "recent_long_take_count_180m": 1,
-        "recent_short_take_count_180m": 0,
-        "last_signal_minutes_ago": 11.9,
-        "last_signal_direction": "short",
-        "last_signal_take_trade": false,
-        "last_closed_trade_minutes_ago": 50.3,
-        "last_closed_trade_direction": "long",
-        "last_closed_trade_pnl_inr": -247.56,
-        "last_closed_trade_r": -0.275,
-        "same_direction_recent_close": false,
-        "same_direction_cooldown_active": false,
-        "same_direction_reentry_without_new_break": false
-      },
-      "status": "gemini_exit",
-      "time": "2026-08-30T04:51:18.476840+00:00",
-      "reasoning": "BNB confirms a fresh bearish BOS with strong minus DI dominance and negative momentum acceleration.",
-      "level_history": [
-        {
-          "from": "2026-08-30T04:51:18.476840+00:00",
-          "stop": 694.5,
-          "target": 687.0
-        }
-      ],
-      "peak_price": 694.4,
-      "trough_price": 692.45,
-      "mfe_pnl_inr": 0.0,
-      "mae_pnl_inr": -568.2,
-      "mfe_r": 0.0,
-      "mfe_time": "2026-08-30T04:51:18.476840+00:00",
-      "mae_time": "2026-08-30 05:02:00",
-      "mfe_giveback_pct": 0.0,
-      "resolved_pnl": -827.15,
-      "resolved_time": "2026-08-30T05:03:23.967454+00:00",
-      "exit_reasoning": "Short thesis invalidated as price presses against resistance and approaches stop loss."
-    },
     {
       "coin": "TRX",
       "direction": "long",
@@ -9351,11 +9243,13 @@
       "mfe_r": 1.465,
       "mfe_time": "2026-08-31 06:41:00",
       "mae_time": "2026-08-31T05:12:22.827487+00:00",
-      "mfe_giveback_pct": 6.7,
+      "mfe_giveback_pct": 13.3,
       "revised_at": "2026-08-31T06:45:37.462995+00:00",
-      "profit_health_score": 1,
-      "profit_health_state": "healthy",
+      "profit_health_score": 3,
+      "profit_health_state": "severe",
       "profit_health_reasons": [
+        "ADX slope weakening",
+        "rejection wick against position",
         "recent failed break"
       ]
     },
@@ -9478,11 +9372,14 @@
       "mfe_r": 1.075,
       "mfe_time": "2026-08-31 06:27:00",
       "mae_time": "2026-08-31T05:18:26.608951+00:00",
-      "mfe_giveback_pct": 9.4,
+      "mfe_giveback_pct": 22.1,
       "revised_at": "2026-08-31T06:24:31.231711+00:00",
-      "profit_health_score": 1,
-      "profit_health_state": "healthy",
+      "profit_health_score": 4,
+      "profit_health_state": "severe",
       "profit_health_reasons": [
+        "3m lost EMA9",
+        "ADX slope weakening",
+        "rejection wick against position",
         "recent failed break"
       ]
     },
@@ -9589,7 +9486,7 @@
       "mfe_r": 0.541,
       "mfe_time": "2026-08-31 05:25:00",
       "mae_time": "2026-08-31T05:18:26.608951+00:00",
-      "mfe_giveback_pct": 32.1
+      "mfe_giveback_pct": 55.6
     },
     {
       "coin": "ZEC",
@@ -9801,7 +9698,7 @@
       "mfe_r": 0.325,
       "mfe_time": "2026-08-31 05:25:00",
       "mae_time": "2026-08-31 05:39:00",
-      "mfe_giveback_pct": 61.4
+      "mfe_giveback_pct": 84.1
     },
     {
       "coin": "ADA",
@@ -9905,7 +9802,7 @@
       "mfe_r": 0.229,
       "mfe_time": "2026-08-31 06:18:00",
       "mae_time": "2026-08-31 05:39:00",
-      "mfe_giveback_pct": 75.0
+      "mfe_giveback_pct": 87.5
     },
     {
       "coin": "HEI",
@@ -10014,7 +9911,7 @@
       "mfe_r": 0.872,
       "mfe_time": "2026-08-31 06:34:00",
       "mae_time": "2026-08-31 05:40:00",
-      "mfe_giveback_pct": 7.1,
+      "mfe_giveback_pct": 0.0,
       "revised_at": "2026-08-31T06:36:30.218125+00:00"
     },
     {
@@ -10124,31 +10021,11 @@
       "mfe_r": 0.363,
       "mfe_time": "2026-08-31 06:27:00",
       "mae_time": "2026-08-31 06:08:00",
-      "mfe_giveback_pct": 65.2,
+      "mfe_giveback_pct": 69.6,
       "revised_at": "2026-08-31T06:48:27.806266+00:00"
     }
   ],
   "processed_candle_coins": {
-    "2026-08-31T06:24:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-08-31T06:27:00Z": [
       "ACE",
       "ADA",
@@ -10270,6 +10147,26 @@
       "ZEC"
     ],
     "2026-08-31T06:45:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-08-31T06:48:00Z": [
       "ACE",
       "ADA",
       "AVAX",
