@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-01T19:39:46.136866+00:00",
+  "last_sent_at": "2026-09-01T19:42:39.823389+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-01T19:36:00Z",
+  "last_processed_candle_time": "2026-09-01T19:39:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -201,12 +201,6 @@
     "ACE": [
       {
         "direction": "long",
-        "entry_price": 0.2129,
-        "take_trade": false,
-        "time": "2026-09-01T18:51:21.702124+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 0.2115,
         "take_trade": false,
         "time": "2026-09-01T19:15:39.539987+00:00"
@@ -228,6 +222,12 @@
         "entry_price": 0.2171,
         "take_trade": false,
         "time": "2026-09-01T19:39:22.056821+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.2145,
+        "take_trade": false,
+        "time": "2026-09-01T19:42:21.866254+00:00"
       }
     ],
     "ETH": [
@@ -488,12 +488,6 @@
     ],
     "ZBT": [
       {
-        "direction": "short",
-        "entry_price": 0.0838,
-        "take_trade": false,
-        "time": "2026-09-01T18:51:21.702124+00:00"
-      },
-      {
         "direction": "long",
         "entry_price": 0.0846,
         "take_trade": false,
@@ -516,6 +510,12 @@
         "entry_price": 0.0852,
         "take_trade": false,
         "time": "2026-09-01T19:39:22.056821+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.0852,
+        "take_trade": true,
+        "time": "2026-09-01T19:42:21.866254+00:00"
       }
     ],
     "BTC": [
@@ -8152,29 +8152,113 @@
       "resolved_pnl": -751.67,
       "resolved_time": "2026-09-01T19:24:32.396940+00:00",
       "exit_reasoning": "Price printed a bullish CHoCH at 100.0 on the 3m chart, invalidating the short continuation thesis."
+    },
+    {
+      "coin": "ZBT",
+      "direction": "long",
+      "entry_price": 0.0852,
+      "stop_loss": 0.0838,
+      "target_price": 0.0885,
+      "trade_amount_inr": 50189.82,
+      "quantity": 5923.997793850571,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "BOS",
+        "CONTINUATION",
+        "ADX_DI"
+      ],
+      "risk_tags": [
+        "RVOL"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.0852,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.2347,
+        "entry_vs_recent_swing_low_pct": 0.8216,
+        "entry_vs_recent_swing_high_atr": -1.003,
+        "entry_vs_recent_swing_low_atr": 3.512,
+        "entry_vs_latest_break_pct": 0.2347,
+        "entry_vs_latest_break_atr": 1.003,
+        "entry_range_position_pct": 91.3,
+        "entry_distance_to_range_high_pct": 0.2347,
+        "entry_distance_to_range_low_pct": 2.4648,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.2347,
+        "nearest_boundary_distance_atr": 1.003,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-01 19:30:00",
+        "break_distance_class": "extended_1_to_2_atr"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 3,
+          "break_freshness": "mature",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.235,
+          "extension_atr_from_break": 1.0,
+          "new_break_within_2_bars": false,
+          "failed_break_count_3m": 1,
+          "liquidity_sweep_count_3m": 4,
+          "high_rejection_sweeps_3m": 1,
+          "low_reclaim_sweeps_3m": 3,
+          "exhaustion_score_3m": 2,
+          "extended_from_break": true,
+          "late_continuation": false,
+          "continuation_quality": "mature_continuation"
+        },
+        "session": {
+          "utc_hour": 19,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 3.0,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-01T19:42:21.866254+00:00",
+      "reasoning": "ZBT exhibits strong momentum and +DI dominance with a recent bullish BOS continuation, supporting a long setup despite lower RVOL.",
+      "level_history": [
+        {
+          "from": "2026-09-01T19:42:21.866254+00:00",
+          "stop": 0.0838,
+          "target": 0.0885
+        }
+      ],
+      "peak_price": 0.0852,
+      "trough_price": 0.0852,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-01T19:42:21.866254+00:00",
+      "mae_time": "2026-09-01T19:42:21.866254+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-01T19:15:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-01T19:18:00Z": [
       "ACE",
       "ADA",
@@ -8314,10 +8398,30 @@
       "XRP",
       "ZBT",
       "ZEC"
+    ],
+    "2026-09-01T19:39:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
     ]
   },
   "telegram_last_delivery_ok": true,
   "telegram_last_delivery_error": null,
   "telegram_last_delivery_at": "2026-08-22T13:24:41.690271+00:00",
-  "last_telegram_chunk_count": 2
+  "last_telegram_chunk_count": 1
 }
