@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-01T18:51:45.454435+00:00",
+  "last_sent_at": "2026-09-01T18:54:48.566187+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-01T18:48:00Z",
+  "last_processed_candle_time": "2026-09-01T18:51:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -584,113 +584,6 @@
     ]
   },
   "ledger": [
-    {
-      "coin": "ACE",
-      "direction": "short",
-      "entry_price": 0.1665,
-      "stop_loss": 0.1685,
-      "target_price": 0.1625,
-      "trade_amount_inr": 66607.4,
-      "quantity": 4022.973143435886,
-      "max_loss_this_trade_inr": 900.0,
-      "conviction": 6,
-      "supporting_tags": [
-        "MOMENTUM",
-        "ADX_DI",
-        "EMA_STRUCTURE",
-        "CONTINUATION"
-      ],
-      "risk_tags": [
-        "REJECTION"
-      ],
-      "reason_tag_schema_version": "2026-08-15-tags-v1",
-      "entry_location_telemetry": {
-        "telemetry_only": true,
-        "proposed_entry": 0.1665,
-        "direction": "short",
-        "entry_vs_current_close_pct": 0.0,
-        "entry_vs_vwap_pct": null,
-        "entry_vs_vwap_atr": null,
-        "entry_vs_recent_swing_high_pct": -0.9009,
-        "entry_vs_recent_swing_low_pct": 0.2402,
-        "entry_vs_recent_swing_high_atr": -2.361,
-        "entry_vs_recent_swing_low_atr": 0.63,
-        "entry_vs_latest_break_pct": -0.4204,
-        "entry_vs_latest_break_atr": -1.102,
-        "entry_range_position_pct": 11.63,
-        "entry_distance_to_range_high_pct": 2.2823,
-        "entry_distance_to_range_low_pct": 0.3003,
-        "nearest_boundary": "low",
-        "nearest_boundary_distance_pct": 0.3003,
-        "nearest_boundary_distance_atr": 0.787,
-        "entry_location_class": "near_range_low",
-        "latest_break_direction": "bearish",
-        "latest_break_type": "BOS",
-        "latest_break_time": "2026-08-31 16:42:00",
-        "break_distance_class": "extended_1_to_2_atr"
-      },
-      "entry_quality_context": {
-        "continuation": {
-          "has_break": true,
-          "bars_since_break": 3,
-          "break_freshness": "mature",
-          "break_direction": "bearish",
-          "break_type": "BOS",
-          "extension_pct_from_break": 0.419,
-          "extension_atr_from_break": 1.1,
-          "new_break_within_2_bars": false,
-          "failed_break_count_3m": 2,
-          "liquidity_sweep_count_3m": 3,
-          "high_rejection_sweeps_3m": 2,
-          "low_reclaim_sweeps_3m": 1,
-          "exhaustion_score_3m": 3,
-          "extended_from_break": true,
-          "late_continuation": false,
-          "continuation_quality": "mature_continuation"
-        },
-        "session": {
-          "utc_hour": 16,
-          "label": "weak-history-window",
-          "historically_weak_window": true
-        }
-      },
-      "recent_signal_context": {
-        "recent_take_count_180m": 0,
-        "recent_long_take_count_180m": 0,
-        "recent_short_take_count_180m": 0,
-        "last_signal_minutes_ago": 6.0,
-        "last_signal_direction": "short",
-        "last_signal_take_trade": false,
-        "last_closed_trade_minutes_ago": null,
-        "last_closed_trade_direction": null,
-        "last_closed_trade_pnl_inr": null,
-        "last_closed_trade_r": null,
-        "same_direction_recent_close": false,
-        "same_direction_cooldown_active": false,
-        "same_direction_reentry_without_new_break": false
-      },
-      "status": "gemini_exit",
-      "time": "2026-08-31T16:54:25.926446+00:00",
-      "reasoning": "Trend is down with bearish 3m and 15m structure, negative momentum, and dominant minus_di supporting continuation.",
-      "level_history": [
-        {
-          "from": "2026-08-31T16:54:25.926446+00:00",
-          "stop": 0.1685,
-          "target": 0.1625
-        }
-      ],
-      "peak_price": 0.1669,
-      "trough_price": 0.1648,
-      "mfe_pnl_inr": 680.08,
-      "mae_pnl_inr": -160.02,
-      "mfe_r": 0.756,
-      "mfe_time": "2026-08-31 16:56:00",
-      "mae_time": "2026-08-31 17:00:00",
-      "mfe_giveback_pct": 88.2,
-      "resolved_pnl": -19.9,
-      "resolved_time": "2026-08-31T17:33:22.290374+00:00",
-      "exit_reasoning": "3m structure flipped bullish with a break above resistance, invalidating the original short thesis."
-    },
     {
       "coin": "HYPE",
       "direction": "long",
@@ -7678,7 +7571,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "python_profit_exit",
       "time": "2026-09-01T18:12:27.390685+00:00",
       "reasoning": "LINK shows high RVOL and persistent bearish BOS continuation with minus DI dominance.",
       "level_history": [
@@ -7701,14 +7594,19 @@
       "mfe_r": 1.148,
       "mfe_time": "2026-09-01 18:46:00",
       "mae_time": "2026-09-01 18:15:00",
-      "mfe_giveback_pct": 54.2,
-      "profit_health_score": 2,
-      "profit_health_state": "weakening",
+      "mfe_giveback_pct": 72.6,
+      "profit_health_score": 4,
+      "profit_health_state": "severe",
       "profit_health_reasons": [
         "3m lost EMA9",
+        "ADX slope weakening",
+        "rejection wick against position",
         "recent failed break"
       ],
-      "revised_at": "2026-09-01T18:51:21.702124+00:00"
+      "revised_at": "2026-09-01T18:51:21.702124+00:00",
+      "resolved_pnl": 185.58,
+      "resolved_time": "2026-09-01T18:54:27.301286+00:00",
+      "exit_reasoning": "Deterministic profit protection: 73% MFE giveback, health score 4 (3m lost EMA9, ADX slope weakening, rejection wick against position, recent failed break)."
     },
     {
       "coin": "HYPE",
@@ -7805,14 +7703,14 @@
           "target": 80.5
         }
       ],
-      "peak_price": 81.587,
+      "peak_price": 81.622,
       "trough_price": 80.652,
       "mfe_pnl_inr": 1365.32,
-      "mae_pnl_inr": -126.01,
+      "mae_pnl_inr": -181.83,
       "mfe_r": 1.517,
       "mfe_time": "2026-09-01 18:46:00",
-      "mae_time": "2026-09-01 18:50:00",
-      "mfe_giveback_pct": 99.8,
+      "mae_time": "2026-09-01 18:52:00",
+      "mfe_giveback_pct": 101.1,
       "profit_health_score": 2,
       "profit_health_state": "weakening",
       "profit_health_reasons": [
@@ -8134,7 +8032,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-01T18:39:23.173330+00:00",
       "reasoning": "XRP prints a fresh bearish BOS at 1.3445 with high RVOL supporting the continuation of the downtrend.",
       "level_history": [
@@ -8144,14 +8042,17 @@
           "target": 1.31
         }
       ],
-      "peak_price": 1.3522,
+      "peak_price": 1.355,
       "trough_price": 1.3387,
       "mfe_pnl_inr": 283.06,
-      "mae_pnl_inr": -466.21,
+      "mae_pnl_inr": -621.62,
       "mfe_r": 0.315,
       "mfe_time": "2026-09-01 18:45:00",
-      "mae_time": "2026-09-01 18:50:00",
-      "mfe_giveback_pct": 251.0
+      "mae_time": "2026-09-01 18:53:00",
+      "mfe_giveback_pct": 319.6,
+      "resolved_pnl": -733.49,
+      "resolved_time": "2026-09-01T18:54:27.301286+00:00",
+      "exit_reasoning": "Breakdown below 1.3445 failed with a liquidity reclaim and bounce, invalidating the short thesis."
     },
     {
       "coin": "ADA",
@@ -8238,7 +8139,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-01T18:45:44.685158+00:00",
       "reasoning": "ADA breaks down with a fresh bearish BOS at 0.1941 under TREND_DOWN, backed by dominant minus DI and declining RSI.",
       "level_history": [
@@ -8248,37 +8149,20 @@
           "target": 0.188
         }
       ],
-      "peak_price": 0.1957,
+      "peak_price": 0.1964,
       "trough_price": 0.1936,
       "mfe_pnl_inr": 60.19,
-      "mae_pnl_inr": -571.77,
+      "mae_pnl_inr": -782.43,
       "mfe_r": 0.067,
       "mfe_time": "2026-09-01 18:47:00",
-      "mae_time": "2026-09-01 18:50:00",
-      "mfe_giveback_pct": 999.9
+      "mae_time": "2026-09-01 18:53:00",
+      "mfe_giveback_pct": 1399.9,
+      "resolved_pnl": -869.91,
+      "resolved_time": "2026-09-01T18:54:27.301286+00:00",
+      "exit_reasoning": "Breakdown at 0.1941 failed and a 3m bullish CHoCH occurred, invalidating the continuation thesis."
     }
   ],
   "processed_candle_coins": {
-    "2026-09-01T18:27:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-01T18:30:00Z": [
       "ACE",
       "ADA",
@@ -8418,10 +8302,30 @@
       "XRP",
       "ZBT",
       "ZEC"
+    ],
+    "2026-09-01T18:51:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
     ]
   },
   "telegram_last_delivery_ok": true,
   "telegram_last_delivery_error": null,
   "telegram_last_delivery_at": "2026-08-22T13:24:41.690271+00:00",
-  "last_telegram_chunk_count": 2
+  "last_telegram_chunk_count": 1
 }
