@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-02T22:25:34.427887+00:00",
+  "last_sent_at": "2026-09-02T22:27:40.216940+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-02T22:21:00Z",
+  "last_processed_candle_time": "2026-09-02T22:24:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -73,12 +73,6 @@
     "PAXG": [
       {
         "direction": "long",
-        "entry_price": 4398.22,
-        "take_trade": false,
-        "time": "2026-09-02T21:15:39.636037+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 4397.73,
         "take_trade": false,
         "time": "2026-09-02T21:48:21.962254+00:00"
@@ -100,6 +94,12 @@
         "entry_price": 4397.82,
         "take_trade": false,
         "time": "2026-09-02T22:21:19.479883+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 4399.41,
+        "take_trade": true,
+        "time": "2026-09-02T22:27:20.894444+00:00"
       }
     ],
     "XRP": [
@@ -6224,29 +6224,113 @@
       "resolved_pnl": -393.18,
       "resolved_time": "2026-09-02T22:06:33.736840+00:00",
       "exit_reasoning": "Bearish CHoCH triggered at 0.1988, invalidating the long breakout thesis as price loses EMA9."
+    },
+    {
+      "coin": "PAXG",
+      "direction": "long",
+      "entry_price": 4399.41,
+      "stop_loss": 4395.0,
+      "target_price": 4415.0,
+      "trade_amount_inr": 299711.42,
+      "quantity": 0.6850901752354761,
+      "max_loss_this_trade_inr": 750.0,
+      "conviction": 5,
+      "supporting_tags": [
+        "MOMENTUM",
+        "EMA_STRUCTURE",
+        "BOS",
+        "CONTINUATION"
+      ],
+      "risk_tags": [
+        "RVOL"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 4399.41,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.0371,
+        "entry_vs_recent_swing_low_pct": 0.0491,
+        "entry_vs_recent_swing_high_atr": -1.63,
+        "entry_vs_recent_swing_low_atr": 2.16,
+        "entry_vs_latest_break_pct": 0.0132,
+        "entry_vs_latest_break_atr": 0.58,
+        "entry_range_position_pct": 70.15,
+        "entry_distance_to_range_high_pct": 0.0371,
+        "entry_distance_to_range_low_pct": 0.0871,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.0371,
+        "nearest_boundary_distance_atr": 1.63,
+        "entry_location_class": "range_middle",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-02 21:57:00",
+        "break_distance_class": "moderately_away"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 9,
+          "break_freshness": "late",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.013,
+          "extension_atr_from_break": 0.58,
+          "new_break_within_2_bars": false,
+          "failed_break_count_3m": 4,
+          "liquidity_sweep_count_3m": 4,
+          "high_rejection_sweeps_3m": 2,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": true,
+          "continuation_quality": "mixed_or_unclear"
+        },
+        "session": {
+          "utc_hour": 22,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 6.0,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": 86.2,
+        "last_closed_trade_direction": "long",
+        "last_closed_trade_pnl_inr": -433.76,
+        "last_closed_trade_r": -0.482,
+        "same_direction_recent_close": true,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-02T22:27:20.894444+00:00",
+      "reasoning": "PAXG maintains a TREND_UP regime across 3m, 15m, and 1h with supportive EMA structure and recent bullish BOS.",
+      "level_history": [
+        {
+          "from": "2026-09-02T22:27:20.894444+00:00",
+          "stop": 4395.0,
+          "target": 4415.0
+        }
+      ],
+      "peak_price": 4399.41,
+      "trough_price": 4399.41,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-02T22:27:20.894444+00:00",
+      "mae_time": "2026-09-02T22:27:20.894444+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-02T22:00:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-02T22:03:00Z": [
       "ACE",
       "ADA",
@@ -6368,6 +6452,26 @@
       "ZEC"
     ],
     "2026-09-02T22:21:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-02T22:24:00Z": [
       "ACE",
       "ADA",
       "AVAX",
