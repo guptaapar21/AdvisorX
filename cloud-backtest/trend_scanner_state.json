@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-02T06:12:41.100918+00:00",
+  "last_sent_at": "2026-09-02T06:16:01.415031+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-02T06:09:00Z",
+  "last_processed_candle_time": "2026-09-02T06:12:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -265,12 +265,6 @@
     "SOL": [
       {
         "direction": "short",
-        "entry_price": 100.13,
-        "take_trade": false,
-        "time": "2026-09-02T03:57:20.137688+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 99.91,
         "take_trade": false,
         "time": "2026-09-02T04:24:21.739629+00:00"
@@ -292,6 +286,12 @@
         "entry_price": 100.1,
         "take_trade": false,
         "time": "2026-09-02T05:54:21.549261+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 99.96,
+        "take_trade": false,
+        "time": "2026-09-02T06:15:42.708407+00:00"
       }
     ],
     "AVAX": [
@@ -7184,7 +7184,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-02T05:12:24.824414+00:00",
       "reasoning": "DOGE shows strong volume and a bullish BOS continuation in a TREND_UP regime, supporting upside momentum.",
       "level_history": [
@@ -7211,8 +7211,11 @@
       "mfe_r": 0.819,
       "mfe_time": "2026-09-02 06:02:00",
       "mae_time": "2026-09-02 05:13:00",
-      "mfe_giveback_pct": 38.1,
-      "revised_at": "2026-09-02T06:01:08.684600+00:00"
+      "mfe_giveback_pct": 73.8,
+      "revised_at": "2026-09-02T06:01:08.684600+00:00",
+      "resolved_pnl": -22.01,
+      "resolved_time": "2026-09-02T06:15:42.708407+00:00",
+      "exit_reasoning": "Original bullish thesis invalidated as price formed a bearish CHoCH and failed to hold breakout highs."
     },
     {
       "coin": "BNB",
@@ -7513,7 +7516,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-02T05:30:49.579279+00:00",
       "reasoning": "ADA demonstrates strong 5m momentum (+0.86%) and a confirmed BOS above 0.1977, supporting a continuation setup.",
       "level_history": [
@@ -7524,13 +7527,16 @@
         }
       ],
       "peak_price": 0.1991,
-      "trough_price": 0.1984,
+      "trough_price": 0.1979,
       "mfe_pnl_inr": 0.0,
-      "mae_pnl_inr": -276.51,
+      "mae_pnl_inr": -474.02,
       "mfe_r": 0.0,
       "mfe_time": "2026-09-02T05:30:49.579279+00:00",
-      "mae_time": "2026-09-02 06:07:00",
-      "mfe_giveback_pct": 0.0
+      "mae_time": "2026-09-02 06:14:00",
+      "mfe_giveback_pct": 0.0,
+      "resolved_pnl": -512.99,
+      "resolved_time": "2026-09-02T06:15:42.708407+00:00",
+      "exit_reasoning": "Original continuation thesis broken down following a bearish BOS and persistent drop below entry."
     },
     {
       "coin": "LINK",
@@ -7617,7 +7623,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-02T06:01:08.684600+00:00",
       "reasoning": "LINK demonstrates bullish BOS continuation with supportive EMA structure above VWAP in a breakout transition regime.",
       "level_history": [
@@ -7628,36 +7634,19 @@
         }
       ],
       "peak_price": 11.304,
-      "trough_price": 11.251,
+      "trough_price": 11.222,
       "mfe_pnl_inr": 119.47,
-      "mae_pnl_inr": -367.59,
+      "mae_pnl_inr": -634.08,
       "mfe_r": 0.133,
       "mfe_time": "2026-09-02 06:02:00",
-      "mae_time": "2026-09-02 06:11:00",
-      "mfe_giveback_pct": 353.8
+      "mae_time": "2026-09-02 06:14:00",
+      "mfe_giveback_pct": 623.1,
+      "resolved_pnl": -780.53,
+      "resolved_time": "2026-09-02T06:15:42.708407+00:00",
+      "exit_reasoning": "Price broke below key support and triggered bearish CHoCH structure, invalidating the original breakout thesis."
     }
   ],
   "processed_candle_coins": {
-    "2026-09-02T05:48:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-02T05:51:00Z": [
       "ACE",
       "ADA",
@@ -7779,6 +7768,26 @@
       "ZEC"
     ],
     "2026-09-02T06:09:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-02T06:12:00Z": [
       "ACE",
       "ADA",
       "AVAX",
