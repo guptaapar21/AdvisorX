@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-02T09:48:44.772363+00:00",
+  "last_sent_at": "2026-09-02T09:52:11.450676+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-02T09:45:00Z",
+  "last_processed_candle_time": "2026-09-02T09:48:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -521,12 +521,6 @@
     "BTC": [
       {
         "direction": "short",
-        "entry_price": 76894.01,
-        "take_trade": false,
-        "time": "2026-09-02T09:21:26.573635+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 76713.75,
         "take_trade": false,
         "time": "2026-09-02T09:24:24.390607+00:00"
@@ -548,6 +542,12 @@
         "entry_price": 76612.41,
         "take_trade": false,
         "time": "2026-09-02T09:42:26.295230+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 76700.0,
+        "take_trade": false,
+        "time": "2026-09-02T09:51:22.726573+00:00"
       }
     ],
     "DOGE": [
@@ -7422,7 +7422,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "stop_hit",
       "time": "2026-09-02T08:44:34.153115+00:00",
       "reasoning": "Bearish BOS with high volume and negative momentum alignment.",
       "level_history": [
@@ -7460,7 +7460,9 @@
       "mfe_time": "2026-09-02 09:36:00",
       "mae_time": "2026-09-02 08:46:00",
       "mfe_giveback_pct": 51.9,
-      "revised_at": "2026-09-02T09:45:37.790990+00:00"
+      "revised_at": "2026-09-02T09:45:37.790990+00:00",
+      "resolved_pnl": -406.98,
+      "resolved_time": "2026-09-02 09:48:00"
     },
     {
       "coin": "HYPE",
@@ -7587,7 +7589,7 @@
       "mfe_r": 0.993,
       "mfe_time": "2026-09-02 09:37:00",
       "mae_time": "2026-09-02 08:46:00",
-      "mfe_giveback_pct": 36.4,
+      "mfe_giveback_pct": 51.3,
       "revised_at": "2026-09-02T09:36:25.447496+00:00"
     },
     {
@@ -7684,14 +7686,14 @@
           "target": 1.28
         }
       ],
-      "peak_price": 1.326,
+      "peak_price": 1.3285,
       "trough_price": 1.3223,
       "mfe_pnl_inr": 75.05,
-      "mae_pnl_inr": -71.1,
+      "mae_pnl_inr": -169.84,
       "mfe_r": 0.083,
       "mfe_time": "2026-09-02 09:46:00",
-      "mae_time": "2026-09-02 09:47:00",
-      "mfe_giveback_pct": 163.2
+      "mae_time": "2026-09-02 09:50:00",
+      "mfe_giveback_pct": 273.7
     },
     {
       "coin": "ZEC",
@@ -7787,14 +7789,14 @@
           "target": 775.0
         }
       ],
-      "peak_price": 809.68,
+      "peak_price": 810.0,
       "trough_price": 804.19,
       "mfe_pnl_inr": 165.68,
-      "mae_pnl_inr": -101.06,
+      "mae_pnl_inr": -116.61,
       "mfe_r": 0.158,
       "mfe_time": "2026-09-02 09:45:00",
-      "mae_time": "2026-09-02 09:43:00",
-      "mfe_giveback_pct": 106.7
+      "mae_time": "2026-09-02 09:49:00",
+      "mfe_giveback_pct": 156.9
     },
     {
       "coin": "SOL",
@@ -7891,37 +7893,17 @@
           "target": 95.0
         }
       ],
-      "peak_price": 98.57,
+      "peak_price": 98.81,
       "trough_price": 98.22,
       "mfe_pnl_inr": 138.17,
-      "mae_pnl_inr": -116.35,
+      "mae_pnl_inr": -290.88,
       "mfe_r": 0.154,
       "mfe_time": "2026-09-02 09:46:00",
-      "mae_time": "2026-09-02 09:47:00",
-      "mfe_giveback_pct": 142.1
+      "mae_time": "2026-09-02 09:49:00",
+      "mfe_giveback_pct": 284.2
     }
   ],
   "processed_candle_coins": {
-    "2026-09-02T09:24:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-02T09:27:00Z": [
       "ACE",
       "ADA",
@@ -8043,6 +8025,26 @@
       "ZEC"
     ],
     "2026-09-02T09:45:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-02T09:48:00Z": [
       "ACE",
       "ADA",
       "AVAX",
