@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-02T05:10:04.823108+00:00",
+  "last_sent_at": "2026-09-02T05:13:05.820722+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-02T05:06:00Z",
+  "last_processed_candle_time": "2026-09-02T05:09:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -552,12 +552,6 @@
     ],
     "DOGE": [
       {
-        "direction": "long",
-        "entry_price": 0.08171,
-        "take_trade": false,
-        "time": "2026-09-02T03:27:23.316009+00:00"
-      },
-      {
         "direction": "short",
         "entry_price": 0.08134,
         "take_trade": false,
@@ -580,6 +574,12 @@
         "entry_price": 0.08177,
         "take_trade": false,
         "time": "2026-09-02T04:57:22.559112+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.08169,
+        "take_trade": true,
+        "time": "2026-09-02T05:12:24.824414+00:00"
       }
     ]
   },
@@ -7439,29 +7439,113 @@
       "resolved_pnl": -800.36,
       "resolved_time": "2026-09-02T03:57:20.137688+00:00",
       "exit_reasoning": "Price has pushed against the short thesis, printing a bullish CHoCH on the 3m chart and invalidating the breakdown setup."
+    },
+    {
+      "coin": "DOGE",
+      "direction": "long",
+      "entry_price": 0.08169,
+      "stop_loss": 0.0813,
+      "target_price": 0.0825,
+      "trade_amount_inr": 143445.81,
+      "quantity": 17658.664929116774,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "RVOL",
+        "BOS",
+        "CONTINUATION"
+      ],
+      "risk_tags": [
+        "EXHAUSTION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.08169,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.1836,
+        "entry_vs_recent_swing_low_pct": 0.1959,
+        "entry_vs_recent_swing_high_atr": -1.261,
+        "entry_vs_recent_swing_low_atr": 1.345,
+        "entry_vs_latest_break_pct": -0.0979,
+        "entry_vs_latest_break_atr": -0.673,
+        "entry_range_position_pct": 82.14,
+        "entry_distance_to_range_high_pct": 0.1836,
+        "entry_distance_to_range_low_pct": 0.8447,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.1836,
+        "nearest_boundary_distance_atr": 1.261,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-02 04:48:00",
+        "break_distance_class": "moderately_away"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 7,
+          "break_freshness": "late",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": -0.098,
+          "extension_atr_from_break": -0.67,
+          "new_break_within_2_bars": false,
+          "failed_break_count_3m": 3,
+          "liquidity_sweep_count_3m": 4,
+          "high_rejection_sweeps_3m": 2,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": true,
+          "continuation_quality": "mixed_or_unclear"
+        },
+        "session": {
+          "utc_hour": 5,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 15.0,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-02T05:12:24.824414+00:00",
+      "reasoning": "DOGE shows strong volume and a bullish BOS continuation in a TREND_UP regime, supporting upside momentum.",
+      "level_history": [
+        {
+          "from": "2026-09-02T05:12:24.824414+00:00",
+          "stop": 0.0813,
+          "target": 0.0825
+        }
+      ],
+      "peak_price": 0.08169,
+      "trough_price": 0.08169,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-02T05:12:24.824414+00:00",
+      "mae_time": "2026-09-02T05:12:24.824414+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-02T04:45:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-02T04:48:00Z": [
       "ACE",
       "ADA",
@@ -7583,6 +7667,26 @@
       "ZEC"
     ],
     "2026-09-02T05:06:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-02T05:09:00Z": [
       "ACE",
       "ADA",
       "AVAX",
