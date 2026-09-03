@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-03T19:06:43.136465+00:00",
+  "last_sent_at": "2026-09-03T19:09:51.356667+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-03T19:03:00Z",
+  "last_processed_candle_time": "2026-09-03T19:06:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -265,12 +265,6 @@
     "SOL": [
       {
         "direction": "short",
-        "entry_price": 104.82,
-        "take_trade": false,
-        "time": "2026-09-03T18:18:59.296424+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 104.71,
         "take_trade": false,
         "time": "2026-09-03T18:21:59.130335+00:00"
@@ -292,6 +286,12 @@
         "entry_price": 105.42,
         "take_trade": false,
         "time": "2026-09-03T19:06:25.448523+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 105.22,
+        "take_trade": false,
+        "time": "2026-09-03T19:09:33.830898+00:00"
       }
     ],
     "AVAX": [
@@ -457,12 +457,6 @@
     "LTC": [
       {
         "direction": "long",
-        "entry_price": 51.34,
-        "take_trade": false,
-        "time": "2026-09-03T17:09:20.552997+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 51.3,
         "take_trade": false,
         "time": "2026-09-03T18:18:59.296424+00:00"
@@ -484,6 +478,12 @@
         "entry_price": 51.34,
         "take_trade": false,
         "time": "2026-09-03T18:54:30.606830+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 51.47,
+        "take_trade": false,
+        "time": "2026-09-03T19:09:33.830898+00:00"
       }
     ],
     "ZBT": [
@@ -9518,7 +9518,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-03T18:33:22.406718+00:00",
       "reasoning": "ZEC is in a clear TREND_UP regime with strong bullish momentum, rising EMA structure, and supportive ADX. Fresh continuation setup aligns well.",
       "level_history": [
@@ -9541,14 +9541,17 @@
       "mfe_r": 1.028,
       "mfe_time": "2026-09-03 19:05:00",
       "mae_time": "2026-09-03 18:43:00",
-      "mfe_giveback_pct": 62.5,
+      "mfe_giveback_pct": 97.0,
       "profit_health_score": 2,
       "profit_health_state": "weakening",
       "profit_health_reasons": [
         "rejection wick against position",
         "recent failed break"
       ],
-      "revised_at": "2026-09-03T19:06:25.448523+00:00"
+      "revised_at": "2026-09-03T19:06:25.448523+00:00",
+      "resolved_pnl": -68.1,
+      "resolved_time": "2026-09-03T19:09:33.830898+00:00",
+      "exit_reasoning": "Thesis invalidated as 3m lost EMA9, heavy rejection wicks formed near highs, and profit health turned severe."
     },
     {
       "coin": "BICO",
@@ -9646,14 +9649,14 @@
           "target": 0.0235
         }
       ],
-      "peak_price": 0.02243,
+      "peak_price": 0.02244,
       "trough_price": 0.02212,
-      "mfe_pnl_inr": 368.84,
+      "mfe_pnl_inr": 382.01,
       "mae_pnl_inr": -39.52,
-      "mfe_r": 0.41,
-      "mfe_time": "2026-09-03 19:05:00",
+      "mfe_r": 0.424,
+      "mfe_time": "2026-09-03 19:07:00",
       "mae_time": "2026-09-03 18:47:00",
-      "mfe_giveback_pct": 0.0
+      "mfe_giveback_pct": 31.0
     },
     {
       "coin": "ZBT",
@@ -9750,36 +9753,16 @@
         }
       ],
       "peak_price": 0.0846,
-      "trough_price": 0.0845,
+      "trough_price": 0.0843,
       "mfe_pnl_inr": 108.86,
-      "mae_pnl_inr": 0.0,
+      "mae_pnl_inr": -217.72,
       "mfe_r": 0.121,
       "mfe_time": "2026-09-03 19:05:00",
-      "mae_time": "2026-09-03T18:57:20.562197+00:00",
-      "mfe_giveback_pct": 100.0
+      "mae_time": "2026-09-03 19:07:00",
+      "mfe_giveback_pct": 200.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-03T18:42:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-03T18:45:00Z": [
       "ACE",
       "ADA",
@@ -9901,6 +9884,26 @@
       "ZEC"
     ],
     "2026-09-03T19:03:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-03T19:06:00Z": [
       "ACE",
       "ADA",
       "AVAX",
