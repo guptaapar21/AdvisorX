@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-03T16:01:31.277568+00:00",
+  "last_sent_at": "2026-09-03T16:03:41.128821+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-03T15:57:00Z",
+  "last_processed_candle_time": "2026-09-03T16:00:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -426,12 +426,6 @@
       {
         "direction": "long",
         "entry_price": 0.329,
-        "take_trade": true,
-        "time": "2026-09-03T13:51:29.663732+00:00"
-      },
-      {
-        "direction": "long",
-        "entry_price": 0.329,
         "take_trade": false,
         "time": "2026-09-03T14:30:54.917505+00:00"
       },
@@ -452,6 +446,12 @@
         "entry_price": 0.3299,
         "take_trade": false,
         "time": "2026-09-03T15:24:24.468015+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.332,
+        "take_trade": true,
+        "time": "2026-09-03T16:03:22.398566+00:00"
       }
     ],
     "LTC": [
@@ -8340,7 +8340,7 @@
       "mfe_r": 0.958,
       "mfe_time": "2026-09-03 15:58:00",
       "mae_time": "2026-09-03 15:57:00",
-      "mfe_giveback_pct": 90.9
+      "mfe_giveback_pct": 114.4
     },
     {
       "coin": "BTC",
@@ -8438,36 +8438,120 @@
         }
       ],
       "peak_price": 81370.33,
-      "trough_price": 81239.4,
+      "trough_price": 81074.73,
       "mfe_pnl_inr": 178.2,
-      "mae_pnl_inr": 0.0,
+      "mae_pnl_inr": -224.12,
       "mfe_r": 0.198,
       "mfe_time": "2026-09-03 15:59:00",
-      "mae_time": "2026-09-03T15:57:19.978967+00:00",
-      "mfe_giveback_pct": 70.6
+      "mae_time": "2026-09-03 16:02:00",
+      "mfe_giveback_pct": 220.5
+    },
+    {
+      "coin": "TRX",
+      "direction": "long",
+      "entry_price": 0.332,
+      "stop_loss": 0.33,
+      "target_price": 0.336,
+      "trade_amount_inr": 119615.69,
+      "quantity": 3623.172069433501,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "RVOL",
+        "BOS",
+        "CONTINUATION"
+      ],
+      "risk_tags": [
+        "EXHAUSTION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.332,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": 0.0301,
+        "entry_vs_recent_swing_low_pct": 0.2711,
+        "entry_vs_recent_swing_high_atr": 0.326,
+        "entry_vs_recent_swing_low_atr": 2.933,
+        "entry_vs_latest_break_pct": 0.0301,
+        "entry_vs_latest_break_atr": 0.326,
+        "entry_range_position_pct": 100.0,
+        "entry_distance_to_range_high_pct": 0.0,
+        "entry_distance_to_range_low_pct": 1.1747,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.0,
+        "nearest_boundary_distance_atr": 0.0,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-03 16:00:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 0,
+          "break_freshness": "fresh",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.03,
+          "extension_atr_from_break": 0.33,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 1,
+          "liquidity_sweep_count_3m": 3,
+          "high_rejection_sweeps_3m": 1,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 2,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 16,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 1,
+        "recent_long_take_count_180m": 1,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 39.0,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": 107.7,
+        "last_closed_trade_direction": "long",
+        "last_closed_trade_pnl_inr": -313.09,
+        "last_closed_trade_r": -0.348,
+        "same_direction_recent_close": true,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-03T16:03:22.398566+00:00",
+      "reasoning": "TRX exhibits strong trend continuity in a TREND_UP regime with a recent BOS at 0.3319 and high RVOL.",
+      "level_history": [
+        {
+          "from": "2026-09-03T16:03:22.398566+00:00",
+          "stop": 0.33,
+          "target": 0.336
+        }
+      ],
+      "peak_price": 0.332,
+      "trough_price": 0.332,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-03T16:03:22.398566+00:00",
+      "mae_time": "2026-09-03T16:03:22.398566+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-03T15:36:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-03T15:39:00Z": [
       "ACE",
       "ADA",
@@ -8589,6 +8673,26 @@
       "ZEC"
     ],
     "2026-09-03T15:57:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-03T16:00:00Z": [
       "ACE",
       "ADA",
       "AVAX",
