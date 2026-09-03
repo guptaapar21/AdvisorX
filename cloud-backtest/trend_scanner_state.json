@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-03T15:24:44.137490+00:00",
+  "last_sent_at": "2026-09-03T15:28:13.693885+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-03T15:21:00Z",
+  "last_processed_candle_time": "2026-09-03T15:24:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -41,12 +41,6 @@
     "ADA": [
       {
         "direction": "long",
-        "entry_price": 0.2091,
-        "take_trade": false,
-        "time": "2026-09-03T13:21:24.652062+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 0.2103,
         "take_trade": true,
         "time": "2026-09-03T13:45:41.543526+00:00"
@@ -68,6 +62,12 @@
         "entry_price": 0.2176,
         "take_trade": false,
         "time": "2026-09-03T15:24:24.468015+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.2171,
+        "take_trade": false,
+        "time": "2026-09-03T15:27:23.853284+00:00"
       }
     ],
     "PAXG": [
@@ -521,12 +521,6 @@
     "BTC": [
       {
         "direction": "long",
-        "entry_price": 80285.13,
-        "take_trade": false,
-        "time": "2026-09-03T14:58:03.861290+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 80549.97,
         "take_trade": false,
         "time": "2026-09-03T15:01:16.626363+00:00"
@@ -548,6 +542,12 @@
         "entry_price": 80769.95,
         "take_trade": false,
         "time": "2026-09-03T15:24:24.468015+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 80682.0,
+        "take_trade": false,
+        "time": "2026-09-03T15:27:23.853284+00:00"
       }
     ],
     "DOGE": [
@@ -7981,7 +7981,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-03T14:42:24.027215+00:00",
       "reasoning": "BNB shows strong continuation following a BOS at 715.57 with solid volume support in a TREND_UP regime.",
       "level_history": [
@@ -8003,8 +8003,11 @@
       "mfe_r": 0.859,
       "mfe_time": "2026-09-03 15:02:00",
       "mae_time": "2026-09-03 15:20:00",
-      "mfe_giveback_pct": 71.9,
-      "revised_at": "2026-09-03T15:18:30.732846+00:00"
+      "mfe_giveback_pct": 88.9,
+      "revised_at": "2026-09-03T15:18:30.732846+00:00",
+      "resolved_pnl": -63.39,
+      "resolved_time": "2026-09-03T15:27:23.853284+00:00",
+      "exit_reasoning": "BNB has lost its short-term EMA9 and momentum has faded significantly after failing near 724, invalidating the immediate continuation thesis."
     },
     {
       "coin": "SOL",
@@ -8331,7 +8334,7 @@
       "mfe_r": 0.425,
       "mfe_time": "2026-09-03 15:20:00",
       "mae_time": "2026-09-03 15:12:00",
-      "mfe_giveback_pct": 46.4
+      "mfe_giveback_pct": 30.6
     },
     {
       "coin": "ZEC",
@@ -8418,7 +8421,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "target_hit",
       "time": "2026-09-03T15:21:21.813047+00:00",
       "reasoning": "ZEC displays strong bullish continuation following a BOS at 876.94 with robust ADX of 45.47 and supportive DI spread.",
       "level_history": [
@@ -8441,30 +8444,12 @@
       "profit_health_reasons": [
         "rejection wick against position",
         "recent failed break"
-      ]
+      ],
+      "resolved_pnl": 1511.0,
+      "resolved_time": "2026-09-03 15:24:00"
     }
   ],
   "processed_candle_coins": {
-    "2026-09-03T15:00:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-03T15:03:00Z": [
       "ACE",
       "ADA",
@@ -8604,10 +8589,30 @@
       "XRP",
       "ZBT",
       "ZEC"
+    ],
+    "2026-09-03T15:24:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
     ]
   },
   "telegram_last_delivery_ok": true,
   "telegram_last_delivery_error": null,
   "telegram_last_delivery_at": "2026-08-22T13:24:41.690271+00:00",
-  "last_telegram_chunk_count": 2
+  "last_telegram_chunk_count": 1
 }
