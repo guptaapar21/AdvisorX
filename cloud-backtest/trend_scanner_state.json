@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-03T13:48:51.824757+00:00",
+  "last_sent_at": "2026-09-03T13:51:58.178658+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-03T13:45:00Z",
+  "last_processed_candle_time": "2026-09-03T13:48:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -425,12 +425,6 @@
     "TRX": [
       {
         "direction": "long",
-        "entry_price": 0.3275,
-        "take_trade": false,
-        "time": "2026-09-03T10:24:23.893792+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 0.328,
         "take_trade": false,
         "time": "2026-09-03T10:57:22.781265+00:00"
@@ -452,6 +446,12 @@
         "entry_price": 0.3279,
         "take_trade": false,
         "time": "2026-09-03T11:54:29.293956+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.329,
+        "take_trade": true,
+        "time": "2026-09-03T13:51:29.663732+00:00"
       }
     ],
     "LTC": [
@@ -6809,7 +6809,7 @@
       "mfe_r": 0.882,
       "mfe_time": "2026-09-03 13:44:00",
       "mae_time": "2026-09-03 12:44:00",
-      "mfe_giveback_pct": 46.4
+      "mfe_giveback_pct": 34.8
     },
     {
       "coin": "XRP",
@@ -7162,7 +7162,7 @@
       "mfe_r": 0.461,
       "mfe_time": "2026-09-03 13:42:00",
       "mae_time": "2026-09-03 13:37:00",
-      "mfe_giveback_pct": 65.9
+      "mfe_giveback_pct": 39.6
     },
     {
       "coin": "ZEC",
@@ -7266,7 +7266,7 @@
       "mfe_r": 0.733,
       "mfe_time": "2026-09-03 13:43:00",
       "mae_time": "2026-09-03 13:36:00",
-      "mfe_giveback_pct": 55.0
+      "mfe_giveback_pct": 25.2
     },
     {
       "coin": "ADA",
@@ -7362,37 +7362,121 @@
           "target": 0.216
         }
       ],
-      "peak_price": 0.2104,
-      "trough_price": 0.21,
-      "mfe_pnl_inr": 28.89,
-      "mae_pnl_inr": -86.66,
-      "mfe_r": 0.032,
-      "mfe_time": "2026-09-03 13:46:00",
-      "mae_time": "2026-09-03 13:47:00",
-      "mfe_giveback_pct": 400.0
+      "peak_price": 0.2106,
+      "trough_price": 0.2099,
+      "mfe_pnl_inr": 86.66,
+      "mae_pnl_inr": -115.55,
+      "mfe_r": 0.096,
+      "mfe_time": "2026-09-03 13:50:00",
+      "mae_time": "2026-09-03 13:48:00",
+      "mfe_giveback_pct": 0.0
+    },
+    {
+      "coin": "TRX",
+      "direction": "long",
+      "entry_price": 0.329,
+      "stop_loss": 0.3275,
+      "target_price": 0.333,
+      "trade_amount_inr": 148532.73,
+      "quantity": 4540.09723072229,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "BOS",
+        "CONTINUATION",
+        "EMA_STRUCTURE"
+      ],
+      "risk_tags": [
+        "EXHAUSTION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.329,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": 0.152,
+        "entry_vs_recent_swing_low_pct": 0.2736,
+        "entry_vs_recent_swing_high_atr": 2.468,
+        "entry_vs_recent_swing_low_atr": 4.442,
+        "entry_vs_latest_break_pct": 0.152,
+        "entry_vs_latest_break_atr": 2.468,
+        "entry_range_position_pct": 100.0,
+        "entry_distance_to_range_high_pct": 0.0,
+        "entry_distance_to_range_low_pct": 0.3951,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.0,
+        "nearest_boundary_distance_atr": 0.0,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-03 13:39:00",
+        "break_distance_class": "extended_over_2_atr"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 3,
+          "break_freshness": "mature",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.152,
+          "extension_atr_from_break": 2.47,
+          "new_break_within_2_bars": false,
+          "failed_break_count_3m": 3,
+          "liquidity_sweep_count_3m": 1,
+          "high_rejection_sweeps_3m": 0,
+          "low_reclaim_sweeps_3m": 1,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": true,
+          "late_continuation": false,
+          "continuation_quality": "mature_continuation"
+        },
+        "session": {
+          "utc_hour": 13,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 117.0,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-03T13:51:29.663732+00:00",
+      "reasoning": "TRX shows clean continuation in TREND_UP regime with a fresh 3m BOS at 0.3285 and strong volume support.",
+      "level_history": [
+        {
+          "from": "2026-09-03T13:51:29.663732+00:00",
+          "stop": 0.3275,
+          "target": 0.333
+        }
+      ],
+      "peak_price": 0.329,
+      "trough_price": 0.329,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-03T13:51:29.663732+00:00",
+      "mae_time": "2026-09-03T13:51:29.663732+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-03T13:24:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-03T13:27:00Z": [
       "ACE",
       "ADA",
@@ -7514,6 +7598,26 @@
       "ZEC"
     ],
     "2026-09-03T13:45:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-03T13:48:00Z": [
       "ACE",
       "ADA",
       "AVAX",
