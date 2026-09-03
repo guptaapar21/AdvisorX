@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-03T18:01:36.338896+00:00",
+  "last_sent_at": "2026-09-03T18:04:20.148112+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-03T17:57:00Z",
+  "last_processed_candle_time": "2026-09-03T18:00:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -233,12 +233,6 @@
     "ETH": [
       {
         "direction": "long",
-        "entry_price": 2494.93,
-        "take_trade": false,
-        "time": "2026-09-03T17:09:20.552997+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 2499.42,
         "take_trade": false,
         "time": "2026-09-03T17:15:08.459499+00:00"
@@ -260,6 +254,12 @@
         "entry_price": 2502.02,
         "take_trade": true,
         "time": "2026-09-03T17:45:44.980948+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 2502.36,
+        "take_trade": true,
+        "time": "2026-09-03T18:03:36.141007+00:00"
       }
     ],
     "SOL": [
@@ -8430,7 +8430,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-03T16:06:41.109122+00:00",
       "reasoning": "AVAX displays a bullish BOS at 7.498 within an established TREND_UP regime, supported by positive momentum and solid volume.",
       "level_history": [
@@ -8462,8 +8462,11 @@
       "mfe_r": 0.781,
       "mfe_time": "2026-09-03 16:34:00",
       "mae_time": "2026-09-03 16:07:00",
-      "mfe_giveback_pct": 53.8,
-      "revised_at": "2026-09-03T17:45:44.980948+00:00"
+      "mfe_giveback_pct": 47.7,
+      "revised_at": "2026-09-03T17:45:44.980948+00:00",
+      "resolved_pnl": 246.32,
+      "resolved_time": "2026-09-03T18:03:36.141007+00:00",
+      "exit_reasoning": "Exiting due to severe profit health deterioration and loss of short-term momentum."
     },
     {
       "coin": "XRP",
@@ -8675,7 +8678,7 @@
       "mfe_r": 0.653,
       "mfe_time": "2026-09-03 16:55:00",
       "mae_time": "2026-09-03 17:28:00",
-      "mfe_giveback_pct": 61.8
+      "mfe_giveback_pct": 68.4
     },
     {
       "coin": "ADA",
@@ -8886,7 +8889,7 @@
       "mfe_r": 0.521,
       "mfe_time": "2026-09-03 17:11:00",
       "mae_time": "2026-09-03 17:02:00",
-      "mfe_giveback_pct": 93.8
+      "mfe_giveback_pct": 81.3
     },
     {
       "coin": "BTC",
@@ -8992,7 +8995,7 @@
       "mfe_r": 0.439,
       "mfe_time": "2026-09-03 17:48:00",
       "mae_time": "2026-09-03 17:24:00",
-      "mfe_giveback_pct": 70.0
+      "mfe_giveback_pct": 29.2
     },
     {
       "coin": "SOL",
@@ -9096,7 +9099,7 @@
       "mfe_r": 0.38,
       "mfe_time": "2026-09-03 17:49:00",
       "mae_time": "2026-09-03 17:19:00",
-      "mfe_giveback_pct": 64.1
+      "mfe_giveback_pct": 61.5
     },
     {
       "coin": "BICO",
@@ -9307,7 +9310,7 @@
       "mfe_r": 0.197,
       "mfe_time": "2026-09-03 17:46:00",
       "mae_time": "2026-09-03 17:54:00",
-      "mfe_giveback_pct": 125.7
+      "mfe_giveback_pct": 90.3
     },
     {
       "coin": "ADA",
@@ -9404,37 +9407,17 @@
           "target": 0.228
         }
       ],
-      "peak_price": 0.2231,
+      "peak_price": 0.2232,
       "trough_price": 0.2226,
-      "mfe_pnl_inr": 65.83,
+      "mfe_pnl_inr": 98.74,
       "mae_pnl_inr": -98.74,
-      "mfe_r": 0.073,
-      "mfe_time": "2026-09-03 17:55:00",
+      "mfe_r": 0.11,
+      "mfe_time": "2026-09-03 18:02:00",
       "mae_time": "2026-09-03 17:56:00",
-      "mfe_giveback_pct": 100.0
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-03T17:36:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-03T17:39:00Z": [
       "ACE",
       "ADA",
@@ -9556,6 +9539,26 @@
       "ZEC"
     ],
     "2026-09-03T17:57:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-03T18:00:00Z": [
       "ACE",
       "ADA",
       "AVAX",
