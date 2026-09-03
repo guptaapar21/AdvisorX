@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-03T20:58:00.456946+00:00",
+  "last_sent_at": "2026-09-03T21:02:00.804592+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-03T20:54:00Z",
+  "last_processed_candle_time": "2026-09-03T20:57:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -233,12 +233,6 @@
     "ETH": [
       {
         "direction": "long",
-        "entry_price": 2508.89,
-        "take_trade": true,
-        "time": "2026-09-03T19:12:25.485050+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 2514.12,
         "take_trade": false,
         "time": "2026-09-03T20:18:23.015106+00:00"
@@ -260,6 +254,12 @@
         "entry_price": 2503.94,
         "take_trade": false,
         "time": "2026-09-03T20:45:34.234323+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 2505.13,
+        "take_trade": false,
+        "time": "2026-09-03T21:01:04.465981+00:00"
       }
     ],
     "SOL": [
@@ -521,12 +521,6 @@
     "BTC": [
       {
         "direction": "long",
-        "entry_price": 81542.37,
-        "take_trade": false,
-        "time": "2026-09-03T19:51:25.619267+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 81540.91,
         "take_trade": false,
         "time": "2026-09-03T20:18:23.015106+00:00"
@@ -548,6 +542,12 @@
         "entry_price": 81576.02,
         "take_trade": false,
         "time": "2026-09-03T20:51:22.989898+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 81473.0,
+        "take_trade": false,
+        "time": "2026-09-03T21:01:04.465981+00:00"
       }
     ],
     "DOGE": [
@@ -10090,7 +10090,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-03T20:24:28.907494+00:00",
       "reasoning": "Fresh 3m bullish BOS continuation above 1.472 with aligned 1h/15m upward structure and strong EMA slope.",
       "level_history": [
@@ -10107,7 +10107,10 @@
       "mfe_r": 0.86,
       "mfe_time": "2026-09-03 20:29:00",
       "mae_time": "2026-09-03 20:37:00",
-      "mfe_giveback_pct": 94.3
+      "mfe_giveback_pct": 109.5,
+      "resolved_pnl": -236.58,
+      "resolved_time": "2026-09-03T21:01:04.465981+00:00",
+      "exit_reasoning": "Price failed to hold breakout structure, losing key short-term moving averages and invalidating the continuation thesis."
     },
     {
       "coin": "LINK",
@@ -10204,13 +10207,13 @@
         }
       ],
       "peak_price": 11.904,
-      "trough_price": 11.863,
+      "trough_price": 11.858,
       "mfe_pnl_inr": 282.12,
-      "mae_pnl_inr": 0.0,
+      "mae_pnl_inr": -34.41,
       "mfe_r": 0.313,
       "mfe_time": "2026-09-03 20:48:00",
-      "mae_time": "2026-09-03T20:45:34.234323+00:00",
-      "mfe_giveback_pct": 51.2
+      "mae_time": "2026-09-03 21:00:00",
+      "mfe_giveback_pct": 75.6
     },
     {
       "coin": "ADA",
@@ -10309,37 +10312,17 @@
           "target": 0.232
         }
       ],
-      "peak_price": 0.224,
-      "trough_price": 0.224,
-      "mfe_pnl_inr": 0.0,
-      "mae_pnl_inr": 0.0,
-      "mfe_r": 0.0,
-      "mfe_time": "2026-09-03T20:57:35.934589+00:00",
-      "mae_time": "2026-09-03T20:57:35.934589+00:00",
-      "mfe_giveback_pct": 0.0
+      "peak_price": 0.2244,
+      "trough_price": 0.2237,
+      "mfe_pnl_inr": 107.91,
+      "mae_pnl_inr": -80.94,
+      "mfe_r": 0.12,
+      "mfe_time": "2026-09-03 20:59:00",
+      "mae_time": "2026-09-03 20:58:00",
+      "mfe_giveback_pct": 25.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-03T20:33:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-03T20:36:00Z": [
       "ACE",
       "ADA",
@@ -10461,6 +10444,26 @@
       "ZEC"
     ],
     "2026-09-03T20:54:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-03T20:57:00Z": [
       "ACE",
       "ADA",
       "AVAX",
