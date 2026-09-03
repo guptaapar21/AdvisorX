@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-03T07:31:12.064465+00:00",
+  "last_sent_at": "2026-09-03T07:33:43.001851+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-03T07:27:00Z",
+  "last_processed_candle_time": "2026-09-03T07:30:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -6073,7 +6073,7 @@
       "coin": "LTC",
       "direction": "long",
       "entry_price": 50.3,
-      "stop_loss": 50.35,
+      "stop_loss": 50.36886249777395,
       "target_price": 50.8,
       "trade_amount_inr": 136957.71,
       "quantity": 27.381508529814944,
@@ -6167,6 +6167,12 @@
           "from": "2026-09-03T07:24:36.556387+00:00",
           "stop": 50.35,
           "target": 50.8
+        },
+        {
+          "from": "2026-09-03T07:33:25.137143+00:00",
+          "stop": 50.36886249777395,
+          "target": 50.8,
+          "source": "python_profit_protection"
         }
       ],
       "peak_price": 50.58,
@@ -6176,14 +6182,15 @@
       "mfe_r": 1.017,
       "mfe_time": "2026-09-03 07:18:00",
       "mae_time": "2026-09-03 06:40:00",
-      "mfe_giveback_pct": 32.1,
-      "profit_health_score": 2,
-      "profit_health_state": "weakening",
+      "mfe_giveback_pct": 42.9,
+      "profit_health_score": 3,
+      "profit_health_state": "severe",
       "profit_health_reasons": [
-        "rejection wick against position",
+        "3m lost EMA9",
+        "ADX slope weakening",
         "recent failed break"
       ],
-      "revised_at": "2026-09-03T07:24:36.556387+00:00"
+      "revised_at": "2026-09-03T07:33:25.137143+00:00"
     },
     {
       "coin": "SOL",
@@ -6383,7 +6390,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "stop_hit",
       "time": "2026-09-03T07:03:10.349423+00:00",
       "reasoning": "Fresh bullish BOS in a TREND_UP regime with positive momentum and supportive ADX.",
       "level_history": [
@@ -6404,14 +6411,16 @@
         }
       ],
       "peak_price": 78183.91,
-      "trough_price": 77867.78,
+      "trough_price": 77862.05,
       "mfe_pnl_inr": 828.6,
-      "mae_pnl_inr": -11.18,
+      "mae_pnl_inr": -26.41,
       "mfe_r": 0.921,
       "mfe_time": "2026-09-03 07:05:00",
-      "mae_time": "2026-09-03 07:04:00",
+      "mae_time": "2026-09-03 07:32:00",
       "mfe_giveback_pct": 73.7,
-      "revised_at": "2026-09-03T07:28:08.821218+00:00"
+      "revised_at": "2026-09-03T07:28:08.821218+00:00",
+      "resolved_pnl": -411.27,
+      "resolved_time": "2026-09-03 07:30:00"
     },
     {
       "coin": "ETH",
@@ -6522,26 +6531,6 @@
     }
   ],
   "processed_candle_coins": {
-    "2026-09-03T07:06:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-03T07:09:00Z": [
       "ACE",
       "ADA",
@@ -6663,6 +6652,26 @@
       "ZEC"
     ],
     "2026-09-03T07:27:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-03T07:30:00Z": [
       "ACE",
       "ADA",
       "AVAX",
