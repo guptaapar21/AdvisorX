@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-04T03:04:45.876154+00:00",
+  "last_sent_at": "2026-09-04T03:07:52.235000+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-04T03:00:00Z",
+  "last_processed_candle_time": "2026-09-04T03:03:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -329,12 +329,6 @@
     "ZEC": [
       {
         "direction": "short",
-        "entry_price": 941.08,
-        "take_trade": false,
-        "time": "2026-09-04T00:51:24.676378+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 941.41,
         "take_trade": false,
         "time": "2026-09-04T00:54:23.209264+00:00"
@@ -356,6 +350,12 @@
         "entry_price": 939.9,
         "take_trade": false,
         "time": "2026-09-04T02:15:37.601601+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 949.5,
+        "take_trade": false,
+        "time": "2026-09-04T03:06:21.842021+00:00"
       }
     ],
     "BNB": [
@@ -10529,7 +10529,7 @@
       "coin": "ADA",
       "direction": "long",
       "entry_price": 0.2231,
-      "stop_loss": 0.2222,
+      "stop_loss": 0.22365866248205402,
       "target_price": 0.2265,
       "trade_amount_inr": 89853.0,
       "quantity": 4050.1572190029547,
@@ -10623,6 +10623,12 @@
           "from": "2026-09-04T02:45:36.503465+00:00",
           "stop": 0.2222,
           "target": 0.2265
+        },
+        {
+          "from": "2026-09-04T03:06:21.842021+00:00",
+          "stop": 0.22365866248205402,
+          "target": 0.2265,
+          "source": "python_profit_protection"
         }
       ],
       "peak_price": 0.226,
@@ -10632,11 +10638,12 @@
       "mfe_r": 1.298,
       "mfe_time": "2026-09-04 02:59:00",
       "mae_time": "2026-09-04T02:36:24.652421+00:00",
-      "mfe_giveback_pct": 24.1,
-      "revised_at": "2026-09-04T02:45:36.503465+00:00",
-      "profit_health_score": 1,
-      "profit_health_state": "healthy",
+      "mfe_giveback_pct": 48.3,
+      "revised_at": "2026-09-04T03:06:21.842021+00:00",
+      "profit_health_score": 2,
+      "profit_health_state": "weakening",
       "profit_health_reasons": [
+        "3m lost EMA9",
         "recent failed break"
       ]
     },
@@ -10724,7 +10731,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-04T02:45:36.503465+00:00",
       "reasoning": "HEI shows strong bullish momentum and a 3m BOS at 0.1472 within an expanding trend phase.",
       "level_history": [
@@ -10735,36 +10742,19 @@
         }
       ],
       "peak_price": 0.1478,
-      "trough_price": 0.147,
+      "trough_price": 0.1467,
       "mfe_pnl_inr": 0.0,
-      "mae_pnl_inr": -473.16,
+      "mae_pnl_inr": -650.59,
       "mfe_r": 0.0,
       "mfe_time": "2026-09-04T02:45:36.503465+00:00",
-      "mae_time": "2026-09-04 03:01:00",
-      "mfe_giveback_pct": 0.0
+      "mae_time": "2026-09-04 03:03:00",
+      "mfe_giveback_pct": 0.0,
+      "resolved_pnl": -722.57,
+      "resolved_time": "2026-09-04T03:06:21.842021+00:00",
+      "exit_reasoning": "Thesis invalidated as price dropped back below the breakout level, lost EMA9 support, and exhibits severe profit health degradation."
     }
   ],
   "processed_candle_coins": {
-    "2026-09-04T02:39:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-04T02:42:00Z": [
       "ACE",
       "ADA",
@@ -10886,6 +10876,26 @@
       "ZEC"
     ],
     "2026-09-04T03:00:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-04T03:03:00Z": [
       "ACE",
       "ADA",
       "AVAX",
