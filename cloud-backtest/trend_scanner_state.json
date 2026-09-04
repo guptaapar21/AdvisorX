@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-04T23:09:43.371114+00:00",
+  "last_sent_at": "2026-09-04T23:12:44.643829+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-04T23:06:00Z",
+  "last_processed_candle_time": "2026-09-04T23:09:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -329,12 +329,6 @@
     "ZEC": [
       {
         "direction": "long",
-        "entry_price": 1036.32,
-        "take_trade": false,
-        "time": "2026-09-04T20:15:39.440066+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 1036.96,
         "take_trade": false,
         "time": "2026-09-04T20:21:19.431310+00:00"
@@ -356,6 +350,12 @@
         "entry_price": 1026.0,
         "take_trade": false,
         "time": "2026-09-04T23:06:24.398051+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 1030.46,
+        "take_trade": true,
+        "time": "2026-09-04T23:12:29.192586+00:00"
       }
     ],
     "BNB": [
@@ -7085,29 +7085,113 @@
       "revised_at": "2026-09-04T22:57:23.197417+00:00",
       "resolved_pnl": -141.15,
       "resolved_time": "2026-09-04 23:06:00"
+    },
+    {
+      "coin": "ZEC",
+      "direction": "long",
+      "entry_price": 1030.46,
+      "stop_loss": 1022.0,
+      "target_price": 1050.0,
+      "trade_amount_inr": 92688.66,
+      "quantity": 0.9045536918937983,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "BOS",
+        "CONTINUATION",
+        "EMA_STRUCTURE"
+      ],
+      "risk_tags": [
+        "RVOL"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 1030.46,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": 0.2513,
+        "entry_vs_recent_swing_low_pct": 0.8336,
+        "entry_vs_recent_swing_high_atr": 0.765,
+        "entry_vs_recent_swing_low_atr": 2.536,
+        "entry_vs_latest_break_pct": 0.2513,
+        "entry_vs_latest_break_atr": 0.765,
+        "entry_range_position_pct": 93.9,
+        "entry_distance_to_range_high_pct": 0.1165,
+        "entry_distance_to_range_low_pct": 1.7914,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.1165,
+        "nearest_boundary_distance_atr": 0.354,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-04 23:06:00",
+        "break_distance_class": "moderately_away"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 1,
+          "break_freshness": "fresh",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.252,
+          "extension_atr_from_break": 0.76,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 3,
+          "liquidity_sweep_count_3m": 3,
+          "high_rejection_sweeps_3m": 1,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 23,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 6.1,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": 141.1,
+        "last_closed_trade_direction": "long",
+        "last_closed_trade_pnl_inr": -576.23,
+        "last_closed_trade_r": -0.64,
+        "same_direction_recent_close": true,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-04T23:12:29.192586+00:00",
+      "reasoning": "ZEC shows a clean bullish BOS at 1027.87 with strong upward momentum and supportive EMA structure in a TREND_UP regime.",
+      "level_history": [
+        {
+          "from": "2026-09-04T23:12:29.192586+00:00",
+          "stop": 1022.0,
+          "target": 1050.0
+        }
+      ],
+      "peak_price": 1030.46,
+      "trough_price": 1030.46,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-04T23:12:29.192586+00:00",
+      "mae_time": "2026-09-04T23:12:29.192586+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-04T22:45:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-04T22:48:00Z": [
       "ACE",
       "ADA",
@@ -7229,6 +7313,26 @@
       "ZEC"
     ],
     "2026-09-04T23:06:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-04T23:09:00Z": [
       "ACE",
       "ADA",
       "AVAX",
