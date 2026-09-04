@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-04T06:24:42.623427+00:00",
+  "last_sent_at": "2026-09-04T06:27:49.844877+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-04T06:21:00Z",
+  "last_processed_candle_time": "2026-09-04T06:24:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -169,12 +169,6 @@
     "LINK": [
       {
         "direction": "long",
-        "entry_price": 11.92,
-        "take_trade": false,
-        "time": "2026-09-04T04:59:21.510609+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 11.95,
         "take_trade": true,
         "time": "2026-09-04T05:09:16.477970+00:00"
@@ -196,6 +190,12 @@
         "entry_price": 11.864,
         "take_trade": false,
         "time": "2026-09-04T06:21:21.532345+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 11.835,
+        "take_trade": false,
+        "time": "2026-09-04T06:27:27.465413+00:00"
       }
     ],
     "ACE": [
@@ -491,12 +491,6 @@
         "direction": "short",
         "entry_price": 0.0831,
         "take_trade": false,
-        "time": "2026-09-04T04:42:23.227326+00:00"
-      },
-      {
-        "direction": "short",
-        "entry_price": 0.0831,
-        "take_trade": false,
         "time": "2026-09-04T04:59:21.510609+00:00"
       },
       {
@@ -516,6 +510,12 @@
         "entry_price": 0.0827,
         "take_trade": false,
         "time": "2026-09-04T06:21:21.532345+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 0.0827,
+        "take_trade": true,
+        "time": "2026-09-04T06:27:27.465413+00:00"
       }
     ],
     "BTC": [
@@ -10616,29 +10616,113 @@
       "resolved_pnl": -221.37,
       "resolved_time": "2026-09-04T05:21:48.402017+00:00",
       "exit_reasoning": "Price failed to hold above breakout levels, lost short-term EMA support, and exhibited severe profit health deterioration near range resistance."
+    },
+    {
+      "coin": "ZBT",
+      "direction": "short",
+      "entry_price": 0.0827,
+      "stop_loss": 0.0835,
+      "target_price": 0.081,
+      "trade_amount_inr": 80547.59,
+      "quantity": 9794.58235966106,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "RVOL",
+        "BOS",
+        "CONTINUATION",
+        "ADX_DI"
+      ],
+      "risk_tags": [
+        "RANGE_LOCATION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.0827,
+        "direction": "short",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.3628,
+        "entry_vs_recent_swing_low_pct": 0.1209,
+        "entry_vs_recent_swing_high_atr": -2.99,
+        "entry_vs_recent_swing_low_atr": 0.997,
+        "entry_vs_latest_break_pct": -0.1209,
+        "entry_vs_latest_break_atr": -0.997,
+        "entry_range_position_pct": 9.09,
+        "entry_distance_to_range_high_pct": 1.2092,
+        "entry_distance_to_range_low_pct": 0.1209,
+        "nearest_boundary": "low",
+        "nearest_boundary_distance_pct": 0.1209,
+        "nearest_boundary_distance_atr": 0.997,
+        "entry_location_class": "near_range_low",
+        "latest_break_direction": "bearish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-04 06:18:00",
+        "break_distance_class": "moderately_away"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 2,
+          "break_freshness": "fresh",
+          "break_direction": "bearish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.121,
+          "extension_atr_from_break": 1.0,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 2,
+          "liquidity_sweep_count_3m": 1,
+          "high_rejection_sweeps_3m": 0,
+          "low_reclaim_sweeps_3m": 1,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": true,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 6,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 6.1,
+        "last_signal_direction": "short",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-04T06:27:27.465413+00:00",
+      "reasoning": "ZBT shows a clear TREND_DOWN regime with strong relative volume, bearish BOS continuation, and dominant minus DI indicating downside momentum.",
+      "level_history": [
+        {
+          "from": "2026-09-04T06:27:27.465413+00:00",
+          "stop": 0.0835,
+          "target": 0.081
+        }
+      ],
+      "peak_price": 0.0827,
+      "trough_price": 0.0827,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-04T06:27:27.465413+00:00",
+      "mae_time": "2026-09-04T06:27:27.465413+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-04T06:00:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-04T06:03:00Z": [
       "ACE",
       "ADA",
@@ -10760,6 +10844,26 @@
       "ZEC"
     ],
     "2026-09-04T06:21:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-04T06:24:00Z": [
       "ACE",
       "ADA",
       "AVAX",
