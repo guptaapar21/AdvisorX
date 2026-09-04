@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-04T02:34:21.930129+00:00",
+  "last_sent_at": "2026-09-04T02:36:48.478936+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-04T02:30:00Z",
+  "last_processed_candle_time": "2026-09-04T02:33:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -43,12 +43,6 @@
         "direction": "long",
         "entry_price": 0.2227,
         "take_trade": false,
-        "time": "2026-09-04T02:21:17.648824+00:00"
-      },
-      {
-        "direction": "long",
-        "entry_price": 0.2227,
-        "take_trade": false,
         "time": "2026-09-04T02:24:22.892857+00:00"
       },
       {
@@ -68,6 +62,12 @@
         "entry_price": 0.2234,
         "take_trade": false,
         "time": "2026-09-04T02:33:21.713388+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.2231,
+        "take_trade": true,
+        "time": "2026-09-04T02:36:24.652421+00:00"
       }
     ],
     "PAXG": [
@@ -10503,7 +10503,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-04T02:33:21.713388+00:00",
       "reasoning": "HYPE exhibits strong bullish momentum in a TREND_UP regime, confirmed by a fresh 3m BOS above 87.36 and aligned EMA structure.",
       "level_history": [
@@ -10514,36 +10514,123 @@
         }
       ],
       "peak_price": 87.377,
-      "trough_price": 87.377,
+      "trough_price": 86.955,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": -536.39,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-04T02:33:21.713388+00:00",
+      "mae_time": "2026-09-04 02:35:00",
+      "mfe_giveback_pct": 0.0,
+      "resolved_pnl": -678.83,
+      "resolved_time": "2026-09-04T02:36:24.652421+00:00",
+      "exit_reasoning": "The breakout above 87.36 failed immediately and price slipped back below entry, invalidating the continuation thesis."
+    },
+    {
+      "coin": "ADA",
+      "direction": "long",
+      "entry_price": 0.2231,
+      "stop_loss": 0.2212,
+      "target_price": 0.2265,
+      "trade_amount_inr": 89853.0,
+      "quantity": 4050.1572190029547,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "BOS",
+        "EMA_STRUCTURE",
+        "CONTINUATION"
+      ],
+      "risk_tags": [
+        "VWAP"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.2231,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.2241,
+        "entry_vs_recent_swing_low_pct": 0.3586,
+        "entry_vs_recent_swing_high_atr": -0.75,
+        "entry_vs_recent_swing_low_atr": 1.2,
+        "entry_vs_latest_break_pct": 0.1345,
+        "entry_vs_latest_break_atr": 0.45,
+        "entry_range_position_pct": 90.74,
+        "entry_distance_to_range_high_pct": 0.2241,
+        "entry_distance_to_range_low_pct": 2.1963,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.2241,
+        "nearest_boundary_distance_atr": 0.75,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-04 02:30:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 1,
+          "break_freshness": "fresh",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.135,
+          "extension_atr_from_break": 0.45,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 2,
+          "liquidity_sweep_count_3m": 4,
+          "high_rejection_sweeps_3m": 1,
+          "low_reclaim_sweeps_3m": 3,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 2,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 3.0,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": 78.0,
+        "last_closed_trade_direction": "short",
+        "last_closed_trade_pnl_inr": -373.06,
+        "last_closed_trade_r": -0.415,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-04T02:36:24.652421+00:00",
+      "reasoning": "ADA displays clear bullish momentum in a TREND_UP regime with a confirmed 3m BOS above 0.2228 and supportive EMA structure.",
+      "level_history": [
+        {
+          "from": "2026-09-04T02:36:24.652421+00:00",
+          "stop": 0.2212,
+          "target": 0.2265
+        }
+      ],
+      "peak_price": 0.2231,
+      "trough_price": 0.2231,
       "mfe_pnl_inr": 0.0,
       "mae_pnl_inr": 0.0,
       "mfe_r": 0.0,
-      "mfe_time": "2026-09-04T02:33:21.713388+00:00",
-      "mae_time": "2026-09-04T02:33:21.713388+00:00",
+      "mfe_time": "2026-09-04T02:36:24.652421+00:00",
+      "mae_time": "2026-09-04T02:36:24.652421+00:00",
       "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-04T02:09:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-04T02:12:00Z": [
       "ACE",
       "ADA",
@@ -10665,6 +10752,26 @@
       "ZEC"
     ],
     "2026-09-04T02:30:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-04T02:33:00Z": [
       "ACE",
       "ADA",
       "AVAX",
