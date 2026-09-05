@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-05T18:28:07.365451+00:00",
+  "last_sent_at": "2026-09-05T18:31:12.501350+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-05T18:24:00Z",
+  "last_processed_candle_time": "2026-09-05T18:27:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -584,114 +584,6 @@
     ]
   },
   "ledger": [
-    {
-      "coin": "ZBT",
-      "direction": "long",
-      "entry_price": 0.085,
-      "stop_loss": 0.0845,
-      "target_price": 0.0862,
-      "trade_amount_inr": 121912.35,
-      "quantity": 14423.40052501177,
-      "max_loss_this_trade_inr": 900.0,
-      "conviction": 6,
-      "supporting_tags": [
-        "MOMENTUM",
-        "RVOL",
-        "BREAKOUT",
-        "BOS",
-        "CONTINUATION"
-      ],
-      "risk_tags": [
-        "EXHAUSTION"
-      ],
-      "reason_tag_schema_version": "2026-08-15-tags-v1",
-      "entry_location_telemetry": {
-        "telemetry_only": true,
-        "proposed_entry": 0.085,
-        "direction": "long",
-        "entry_vs_current_close_pct": 0.0,
-        "entry_vs_vwap_pct": null,
-        "entry_vs_vwap_atr": null,
-        "entry_vs_recent_swing_high_pct": 0.1176,
-        "entry_vs_recent_swing_low_pct": 0.5882,
-        "entry_vs_recent_swing_high_atr": 0.477,
-        "entry_vs_recent_swing_low_atr": 2.386,
-        "entry_vs_latest_break_pct": 0.1176,
-        "entry_vs_latest_break_atr": 0.477,
-        "entry_range_position_pct": 76.92,
-        "entry_distance_to_range_high_pct": 0.7059,
-        "entry_distance_to_range_low_pct": 2.3529,
-        "nearest_boundary": "high",
-        "nearest_boundary_distance_pct": 0.7059,
-        "nearest_boundary_distance_atr": 2.863,
-        "entry_location_class": "range_middle",
-        "latest_break_direction": "bullish",
-        "latest_break_type": "BOS",
-        "latest_break_time": "2026-09-04 16:24:00",
-        "break_distance_class": "near_break"
-      },
-      "entry_quality_context": {
-        "continuation": {
-          "has_break": true,
-          "bars_since_break": 0,
-          "break_freshness": "fresh",
-          "break_direction": "bullish",
-          "break_type": "BOS",
-          "extension_pct_from_break": 0.118,
-          "extension_atr_from_break": 0.48,
-          "new_break_within_2_bars": true,
-          "failed_break_count_3m": 1,
-          "liquidity_sweep_count_3m": 3,
-          "high_rejection_sweeps_3m": 0,
-          "low_reclaim_sweeps_3m": 3,
-          "exhaustion_score_3m": 2,
-          "extended_from_break": false,
-          "late_continuation": false,
-          "continuation_quality": "fresh_continuation"
-        },
-        "session": {
-          "utc_hour": 16,
-          "label": "weak-history-window",
-          "historically_weak_window": true
-        }
-      },
-      "recent_signal_context": {
-        "recent_take_count_180m": 1,
-        "recent_long_take_count_180m": 1,
-        "recent_short_take_count_180m": 0,
-        "last_signal_minutes_ago": 11.6,
-        "last_signal_direction": "short",
-        "last_signal_take_trade": false,
-        "last_closed_trade_minutes_ago": 51.4,
-        "last_closed_trade_direction": "long",
-        "last_closed_trade_pnl_inr": -1050.0,
-        "last_closed_trade_r": -1.0,
-        "same_direction_recent_close": false,
-        "same_direction_cooldown_active": false,
-        "same_direction_reentry_without_new_break": false
-      },
-      "status": "gemini_exit",
-      "time": "2026-09-04T16:27:23.799579+00:00",
-      "reasoning": "ZBT has high relative volume and a fresh breakout structure, favoring a long continuation trade.",
-      "level_history": [
-        {
-          "from": "2026-09-04T16:27:23.799579+00:00",
-          "stop": 0.0845,
-          "target": 0.0862
-        }
-      ],
-      "peak_price": 0.085,
-      "trough_price": 0.0846,
-      "mfe_pnl_inr": 0.0,
-      "mae_pnl_inr": -573.71,
-      "mfe_r": 0.0,
-      "mfe_time": "2026-09-04T16:27:23.799579+00:00",
-      "mae_time": "2026-09-04 16:37:00",
-      "mfe_giveback_pct": 0.0,
-      "resolved_pnl": -756.57,
-      "resolved_time": "2026-09-04T16:39:22.107665+00:00",
-      "exit_reasoning": "Breakout has failed after close, and profit health is severe near stop loss, invalidating the continuation thesis."
-    },
     {
       "coin": "BTC",
       "direction": "short",
@@ -7162,7 +7054,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "expired",
       "time": "2026-09-05T16:27:21.479797+00:00",
       "reasoning": "BTC printed a fresh bullish BOS above 79847 with strong RVOL (1.5) and positive momentum continuation.",
       "level_history": [
@@ -7179,7 +7071,9 @@
       "mfe_r": 0.811,
       "mfe_time": "2026-09-05 16:57:00",
       "mae_time": "2026-09-05 16:28:00",
-      "mfe_giveback_pct": 66.7
+      "mfe_giveback_pct": 66.7,
+      "resolved_pnl": -158.57,
+      "resolved_time": "2026-09-05 18:27:00"
     },
     {
       "coin": "ETH",
@@ -7484,7 +7378,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-05T16:33:20.987092+00:00",
       "reasoning": "SOL prints a fresh bullish BOS at 103.23 with supportive EMA structure and steady momentum.",
       "level_history": [
@@ -7522,7 +7416,7 @@
       "mfe_r": 1.45,
       "mfe_time": "2026-09-05 18:00:00",
       "mae_time": "2026-09-05 16:37:00",
-      "mfe_giveback_pct": 38.0,
+      "mfe_giveback_pct": 50.9,
       "revised_at": "2026-09-05T18:15:39.969591+00:00",
       "profit_health_score": 4,
       "profit_health_state": "severe",
@@ -7531,7 +7425,10 @@
         "ADX slope weakening",
         "rejection wick against position",
         "recent failed break"
-      ]
+      ],
+      "resolved_pnl": 453.14,
+      "resolved_time": "2026-09-05T18:30:53.052334+00:00",
+      "exit_reasoning": "Profit health is severe with 3m losing EMA9 and recent failed breaks; exiting to lock in gain."
     },
     {
       "coin": "XRP",
@@ -7617,7 +7514,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-05T16:39:20.515107+00:00",
       "reasoning": "XRP displays extreme RVOL (9.31) with a fresh bullish BOS at 1.4144 in a TREND_UP regime.",
       "level_history": [
@@ -7655,7 +7552,7 @@
       "mfe_r": 1.548,
       "mfe_time": "2026-09-05 17:59:00",
       "mae_time": "2026-09-05 16:46:00",
-      "mfe_giveback_pct": 44.7,
+      "mfe_giveback_pct": 55.3,
       "revised_at": "2026-09-05T18:15:39.969591+00:00",
       "profit_health_score": 3,
       "profit_health_state": "severe",
@@ -7663,7 +7560,10 @@
         "3m lost EMA9",
         "ADX slope weakening",
         "recent failed break"
-      ]
+      ],
+      "resolved_pnl": 429.05,
+      "resolved_time": "2026-09-05T18:30:53.052334+00:00",
+      "exit_reasoning": "Severe profit health and rejection wicks suggest thesis exhaustion; taking profit now."
     },
     {
       "coin": "ZEC",
@@ -7854,7 +7754,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-05T17:15:35.190579+00:00",
       "reasoning": "ADA exhibits a solid bull continuation in a TREND_UP regime after confirming a BOS at 0.2187 with healthy momentum.",
       "level_history": [
@@ -7882,13 +7782,16 @@
       "mfe_r": 1.288,
       "mfe_time": "2026-09-05 18:14:00",
       "mae_time": "2026-09-05 17:28:00",
-      "mfe_giveback_pct": 30.0,
+      "mfe_giveback_pct": 56.7,
       "profit_health_score": 1,
       "profit_health_state": "healthy",
       "profit_health_reasons": [
         "recent failed break"
       ],
-      "revised_at": "2026-09-05T18:09:20.015368+00:00"
+      "revised_at": "2026-09-05T18:09:20.015368+00:00",
+      "resolved_pnl": 375.5,
+      "resolved_time": "2026-09-05T18:30:53.052334+00:00",
+      "exit_reasoning": "Weakening profit health and failed break warrant closing the position."
     },
     {
       "coin": "ETH",
@@ -8189,7 +8092,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-05T17:57:23.182165+00:00",
       "reasoning": "AVAX confirms a fresh bullish BOS at 7.589 with strong RVOL and positive momentum continuation in a TREND_UP regime.",
       "level_history": [
@@ -8206,7 +8109,10 @@
       "mfe_r": 0.678,
       "mfe_time": "2026-09-05 17:59:00",
       "mae_time": "2026-09-05 18:10:00",
-      "mfe_giveback_pct": 84.4
+      "mfe_giveback_pct": 102.2,
+      "resolved_pnl": -168.15,
+      "resolved_time": "2026-09-05T18:30:53.052334+00:00",
+      "exit_reasoning": "Severe profit health and negative momentum shift invalidate the hold."
     },
     {
       "coin": "DOGE",
@@ -8401,7 +8307,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-05T18:21:20.503065+00:00",
       "reasoning": "ZEC prints a fresh bullish BOS at 1032.6 with high RVOL and strong continuation momentum.",
       "level_history": [
@@ -8412,36 +8318,19 @@
         }
       ],
       "peak_price": 1035.4,
-      "trough_price": 1030.0,
+      "trough_price": 1026.0,
       "mfe_pnl_inr": 125.25,
-      "mae_pnl_inr": -338.01,
+      "mae_pnl_inr": -681.16,
       "mfe_r": 0.139,
       "mfe_time": "2026-09-05 18:22:00",
-      "mae_time": "2026-09-05 18:25:00",
-      "mfe_giveback_pct": 354.1
+      "mae_time": "2026-09-05 18:29:00",
+      "mfe_giveback_pct": 602.7,
+      "resolved_pnl": -762.74,
+      "resolved_time": "2026-09-05T18:30:53.052334+00:00",
+      "exit_reasoning": "Severe profit health and structure transition against position; exiting immediately."
     }
   ],
   "processed_candle_coins": {
-    "2026-09-05T18:03:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-05T18:06:00Z": [
       "ACE",
       "ADA",
@@ -8563,6 +8452,26 @@
       "ZEC"
     ],
     "2026-09-05T18:24:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-05T18:27:00Z": [
       "ACE",
       "ADA",
       "AVAX",
