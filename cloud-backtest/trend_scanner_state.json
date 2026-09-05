@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-05T12:54:44.582047+00:00",
+  "last_sent_at": "2026-09-05T12:57:40.726737+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-05T12:51:00Z",
+  "last_processed_candle_time": "2026-09-05T12:54:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -6881,7 +6881,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "target_hit",
       "time": "2026-09-05T12:15:34.766719+00:00",
       "reasoning": "SOL registers a fresh 3m bullish BOS with supportive volume expansion and an intact higher-timeframe uptrend structure.",
       "level_history": [
@@ -6901,12 +6901,12 @@
           "target": 103.2
         }
       ],
-      "peak_price": 103.1,
+      "peak_price": 103.24,
       "trough_price": 102.29,
-      "mfe_pnl_inr": 1066.89,
+      "mfe_pnl_inr": 1286.54,
       "mae_pnl_inr": -203.96,
-      "mfe_r": 1.185,
-      "mfe_time": "2026-09-05 12:53:00",
+      "mfe_r": 1.429,
+      "mfe_time": "2026-09-05 12:54:00",
       "mae_time": "2026-09-05 12:31:00",
       "mfe_giveback_pct": 7.4,
       "revised_at": "2026-09-05T12:51:06.535175+00:00",
@@ -6915,13 +6915,15 @@
       "profit_health_reasons": [
         "rejection wick against position",
         "recent failed break"
-      ]
+      ],
+      "resolved_pnl": 982.75,
+      "resolved_time": "2026-09-05 12:54:00"
     },
     {
       "coin": "LTC",
       "direction": "long",
       "entry_price": 53.21,
-      "stop_loss": 53.25,
+      "stop_loss": 53.332453745066076,
       "target_price": 54.0,
       "trade_amount_inr": 97769.57,
       "quantity": 18.477759622397894,
@@ -7020,6 +7022,12 @@
           "from": "2026-09-05T12:51:06.535175+00:00",
           "stop": 53.25,
           "target": 54.0
+        },
+        {
+          "from": "2026-09-05T12:57:23.325830+00:00",
+          "stop": 53.332453745066076,
+          "target": 54.0,
+          "source": "python_profit_protection"
         }
       ],
       "peak_price": 53.7,
@@ -7029,11 +7037,12 @@
       "mfe_r": 1.0,
       "mfe_time": "2026-09-05 12:49:00",
       "mae_time": "2026-09-05T12:30:50.324468+00:00",
-      "mfe_giveback_pct": 30.6,
-      "revised_at": "2026-09-05T12:51:06.535175+00:00",
-      "profit_health_score": 1,
-      "profit_health_state": "healthy",
+      "mfe_giveback_pct": 40.8,
+      "revised_at": "2026-09-05T12:57:23.325830+00:00",
+      "profit_health_score": 2,
+      "profit_health_state": "weakening",
       "profit_health_reasons": [
+        "rejection wick against position",
         "recent failed break"
       ]
     },
@@ -7150,7 +7159,7 @@
       "mfe_r": 0.818,
       "mfe_time": "2026-09-05 12:47:00",
       "mae_time": "2026-09-05T12:36:22.418169+00:00",
-      "mfe_giveback_pct": 52.6,
+      "mfe_giveback_pct": 36.8,
       "revised_at": "2026-09-05T12:51:06.535175+00:00"
     },
     {
@@ -7256,7 +7265,7 @@
       "mfe_r": 0.449,
       "mfe_time": "2026-09-05 12:42:00",
       "mae_time": "2026-09-05 12:49:00",
-      "mfe_giveback_pct": 77.3
+      "mfe_giveback_pct": 31.8
     },
     {
       "coin": "BNB",
@@ -7342,7 +7351,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "target_hit",
       "time": "2026-09-05T12:48:25.557946+00:00",
       "reasoning": "BNB shows strong trend continuation with bullish EMA structure and solid momentum.",
       "level_history": [
@@ -7352,12 +7361,12 @@
           "target": 766.0
         }
       ],
-      "peak_price": 765.0,
+      "peak_price": 766.77,
       "trough_price": 758.22,
-      "mfe_pnl_inr": 1195.79,
+      "mfe_pnl_inr": 1514.55,
       "mae_pnl_inr": -25.21,
-      "mfe_r": 1.329,
-      "mfe_time": "2026-09-05 12:53:00",
+      "mfe_r": 1.683,
+      "mfe_time": "2026-09-05 12:55:00",
       "mae_time": "2026-09-05 12:49:00",
       "mfe_giveback_pct": 22.1,
       "profit_health_score": 2,
@@ -7365,30 +7374,12 @@
       "profit_health_reasons": [
         "rejection wick against position",
         "recent failed break"
-      ]
+      ],
+      "resolved_pnl": 1171.02,
+      "resolved_time": "2026-09-05 12:54:00"
     }
   ],
   "processed_candle_coins": {
-    "2026-09-05T12:30:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-05T12:33:00Z": [
       "ACE",
       "ADA",
@@ -7510,6 +7501,26 @@
       "ZEC"
     ],
     "2026-09-05T12:51:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-05T12:54:00Z": [
       "ACE",
       "ADA",
       "AVAX",
