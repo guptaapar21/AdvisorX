@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-05T07:27:40.319963+00:00",
+  "last_sent_at": "2026-09-05T07:31:11.875689+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-05T07:24:00Z",
+  "last_processed_candle_time": "2026-09-05T07:27:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -41,12 +41,6 @@
     "ADA": [
       {
         "direction": "long",
-        "entry_price": 0.2116,
-        "take_trade": false,
-        "time": "2026-09-05T06:06:20.630592+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 0.2124,
         "take_trade": false,
         "time": "2026-09-05T06:15:35.126820+00:00"
@@ -68,6 +62,12 @@
         "entry_price": 0.2132,
         "take_trade": false,
         "time": "2026-09-05T07:21:19.549379+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.2136,
+        "take_trade": true,
+        "time": "2026-09-05T07:30:53.302910+00:00"
       }
     ],
     "PAXG": [
@@ -297,12 +297,6 @@
     "AVAX": [
       {
         "direction": "long",
-        "entry_price": 7.437,
-        "take_trade": false,
-        "time": "2026-09-05T06:15:35.126820+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 7.445,
         "take_trade": false,
         "time": "2026-09-05T06:18:22.023523+00:00"
@@ -324,6 +318,12 @@
         "entry_price": 7.469,
         "take_trade": false,
         "time": "2026-09-05T07:24:19.192278+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 7.499,
+        "take_trade": false,
+        "time": "2026-09-05T07:30:53.302910+00:00"
       }
     ],
     "ZEC": [
@@ -6022,14 +6022,14 @@
           "target": 103.5
         }
       ],
-      "peak_price": 102.51,
+      "peak_price": 102.55,
       "trough_price": 102.26,
-      "mfe_pnl_inr": 184.67,
+      "mfe_pnl_inr": 241.49,
       "mae_pnl_inr": -170.46,
-      "mfe_r": 0.205,
-      "mfe_time": "2026-09-05 07:26:00",
+      "mfe_r": 0.268,
+      "mfe_time": "2026-09-05 07:28:00",
       "mae_time": "2026-09-05 07:11:00",
-      "mfe_giveback_pct": 7.7
+      "mfe_giveback_pct": 17.6
     },
     {
       "coin": "XRP",
@@ -6234,37 +6234,121 @@
           "target": 55.4
         }
       ],
-      "peak_price": 54.21,
-      "trough_price": 54.21,
+      "peak_price": 54.3,
+      "trough_price": 54.12,
+      "mfe_pnl_inr": 117.17,
+      "mae_pnl_inr": -117.17,
+      "mfe_r": 0.13,
+      "mfe_time": "2026-09-05 07:28:00",
+      "mae_time": "2026-09-05 07:29:00",
+      "mfe_giveback_pct": 177.8
+    },
+    {
+      "coin": "ADA",
+      "direction": "long",
+      "entry_price": 0.2136,
+      "stop_loss": 0.2125,
+      "target_price": 0.2155,
+      "trade_amount_inr": 135342.16,
+      "quantity": 6371.926097891284,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "RVOL",
+        "BOS",
+        "CONTINUATION"
+      ],
+      "risk_tags": [
+        "EXHAUSTION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.2136,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": 0.0936,
+        "entry_vs_recent_swing_low_pct": 0.3745,
+        "entry_vs_recent_swing_high_atr": 0.601,
+        "entry_vs_recent_swing_low_atr": 2.404,
+        "entry_vs_latest_break_pct": 0.0936,
+        "entry_vs_latest_break_atr": 0.601,
+        "entry_range_position_pct": 92.11,
+        "entry_distance_to_range_high_pct": 0.1404,
+        "entry_distance_to_range_low_pct": 1.6386,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.1404,
+        "nearest_boundary_distance_atr": 0.901,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-05 07:24:00",
+        "break_distance_class": "moderately_away"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 1,
+          "break_freshness": "fresh",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.094,
+          "extension_atr_from_break": 0.6,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 1,
+          "liquidity_sweep_count_3m": 1,
+          "high_rejection_sweeps_3m": 0,
+          "low_reclaim_sweeps_3m": 1,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 7,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 9.6,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-05T07:30:53.302910+00:00",
+      "reasoning": "ADA exhibits strong bullish continuation following a BOS at 0.2134, backed by high relative volume and positive momentum.",
+      "level_history": [
+        {
+          "from": "2026-09-05T07:30:53.302910+00:00",
+          "stop": 0.2125,
+          "target": 0.2155
+        }
+      ],
+      "peak_price": 0.2136,
+      "trough_price": 0.2136,
       "mfe_pnl_inr": 0.0,
       "mae_pnl_inr": 0.0,
       "mfe_r": 0.0,
-      "mfe_time": "2026-09-05T07:27:21.640740+00:00",
-      "mae_time": "2026-09-05T07:27:21.640740+00:00",
+      "mfe_time": "2026-09-05T07:30:53.302910+00:00",
+      "mae_time": "2026-09-05T07:30:53.302910+00:00",
       "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-05T07:03:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-05T07:06:00Z": [
       "ACE",
       "ADA",
@@ -6386,6 +6470,26 @@
       "ZEC"
     ],
     "2026-09-05T07:24:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-05T07:27:00Z": [
       "ACE",
       "ADA",
       "AVAX",
