@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-06T18:36:49.856743+00:00",
+  "last_sent_at": "2026-09-06T18:39:38.422632+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-06T18:33:00Z",
+  "last_processed_candle_time": "2026-09-06T18:36:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -169,12 +169,6 @@
     "LINK": [
       {
         "direction": "short",
-        "entry_price": 12.292,
-        "take_trade": false,
-        "time": "2026-09-06T13:51:25.355100+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 12.272,
         "take_trade": false,
         "time": "2026-09-06T14:21:25.405668+00:00"
@@ -196,6 +190,12 @@
         "entry_price": 12.383,
         "take_trade": false,
         "time": "2026-09-06T18:36:21.282384+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 12.388,
+        "take_trade": true,
+        "time": "2026-09-06T18:39:18.000335+00:00"
       }
     ],
     "ACE": [
@@ -8768,7 +8768,7 @@
       "mfe_r": 0.291,
       "mfe_time": "2026-09-06 18:32:00",
       "mae_time": "2026-09-06 18:26:00",
-      "mfe_giveback_pct": 59.6
+      "mfe_giveback_pct": 35.7
     },
     {
       "coin": "ZEC",
@@ -8869,30 +8869,114 @@
       "mfe_r": 0.245,
       "mfe_time": "2026-09-06 18:25:00",
       "mae_time": "2026-09-06 18:35:00",
-      "mfe_giveback_pct": 276.8
+      "mfe_giveback_pct": 214.4
+    },
+    {
+      "coin": "LINK",
+      "direction": "long",
+      "entry_price": 12.388,
+      "stop_loss": 12.31,
+      "target_price": 12.55,
+      "trade_amount_inr": 115437.66,
+      "quantity": 93.70984064779097,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "BOS",
+        "EMA_STRUCTURE",
+        "MOMENTUM",
+        "RVOL"
+      ],
+      "risk_tags": [
+        "EXHAUSTION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 12.388,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.2825,
+        "entry_vs_recent_swing_low_pct": 0.6054,
+        "entry_vs_recent_swing_high_atr": -1.435,
+        "entry_vs_recent_swing_low_atr": 3.075,
+        "entry_vs_latest_break_pct": 0.0807,
+        "entry_vs_latest_break_atr": 0.41,
+        "entry_range_position_pct": 78.92,
+        "entry_distance_to_range_high_pct": 0.2825,
+        "entry_distance_to_range_low_pct": 1.0575,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.2825,
+        "nearest_boundary_distance_atr": 1.435,
+        "entry_location_class": "range_middle",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-06 18:30:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 2,
+          "break_freshness": "fresh",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.081,
+          "extension_atr_from_break": 0.41,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 2,
+          "liquidity_sweep_count_3m": 2,
+          "high_rejection_sweeps_3m": 0,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 18,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 1,
+        "recent_long_take_count_180m": 1,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 2.9,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": 92.9,
+        "last_closed_trade_direction": "long",
+        "last_closed_trade_pnl_inr": -87.14,
+        "last_closed_trade_r": -0.097,
+        "same_direction_recent_close": true,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-06T18:39:18.000335+00:00",
+      "reasoning": "LINK has broken out with a fresh 3m BOS at 12.378 backed by strong EMA structure and rising volume.",
+      "level_history": [
+        {
+          "from": "2026-09-06T18:39:18.000335+00:00",
+          "stop": 12.31,
+          "target": 12.55
+        }
+      ],
+      "peak_price": 12.388,
+      "trough_price": 12.388,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-06T18:39:18.000335+00:00",
+      "mae_time": "2026-09-06T18:39:18.000335+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-06T18:12:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-06T18:15:00Z": [
       "ACE",
       "ADA",
@@ -9032,10 +9116,30 @@
       "XRP",
       "ZBT",
       "ZEC"
+    ],
+    "2026-09-06T18:36:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
     ]
   },
   "telegram_last_delivery_ok": true,
   "telegram_last_delivery_error": null,
   "telegram_last_delivery_at": "2026-08-22T13:24:41.690271+00:00",
-  "last_telegram_chunk_count": 2
+  "last_telegram_chunk_count": 1
 }
