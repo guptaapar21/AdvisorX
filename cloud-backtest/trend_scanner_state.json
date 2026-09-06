@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-06T11:15:54.348806+00:00",
+  "last_sent_at": "2026-09-06T11:18:41.709183+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-06T11:12:00Z",
+  "last_processed_candle_time": "2026-09-06T11:15:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -105,12 +105,6 @@
     "XRP": [
       {
         "direction": "long",
-        "entry_price": 1.4232,
-        "take_trade": false,
-        "time": "2026-09-06T09:33:20.915722+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 1.4219,
         "take_trade": false,
         "time": "2026-09-06T09:36:24.366878+00:00"
@@ -132,6 +126,12 @@
         "entry_price": 1.42,
         "take_trade": false,
         "time": "2026-09-06T11:06:19.251917+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 1.4215,
+        "take_trade": true,
+        "time": "2026-09-06T11:18:23.119916+00:00"
       }
     ],
     "HYPE": [
@@ -9600,29 +9600,114 @@
       "resolved_pnl": 85.7,
       "resolved_time": "2026-09-06T10:27:21.669959+00:00",
       "exit_reasoning": "3m structure has flipped bearish with failed breakout candles and loss of EMA support, invalidating the original thesis."
+    },
+    {
+      "coin": "XRP",
+      "direction": "long",
+      "entry_price": 1.4215,
+      "stop_loss": 1.416,
+      "target_price": 1.432,
+      "trade_amount_inr": 167624.23,
+      "quantity": 1185.8474014143694,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "BOS",
+        "CONTINUATION",
+        "EMA_STRUCTURE"
+      ],
+      "risk_tags": [
+        "RVOL",
+        "EXHAUSTION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 1.4215,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.0915,
+        "entry_vs_recent_swing_low_pct": 0.2814,
+        "entry_vs_recent_swing_high_atr": -0.793,
+        "entry_vs_recent_swing_low_atr": 2.441,
+        "entry_vs_latest_break_pct": 0.0703,
+        "entry_vs_latest_break_atr": 0.61,
+        "entry_range_position_pct": 68.75,
+        "entry_distance_to_range_high_pct": 0.2462,
+        "entry_distance_to_range_low_pct": 0.5417,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.2462,
+        "nearest_boundary_distance_atr": 2.136,
+        "entry_location_class": "range_middle",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-06 10:42:00",
+        "break_distance_class": "moderately_away"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 11,
+          "break_freshness": "stale",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.07,
+          "extension_atr_from_break": 0.61,
+          "new_break_within_2_bars": false,
+          "failed_break_count_3m": 3,
+          "liquidity_sweep_count_3m": 1,
+          "high_rejection_sweeps_3m": 1,
+          "low_reclaim_sweeps_3m": 0,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": true,
+          "continuation_quality": "mixed_or_unclear"
+        },
+        "session": {
+          "utc_hour": 11,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 12.1,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-06T11:18:23.119916+00:00",
+      "reasoning": "XRP displays aligned bullish structure across 3m, 15m, and 1h timeframes within a TREND_UP regime, supported by positive momentum continuation.",
+      "level_history": [
+        {
+          "from": "2026-09-06T11:18:23.119916+00:00",
+          "stop": 1.416,
+          "target": 1.432
+        }
+      ],
+      "peak_price": 1.4215,
+      "trough_price": 1.4215,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-06T11:18:23.119916+00:00",
+      "mae_time": "2026-09-06T11:18:23.119916+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-06T10:51:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-06T10:54:00Z": [
       "ACE",
       "ADA",
@@ -9744,6 +9829,26 @@
       "ZEC"
     ],
     "2026-09-06T11:12:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-06T11:15:00Z": [
       "ACE",
       "ADA",
       "AVAX",
