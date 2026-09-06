@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-06T19:09:44.043654+00:00",
+  "last_sent_at": "2026-09-06T19:12:47.151323+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-06T19:06:00Z",
+  "last_processed_candle_time": "2026-09-06T19:09:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -425,12 +425,6 @@
     "TRX": [
       {
         "direction": "long",
-        "entry_price": 0.3353,
-        "take_trade": false,
-        "time": "2026-09-06T18:36:21.282384+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 0.3354,
         "take_trade": false,
         "time": "2026-09-06T18:51:20.578907+00:00"
@@ -452,6 +446,12 @@
         "entry_price": 0.3354,
         "take_trade": false,
         "time": "2026-09-06T19:09:21.921375+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.3354,
+        "take_trade": true,
+        "time": "2026-09-06T19:12:29.887815+00:00"
       }
     ],
     "LTC": [
@@ -8616,7 +8616,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-06T18:24:24.877281+00:00",
       "reasoning": "ZEC exhibits strong bullish momentum with a recent BOS at 1213.19 and high ADX of 42.8, supporting trend continuation.",
       "level_history": [
@@ -8638,8 +8638,11 @@
       "mfe_r": 0.322,
       "mfe_time": "2026-09-06 18:44:00",
       "mae_time": "2026-09-06 18:35:00",
-      "mfe_giveback_pct": 149.8,
-      "revised_at": "2026-09-06T18:45:34.298140+00:00"
+      "mfe_giveback_pct": 194.0,
+      "revised_at": "2026-09-06T18:45:34.298140+00:00",
+      "resolved_pnl": -338.05,
+      "resolved_time": "2026-09-06T19:12:29.887815+00:00",
+      "exit_reasoning": "ZEC price has dropped near the stop loss, momentum has deteriorated, and profit health is severe with a lost EMA9, invalidating the original thesis."
     },
     {
       "coin": "LINK",
@@ -8747,29 +8750,113 @@
       "resolved_pnl": -527.26,
       "resolved_time": "2026-09-06T19:08:23.700154+00:00",
       "exit_reasoning": "LINK formed a bearish CHoCH at 12.363, invalidating the original bullish continuation thesis."
+    },
+    {
+      "coin": "TRX",
+      "direction": "long",
+      "entry_price": 0.3354,
+      "stop_loss": 0.3348,
+      "target_price": 0.337,
+      "trade_amount_inr": 273646.99,
+      "quantity": 8204.771851550156,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "RVOL",
+        "BOS",
+        "CONTINUATION"
+      ],
+      "risk_tags": [
+        "EXHAUSTION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.3354,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": 0.0,
+        "entry_vs_recent_swing_low_pct": 0.0298,
+        "entry_vs_recent_swing_high_atr": 0.0,
+        "entry_vs_recent_swing_low_atr": 0.763,
+        "entry_vs_latest_break_pct": 0.0,
+        "entry_vs_latest_break_atr": 0.0,
+        "entry_range_position_pct": 80.0,
+        "entry_distance_to_range_high_pct": 0.0298,
+        "entry_distance_to_range_low_pct": 0.1193,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.0298,
+        "nearest_boundary_distance_atr": 0.763,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-06 18:51:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 6,
+          "break_freshness": "late",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.0,
+          "extension_atr_from_break": 0.0,
+          "new_break_within_2_bars": false,
+          "failed_break_count_3m": 3,
+          "liquidity_sweep_count_3m": 2,
+          "high_rejection_sweeps_3m": 1,
+          "low_reclaim_sweeps_3m": 1,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": true,
+          "continuation_quality": "mixed_or_unclear"
+        },
+        "session": {
+          "utc_hour": 19,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 3.1,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": 99.7,
+        "last_closed_trade_direction": "long",
+        "last_closed_trade_pnl_inr": -480.91,
+        "last_closed_trade_r": -0.534,
+        "same_direction_recent_close": true,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-06T19:12:29.887815+00:00",
+      "reasoning": "TRX exhibits strong volume and a fresh bullish BOS at 0.3354 within a confirmed TREND_UP regime, offering a clean continuation setup.",
+      "level_history": [
+        {
+          "from": "2026-09-06T19:12:29.887815+00:00",
+          "stop": 0.3348,
+          "target": 0.337
+        }
+      ],
+      "peak_price": 0.3354,
+      "trough_price": 0.3354,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-06T19:12:29.887815+00:00",
+      "mae_time": "2026-09-06T19:12:29.887815+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-06T18:45:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-06T18:48:00Z": [
       "ACE",
       "ADA",
@@ -8909,10 +8996,30 @@
       "XRP",
       "ZBT",
       "ZEC"
+    ],
+    "2026-09-06T19:09:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
     ]
   },
   "telegram_last_delivery_ok": true,
   "telegram_last_delivery_error": null,
   "telegram_last_delivery_at": "2026-08-22T13:24:41.690271+00:00",
-  "last_telegram_chunk_count": 2
+  "last_telegram_chunk_count": 1
 }
