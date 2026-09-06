@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-06T06:01:18.721098+00:00",
+  "last_sent_at": "2026-09-06T06:03:41.027831+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-06T05:57:00Z",
+  "last_processed_candle_time": "2026-09-06T06:00:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -233,12 +233,6 @@
     "ETH": [
       {
         "direction": "short",
-        "entry_price": 2501.2,
-        "take_trade": false,
-        "time": "2026-09-06T05:18:23.097196+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 2503.09,
         "take_trade": false,
         "time": "2026-09-06T05:21:20.490034+00:00"
@@ -260,6 +254,12 @@
         "entry_price": 2519.4,
         "take_trade": false,
         "time": "2026-09-06T05:42:23.715389+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 2511.33,
+        "take_trade": true,
+        "time": "2026-09-06T06:03:21.382668+00:00"
       }
     ],
     "SOL": [
@@ -297,12 +297,6 @@
     "AVAX": [
       {
         "direction": "short",
-        "entry_price": 7.643,
-        "take_trade": false,
-        "time": "2026-09-06T04:21:22.778691+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 7.647,
         "take_trade": false,
         "time": "2026-09-06T04:30:46.939881+00:00"
@@ -324,6 +318,12 @@
         "entry_price": 7.69,
         "take_trade": false,
         "time": "2026-09-06T06:01:01.800278+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 7.686,
+        "take_trade": false,
+        "time": "2026-09-06T06:03:21.382668+00:00"
       }
     ],
     "ZEC": [
@@ -10005,7 +10005,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-09-06T05:51:20.904093+00:00",
       "reasoning": "ZEC shows powerful bull trend continuation with an ADX of 68.45 and clean 3m/15m BOS structures supporting further upside.",
       "level_history": [
@@ -10016,36 +10016,123 @@
         }
       ],
       "peak_price": 1178.13,
-      "trough_price": 1158.15,
+      "trough_price": 1157.14,
       "mfe_pnl_inr": 241.47,
-      "mae_pnl_inr": -412.27,
+      "mae_pnl_inr": -445.32,
       "mfe_r": 0.268,
       "mfe_time": "2026-09-06 05:52:00",
-      "mae_time": "2026-09-06 05:56:00",
-      "mfe_giveback_pct": 212.2
+      "mae_time": "2026-09-06 06:02:00",
+      "mfe_giveback_pct": 274.5,
+      "resolved_pnl": -478.89,
+      "resolved_time": "2026-09-06T06:03:21.382668+00:00",
+      "exit_reasoning": "ZEC profit health has degraded to severe with a 3m bearish CHoCH and loss of EMA9, invalidating the immediate bull continuation thesis."
+    },
+    {
+      "coin": "ETH",
+      "direction": "long",
+      "entry_price": 2511.33,
+      "stop_loss": 2502.0,
+      "target_price": 2535.0,
+      "trade_amount_inr": 172573.71,
+      "quantity": 0.6910504149573962,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "CONTINUATION",
+        "EMA_STRUCTURE",
+        "ADX_DI"
+      ],
+      "risk_tags": [
+        "RVOL"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 2511.33,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.5033,
+        "entry_vs_recent_swing_low_pct": 0.0183,
+        "entry_vs_recent_swing_high_atr": -4.252,
+        "entry_vs_recent_swing_low_atr": 0.155,
+        "entry_vs_latest_break_pct": 0.0092,
+        "entry_vs_latest_break_atr": 0.077,
+        "entry_range_position_pct": 50.39,
+        "entry_distance_to_range_high_pct": 0.5033,
+        "entry_distance_to_range_low_pct": 0.5113,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.5033,
+        "nearest_boundary_distance_atr": 4.252,
+        "entry_location_class": "range_middle",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-06 05:33:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 9,
+          "break_freshness": "late",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.009,
+          "extension_atr_from_break": 0.08,
+          "new_break_within_2_bars": false,
+          "failed_break_count_3m": 3,
+          "liquidity_sweep_count_3m": 4,
+          "high_rejection_sweeps_3m": 2,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": true,
+          "continuation_quality": "mixed_or_unclear"
+        },
+        "session": {
+          "utc_hour": 6,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 21.0,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": 126.0,
+        "last_closed_trade_direction": "long",
+        "last_closed_trade_pnl_inr": 425.37,
+        "last_closed_trade_r": 0.473,
+        "same_direction_recent_close": true,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-06T06:03:21.382668+00:00",
+      "reasoning": "ETH holds a TREND_UP regime with supportive +DI dominance and positive momentum continuation above key moving averages.",
+      "level_history": [
+        {
+          "from": "2026-09-06T06:03:21.382668+00:00",
+          "stop": 2502.0,
+          "target": 2535.0
+        }
+      ],
+      "peak_price": 2511.33,
+      "trough_price": 2511.33,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-06T06:03:21.382668+00:00",
+      "mae_time": "2026-09-06T06:03:21.382668+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-06T05:36:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-06T05:39:00Z": [
       "ACE",
       "ADA",
@@ -10167,6 +10254,26 @@
       "ZEC"
     ],
     "2026-09-06T05:57:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-06T06:00:00Z": [
       "ACE",
       "ADA",
       "AVAX",
