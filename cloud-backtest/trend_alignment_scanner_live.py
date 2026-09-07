@@ -4,7 +4,7 @@ This wrapper preserves the existing scanner/V2 telemetry architecture while
 fixing three concrete live-path problems identified in the current ledger:
 
 1) V2 entry-quality diagnostics are observational; the wrapper no longer
-   hard-vetoes Gemini TAKE decisions with the legacy entry-quality gate.
+   hard-vetoes Gemini TAKE decisions with entry_quality_gate.py.
 2) Gemini tighten_stop requests are executable only after the trade has earned
    at least +0.50R. Genuine exit_now requests are never blocked by this rule.
 3) MFE/MAE telemetry stops at the first target/stop event visible in the 1m
@@ -125,8 +125,14 @@ _SPEC.loader.exec_module(_scanner)
 _scanner.get_trade_suggestions_batch = _quality_checked_batch
 
 # Replace the pre-resolution MFE/MAE update so it cannot see candles after the
-# first actual target/stop event in the available 1m series.
-_scanner.update_position_telemetry = update_mfe_mae_until_exit
+# first actual target/stop event in the available 1m series. The production
+# scanner calls this hook with (ledger, fetched, now); keep that exact runtime
+# signature while the policy implementation remains a two-argument helper.
+def _update_position_telemetry_compat(ledger, fetched, now=None):
+    return update_mfe_mae_until_exit(ledger, fetched)
+
+
+_scanner.update_position_telemetry = _update_position_telemetry_compat
 
 _original_apply_position_updates = _scanner.apply_position_updates
 
