@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-07T07:26:04.470072+00:00",
+  "last_sent_at": "2026-09-07T07:26:48.422830+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-07T07:03:00Z",
+  "last_processed_candle_time": "2026-09-07T07:21:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -361,12 +361,6 @@
     "BNB": [
       {
         "direction": "long",
-        "entry_price": 749.6,
-        "take_trade": false,
-        "time": "2026-09-07T05:39:22.226733+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 749.82,
         "take_trade": false,
         "time": "2026-09-07T05:42:23.861883+00:00"
@@ -388,6 +382,12 @@
         "entry_price": 745.61,
         "take_trade": false,
         "time": "2026-09-07T06:44:31.093977+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 743.6,
+        "take_trade": true,
+        "time": "2026-09-07T07:26:25.127538+00:00"
       }
     ],
     "HEI": [
@@ -520,12 +520,6 @@
     ],
     "BTC": [
       {
-        "direction": "short",
-        "entry_price": 79649.16,
-        "take_trade": false,
-        "time": "2026-09-07T04:09:24.259024+00:00"
-      },
-      {
         "direction": "long",
         "entry_price": 79867.46,
         "take_trade": false,
@@ -548,6 +542,12 @@
         "entry_price": 79628.0,
         "take_trade": false,
         "time": "2026-09-07T07:03:22.856729+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 79484.33,
+        "take_trade": false,
+        "time": "2026-09-07T07:26:25.127538+00:00"
       }
     ],
     "DOGE": [
@@ -8334,6 +8334,112 @@
       "resolved_pnl": -382.91,
       "resolved_time": "2026-09-07T05:51:38.844062+00:00",
       "exit_reasoning": "Original bullish thesis invalidated by a recent bearish 3m CHoCH and loss of momentum."
+    },
+    {
+      "coin": "BNB",
+      "direction": "short",
+      "entry_price": 743.6,
+      "stop_loss": 746.5,
+      "target_price": 737.5,
+      "trade_amount_inr": 166668.33,
+      "quantity": 2.2539930839878823,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "RVOL",
+        "BOS",
+        "CONTINUATION",
+        "ADX_DI",
+        "EMA_STRUCTURE"
+      ],
+      "risk_tags": [
+        "EXHAUSTION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 743.6,
+        "direction": "short",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.2407,
+        "entry_vs_recent_swing_low_pct": -0.1197,
+        "entry_vs_recent_swing_high_atr": -2.904,
+        "entry_vs_recent_swing_low_atr": -1.444,
+        "entry_vs_latest_break_pct": -0.1197,
+        "entry_vs_latest_break_atr": -1.444,
+        "entry_range_position_pct": 0.0,
+        "entry_distance_to_range_high_pct": 0.8876,
+        "entry_distance_to_range_low_pct": 0.0,
+        "nearest_boundary": "low",
+        "nearest_boundary_distance_pct": 0.0,
+        "nearest_boundary_distance_atr": 0.0,
+        "entry_location_class": "near_range_low",
+        "latest_break_direction": "bearish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-07 07:21:00",
+        "break_distance_class": "extended_1_to_2_atr"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 0,
+          "break_freshness": "fresh",
+          "break_direction": "bearish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.12,
+          "extension_atr_from_break": 1.44,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 3,
+          "liquidity_sweep_count_3m": 5,
+          "high_rejection_sweeps_3m": 2,
+          "low_reclaim_sweeps_3m": 3,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": true,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 7,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 41.9,
+        "last_signal_direction": "short",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": 179.1,
+        "last_closed_trade_direction": "short",
+        "last_closed_trade_pnl_inr": -638.77,
+        "last_closed_trade_r": -0.71,
+        "same_direction_recent_close": true,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-07T07:26:25.127538+00:00",
+      "reasoning": "BNB exhibits a strong downtrend regime with high ADX (47.76) and a fresh bearish BOS breakdown below 744.49 on elevated RVOL (3.07).",
+      "level_history": [
+        {
+          "from": "2026-09-07T07:26:25.127538+00:00",
+          "stop": 746.5,
+          "target": 737.5
+        }
+      ],
+      "peak_price": 743.6,
+      "trough_price": 743.6,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-07T07:26:25.127538+00:00",
+      "mae_time": "2026-09-07T07:26:25.127538+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
@@ -8382,7 +8488,26 @@
     "2026-09-07T07:12:00Z": [],
     "2026-09-07T07:15:00Z": [],
     "2026-09-07T07:18:00Z": [],
-    "2026-09-07T07:21:00Z": []
+    "2026-09-07T07:21:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ]
   },
   "telegram_last_delivery_ok": true,
   "telegram_last_delivery_error": null,
