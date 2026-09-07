@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-07T12:27:43.487106+00:00",
+  "last_sent_at": "2026-09-07T12:31:13.018717+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-07T12:24:00Z",
+  "last_processed_candle_time": "2026-09-07T12:27:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -264,12 +264,6 @@
     ],
     "SOL": [
       {
-        "direction": "long",
-        "entry_price": 104.98,
-        "take_trade": false,
-        "time": "2026-09-07T10:57:21.589195+00:00"
-      },
-      {
         "direction": "short",
         "entry_price": 104.86,
         "take_trade": false,
@@ -292,6 +286,12 @@
         "entry_price": 105.0,
         "take_trade": false,
         "time": "2026-09-07T12:15:38.894278+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 105.38,
+        "take_trade": false,
+        "time": "2026-09-07T12:30:53.238328+00:00"
       }
     ],
     "AVAX": [
@@ -553,12 +553,6 @@
     "DOGE": [
       {
         "direction": "short",
-        "entry_price": 0.08959,
-        "take_trade": false,
-        "time": "2026-09-07T11:15:38.640261+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 0.08962,
         "take_trade": false,
         "time": "2026-09-07T11:21:22.914088+00:00"
@@ -580,6 +574,12 @@
         "entry_price": 0.0895,
         "take_trade": false,
         "time": "2026-09-07T12:23:21.843370+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.09042,
+        "take_trade": true,
+        "time": "2026-09-07T12:30:53.238328+00:00"
       }
     ]
   },
@@ -7899,7 +7899,7 @@
       "coin": "LTC",
       "direction": "long",
       "entry_price": 56.31,
-      "stop_loss": 56.1,
+      "stop_loss": 56.4,
       "target_price": 57.5,
       "trade_amount_inr": 99460.02,
       "quantity": 17.76241012398086,
@@ -7993,17 +7993,28 @@
           "from": "2026-09-07T12:24:23.124176+00:00",
           "stop": 56.1,
           "target": 57.5
+        },
+        {
+          "from": "2026-09-07T12:30:53.238328+00:00",
+          "stop": 56.4,
+          "target": 57.5
         }
       ],
-      "peak_price": 56.75,
+      "peak_price": 56.96,
       "trough_price": 56.31,
-      "mfe_pnl_inr": 777.17,
+      "mfe_pnl_inr": 1148.09,
       "mae_pnl_inr": 0.0,
-      "mfe_r": 0.74,
-      "mfe_time": "2026-09-07 12:24:00",
+      "mfe_r": 1.093,
+      "mfe_time": "2026-09-07 12:28:00",
       "mae_time": "2026-09-07T12:18:22.960631+00:00",
-      "mfe_giveback_pct": 6.8,
-      "revised_at": "2026-09-07T12:24:23.124176+00:00"
+      "mfe_giveback_pct": 26.2,
+      "revised_at": "2026-09-07T12:30:53.238328+00:00",
+      "profit_health_score": 2,
+      "profit_health_state": "weakening",
+      "profit_health_reasons": [
+        "rejection wick against position",
+        "recent failed break"
+      ]
     },
     {
       "coin": "ZBT",
@@ -8100,37 +8111,120 @@
           "target": 0.0872
         }
       ],
-      "peak_price": 0.0858,
+      "peak_price": 0.0859,
       "trough_price": 0.0856,
-      "mfe_pnl_inr": 193.88,
+      "mfe_pnl_inr": 290.82,
       "mae_pnl_inr": 0.0,
-      "mfe_r": 0.215,
-      "mfe_time": "2026-09-07 12:20:00",
+      "mfe_r": 0.323,
+      "mfe_time": "2026-09-07 12:27:00",
       "mae_time": "2026-09-07T12:18:22.960631+00:00",
+      "mfe_giveback_pct": 33.3
+    },
+    {
+      "coin": "DOGE",
+      "direction": "long",
+      "entry_price": 0.09042,
+      "stop_loss": 0.0895,
+      "target_price": 0.092,
+      "trade_amount_inr": 77089.51,
+      "quantity": 8573.727375543378,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "MOMENTUM",
+        "BREAKOUT",
+        "BOS"
+      ],
+      "risk_tags": [
+        "RVOL"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.09042,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.1659,
+        "entry_vs_recent_swing_low_pct": 0.6415,
+        "entry_vs_recent_swing_high_atr": -0.992,
+        "entry_vs_recent_swing_low_atr": 3.834,
+        "entry_vs_latest_break_pct": 0.3539,
+        "entry_vs_latest_break_atr": 2.115,
+        "entry_range_position_pct": 87.07,
+        "entry_distance_to_range_high_pct": 0.1659,
+        "entry_distance_to_range_low_pct": 1.117,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.1659,
+        "nearest_boundary_distance_atr": 0.992,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-07 12:18:00",
+        "break_distance_class": "extended_over_2_atr"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 3,
+          "break_freshness": "mature",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.355,
+          "extension_atr_from_break": 2.12,
+          "new_break_within_2_bars": false,
+          "failed_break_count_3m": 4,
+          "liquidity_sweep_count_3m": 4,
+          "high_rejection_sweeps_3m": 2,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": true,
+          "late_continuation": false,
+          "continuation_quality": "mature_continuation"
+        },
+        "session": {
+          "utc_hour": 12,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 7.5,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-07T12:30:53.238328+00:00",
+      "reasoning": "DOGE shows strong continuation momentum and high positive delta across short timeframes.",
+      "level_history": [
+        {
+          "from": "2026-09-07T12:30:53.238328+00:00",
+          "stop": 0.0895,
+          "target": 0.092
+        }
+      ],
+      "peak_price": 0.09042,
+      "trough_price": 0.09042,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-07T12:30:53.238328+00:00",
+      "mae_time": "2026-09-07T12:30:53.238328+00:00",
       "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-07T12:03:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-07T12:06:00Z": [
       "ACE",
       "ADA",
@@ -8252,6 +8346,26 @@
       "ZEC"
     ],
     "2026-09-07T12:24:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-07T12:27:00Z": [
       "ACE",
       "ADA",
       "AVAX",
