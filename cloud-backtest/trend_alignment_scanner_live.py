@@ -1,14 +1,16 @@
-"""Production launcher with observational V2 telemetry integration.
+"""Production launcher for AdvisorX's trend scanner.
 
-The underlying scanner, Gemini advisor, entry-quality gate, Telegram delivery,
-ledger/state handling, and external scheduling architecture remain intact.
+This wrapper preserves the existing scanner/V2 telemetry architecture while
+fixing three concrete live-path problems identified in the current ledger:
 
-IMPORTANT: the Gemini selectivity rewrite in ``_relax_gemini_selectivity`` is
-existing production behavior already present in the current ``main`` branch.
-It is preserved here verbatim and is NOT a V2 telemetry change. Any decision
-to alter that prompt policy must be reviewed and shipped as a separate
-strategy change. The V2 additions below only observe the resulting production
-decisions and never veto, create, size, or modify trades.
+1) V2 entry-quality diagnostics are observational; the wrapper no longer
+   hard-vetoes Gemini TAKE decisions with the legacy entry-quality gate.
+2) Gemini tighten_stop requests are executable only after the trade has earned
+   at least +0.50R. Genuine exit_now requests are never blocked by this rule.
+3) MFE/MAE telemetry stops at the first target/stop event visible in the 1m
+   data, preventing post-exit candles from contaminating outcome analytics.
+
+The hard deterministic geometry gate remains in gemini_advisor.py.
 """
 from __future__ import annotations
 
@@ -20,76 +22,64 @@ from pathlib import Path
 
 import requests
 import gemini_advisor
-from entry_quality_gate import apply_entry_quality_gate
+from advisorx_trade_management_policy import (
+    DEFAULT_MIN_TIGHTEN_R,
+    add_signal_provenance,
+    apply_management_policy,
+    update_mfe_mae_until_exit,
+)
 from v2_live_integration import record_cycle, record_position_exits
 
+V2_CYCLE = {"signals": None, "flagged": None, "open_positions": None, "recorded": False}
 
-# References captured during one production cycle. The production scanner later
-# enriches `flagged` in-place (entry-location telemetry, recent-signal context,
-# etc.). We intentionally wait until _build_message(), after those mutations,
-# before writing V2 telemetry.
-_V2_CYCLE = {
-    "signals": None,
-    "flagged": None,
-    "open_positions": None,
-    "recorded": False,
-}
+
+def _management_prompt_addendum() -> str:
+    return """
+TRADE-MANAGEMENT DISCIPLINE — IMPORTANT:
+Treat an open trade in four mental states: VALID, CAUTION, PROFIT_PROTECTION,
+and INVALIDATED.
+
+- VALID: the original structural thesis still holds. Prefer HOLD.
+- CAUTION: indicators may be weakening, but there is no structural failure.
+  CAUTION is NOT a reason to exit merely because momentum, ADX, EMA position,
+  RVOL, or candle shape became less favorable.
+- PROFIT_PROTECTION: meaningful favorable excursion has already been earned.
+  Protect it mechanically and progressively rather than repeatedly tightening
+  on small fluctuations.
+- INVALIDATED: the original directional thesis has genuinely failed through
+  structural evidence, e.g. an opposing confirmed BOS/CHoCH or decisive loss of
+  the level that made the trade thesis valid. This is where exit_now belongs.
+
+Do not convert ordinary drawdown or indicator deterioration into exit_now.
+Do not request tighten_stop before the trade has earned meaningful profit.
+A tighten_stop is normally appropriate only after at least +0.50R gross has
+been earned; before that, HOLD unless a genuine structural invalidation calls
+for exit_now.
+
+For new entries, judge combinations rather than isolated signals. A BOS is
+not automatically strong when it is already near a range extreme, materially
+extended from the break, accompanied by repeated failed breaks/liquidity
+sweeps, or high exhaustion. These are contextual risk factors for Gemini's
+judgment, not Python hard filters.
+
+CONVICTION CALIBRATION:
+6 = acceptable/defendable; 7 = strong; 8 = exceptional; 9-10 = rare.
+Do not cluster almost every trade at 6 merely because a trade is possible.
+"""
 
 
 def _relax_gemini_selectivity() -> None:
     prompt = gemini_advisor.SYSTEM_PROMPT
-    replacements = [
-        (
-            'If recent performance has been poor (more stops/expiries than targets, negative realized P&L), '
-            "that's a real reason to be MORE selective this cycle, not something to disregard because "
-            '"this setup is different."',
-            'If recent performance has been poor, become more selective about marginal setups, but do not '
-            'suppress otherwise valid fresh continuation setups. Recent performance is a weighting factor, '
-            'not a blanket no-trade condition.',
-        ),
-        (
-            'Mixed or contradictory evidence should result in SKIP.',
-            'Material contradiction should result in SKIP, especially when the execution timeframe (3m) '
-            'and confirmation timeframe (15m) directly oppose the proposed direction. A neutral or lagging '
-            '1h timeframe alone is not a reason to SKIP a fresh 3m/15m continuation.',
-        ),
-        (
-            'Only flag genuinely high-quality, high-conviction opportunities. Do not flag marginal, borderline, '
-            'or small setups just because one number happens to look elevated - that produces noise, not useful '
-            'signals. Flagging nothing is the correct, expected outcome most cycles; only flag when you\'d actually '
-            'stand behind it. take_trade: true is a higher bar than simply being worth mentioning - if you\'re '
-            'flagging a coin mainly because something looks unusual but you\'re not genuinely confident, set '
-            'take_trade: false and say so, rather than defaulting to true.',
-            'Only flag setups with a real directional edge, but do not require every timeframe and indicator '
-            'to be perfect. In a clear TREND_UP/TREND_DOWN regime, a fresh continuation with aligned 3m '
-            'structure, supportive 15m structure (bullish/bearish or neutral), momentum/volume confirmation, '
-            'and adequate room is a valid trade even when the 1h is lagging. In BREAKOUT_TRANSITION or '
-            'BREAKDOWN_TRANSITION, a fresh structural break with confirmation is valid even if higher-timeframe '
-            'structure has not caught up yet. In RANGE and EXHAUSTION regimes remain more selective. Do not '
-            'manufacture trades, but do not turn a strong trend into SKIP merely because it is not a textbook '
-            'perfect alignment. take_trade: true should mean the setup has a defendable edge, not that every '
-            'possible feature agrees.',
-        ),
-        (
-            'new_signals is empty if nothing this cycle meets your own bar for quality (the normal case).',
-            'new_signals is empty when nothing this cycle has a defendable edge. In strong directional regimes, '
-            'valid continuation opportunities are expected when the important evidence aligns.',
-        ),
-    ]
-    for old, new in replacements:
-        if old in prompt:
-            prompt = prompt.replace(old, new)
     marker = "REGIME-ADAPTIVE SELECTIVITY:"
     if marker not in prompt:
         prompt += (
-            "\n\nREGIME-ADAPTIVE SELECTIVITY: "
-            "Use TREND_UP/TREND_DOWN as environments where good continuation trades "
-            "should be allowed rather than requiring rare textbook perfection. "
-            "Use RANGE as a boundary-trading environment. Use BREAKOUT_TRANSITION/"
-            "BREAKDOWN_TRANSITION for fresh structural breaks. Use EXHAUSTION or "
-            "UNCLEAR as high-selectivity environments. The goal is selective trading, "
-            "not zero trading.\n"
+            "\n\nREGIME-ADAPTIVE SELECTIVITY: Use TREND_UP/TREND_DOWN as environments "
+            "where valid continuation trades can occur without textbook perfection. "
+            "Use RANGE for boundary trades and BREAKOUT_TRANSITION/BREAKDOWN_TRANSITION "
+            "for fresh structural breaks. Use EXHAUSTION/UNCLEAR more selectively. "
+            "The goal is selective trading, not zero trading.\n"
         )
+    prompt += "\n" + _management_prompt_addendum()
     gemini_advisor.SYSTEM_PROMPT = prompt
 
 
@@ -98,33 +88,26 @@ _original_get_trade_suggestions_batch = gemini_advisor.get_trade_suggestions_bat
 
 
 def _quality_checked_batch(signals, scorecard=None, open_positions=None):
-    """Run the existing Gemini + Python quality gate without changing decisions."""
     ok, flagged, position_updates = _original_get_trade_suggestions_batch(
         signals, scorecard, open_positions
     )
     if not ok:
-        _V2_CYCLE["signals"] = None
-        _V2_CYCLE["flagged"] = None
-        _V2_CYCLE["open_positions"] = None
-        _V2_CYCLE["recorded"] = False
+        V2_CYCLE.update({"signals": None, "flagged": None, "open_positions": None, "recorded": False})
         return ok, flagged, position_updates
 
-    rejected = apply_entry_quality_gate(flagged, signals)
-    if rejected:
-        reasons = {}
-        for item in flagged.values():
-            reason = item.get("_entry_quality_reject_reason")
-            if reason:
-                reasons[reason] = reasons.get(reason, 0) + 1
-        print(f"  Entry-quality gate: rejected {rejected} Gemini TAKE(s) | reasons={reasons}")
+    # Entry-quality V2 diagnostics are observational by architecture. The
+    # deterministic risk/geometry gate inside gemini_advisor remains active.
+    add_signal_provenance(flagged)
+    position_updates = apply_management_policy(
+        position_updates,
+        open_positions or [],
+        min_tighten_r=float(os.environ.get("MIN_PROFIT_R_TO_TIGHTEN", DEFAULT_MIN_TIGHTEN_R)),
+    )
 
-    # Keep object references. The scanner mutates flagged later in main() with
-    # entry-location/recent-signal telemetry; _build_message() consumes it only
-    # after those mutations have happened.
-    _V2_CYCLE["signals"] = signals
-    _V2_CYCLE["flagged"] = flagged
-    _V2_CYCLE["open_positions"] = open_positions
-    _V2_CYCLE["recorded"] = False
+    V2_CYCLE["signals"] = signals
+    V2_CYCLE["flagged"] = flagged
+    V2_CYCLE["open_positions"] = open_positions
+    V2_CYCLE["recorded"] = False
     return ok, flagged, position_updates
 
 
@@ -137,16 +120,20 @@ if _SPEC is None or _SPEC.loader is None:
     raise ImportError(f"Unable to load scanner from {_SCANNER_PATH}")
 _scanner = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_scanner)
+
+# Gemini call interception: observational V2 telemetry + management policy.
 _scanner.get_trade_suggestions_batch = _quality_checked_batch
+
+# Replace the pre-resolution MFE/MAE update so it cannot see candles after the
+# first actual target/stop event in the available 1m series.
+_scanner.update_position_telemetry = update_mfe_mae_until_exit
 
 _original_apply_position_updates = _scanner.apply_position_updates
 
 
 def _telemetry_position_updates(ledger, position_updates, current_prices, now):
     try:
-        open_positions = _scanner.build_open_position_context(
-            ledger, current_prices, now, {}
-        )
+        open_positions = _scanner.build_open_position_context(ledger, current_prices, now, {})
         record_position_exits(open_positions, position_updates)
     except Exception as exc:
         print(f"  V2 exit telemetry WARNING: {exc}")
@@ -157,28 +144,26 @@ def _telemetry_position_updates(ledger, position_updates, current_prices, now):
 
 _scanner.apply_position_updates = _telemetry_position_updates
 
+_original_build_message = _scanner._build_message
+
 
 def _record_v2_before_message():
-    if _V2_CYCLE["recorded"] or _V2_CYCLE["signals"] is None:
+    if V2_CYCLE["recorded"] or V2_CYCLE["signals"] is None:
         return
     try:
         summary = record_cycle(
-            _V2_CYCLE["signals"],
-            _V2_CYCLE["flagged"] or {},
-            _V2_CYCLE["open_positions"] or [],
+            V2_CYCLE["signals"],
+            V2_CYCLE["flagged"] or {},
+            V2_CYCLE["open_positions"] or [],
         )
-        _V2_CYCLE["recorded"] = True
+        V2_CYCLE["recorded"] = True
         print(
             "  V2 funnel: "
             f"records={len(summary['records'])} | buckets={summary['buckets']} | "
             f"portfolio={summary['portfolio']}"
         )
     except Exception as exc:
-        # Research telemetry must never disable the trading decision path.
         print(f"  V2 telemetry WARNING: {exc}")
-
-
-_original_build_message = _scanner._build_message
 
 
 def _build_message_with_v2(*args, **kwargs):
