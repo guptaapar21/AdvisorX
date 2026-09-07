@@ -28,10 +28,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
 
-      - name: Verify V2 integration
+      - name: Verify V2 integration and management policy
         working-directory: cloud-backtest
         run: |
-          python -m py_compile trend_alignment_scanner_live.py v2_live_integration.py candidate_funnel.py trade_counterfactuals.py portfolio_risk.py test_v2_integration.py test_v2_invariants.py
+          python -m py_compile trend_alignment_scanner_live.py advisorx_trade_management_policy.py v2_live_integration.py candidate_funnel.py trade_counterfactuals.py portfolio_risk.py test_v2_integration.py test_v2_invariants.py
           PYTHONPATH=. python -m unittest -v test_v2_integration.py test_v2_invariants.py
 
       - name: Run trend alignment scanner with V2 research telemetry
@@ -48,10 +48,14 @@ jobs:
           MAX_STOP_PCT: "0.08"
           MIN_STOP_ATR_MULTIPLIER: "2.0"
 
-          # Controlled opportunity-frequency configuration only.
+          # Entry-quality variables remain observational; they do not veto Gemini.
           MAX_ENTRY_DISTANCE_ATR: "1.5"
           BREAKOUT_MAX_BARS: "12"
           BREAKOUT_MAX_EXTENSION_ATR: "1.5"
+
+          # Position-management guard: do not execute discretionary stop tightening
+          # before the open trade has earned +0.50R gross. Genuine exits remain allowed.
+          MIN_PROFIT_R_TO_TIGHTEN: "0.5"
 
           # Research files are runner-local and uploaded as artifacts.
           CANDIDATE_FUNNEL_FILE: "candidate_funnel.jsonl"
