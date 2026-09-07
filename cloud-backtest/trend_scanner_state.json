@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-07T20:06:40.391648+00:00",
+  "last_sent_at": "2026-09-07T20:09:41.977147+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-07T20:03:00Z",
+  "last_processed_candle_time": "2026-09-07T20:06:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -392,12 +392,6 @@
     ],
     "HEI": [
       {
-        "direction": "short",
-        "entry_price": 0.1347,
-        "take_trade": false,
-        "time": "2026-09-07T11:15:38.640261+00:00"
-      },
-      {
         "direction": "long",
         "entry_price": 0.1355,
         "take_trade": false,
@@ -420,6 +414,12 @@
         "entry_price": 0.1356,
         "take_trade": true,
         "time": "2026-09-07T17:24:22.424902+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.1382,
+        "take_trade": true,
+        "time": "2026-09-07T20:09:20.696352+00:00"
       }
     ],
     "TRX": [
@@ -6730,29 +6730,114 @@
       "mfe_mae_policy_version": "2026-09-07-trade-management-v1",
       "resolved_pnl": -1050.0,
       "resolved_time": "2026-09-07 19:36:00"
+    },
+    {
+      "coin": "HEI",
+      "direction": "long",
+      "entry_price": 0.1382,
+      "stop_loss": 0.1365,
+      "target_price": 0.1415,
+      "trade_amount_inr": 76081.37,
+      "quantity": 5536.166903136626,
+      "max_loss_this_trade_inr": 1050.0,
+      "conviction": 7,
+      "supporting_tags": [
+        "MOMENTUM",
+        "CHOCH",
+        "EMA_STRUCTURE",
+        "VWAP",
+        "PRIOR_CALL"
+      ],
+      "risk_tags": [
+        "RVOL"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.1382,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": 0.1447,
+        "entry_vs_recent_swing_low_pct": 0.9407,
+        "entry_vs_recent_swing_high_atr": 0.538,
+        "entry_vs_recent_swing_low_atr": 3.5,
+        "entry_vs_latest_break_pct": 0.1447,
+        "entry_vs_latest_break_atr": 0.538,
+        "entry_range_position_pct": 87.5,
+        "entry_distance_to_range_high_pct": 0.2171,
+        "entry_distance_to_range_low_pct": 1.5195,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.2171,
+        "nearest_boundary_distance_atr": 0.808,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "CHoCH",
+        "latest_break_time": "2026-09-07 20:06:00",
+        "break_distance_class": "moderately_away"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 0,
+          "break_freshness": "fresh",
+          "break_direction": "bullish",
+          "break_type": "CHoCH",
+          "extension_pct_from_break": 0.145,
+          "extension_atr_from_break": 0.54,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 4,
+          "liquidity_sweep_count_3m": 4,
+          "high_rejection_sweeps_3m": 1,
+          "low_reclaim_sweeps_3m": 3,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 20,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 1,
+        "recent_long_take_count_180m": 1,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 165.0,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": true,
+        "last_closed_trade_minutes_ago": 45.3,
+        "last_closed_trade_direction": "long",
+        "last_closed_trade_pnl_inr": 1203.67,
+        "last_closed_trade_r": 1.146,
+        "same_direction_recent_close": true,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-07T20:09:20.696352+00:00",
+      "reasoning": "Fresh bullish CHoCH breakout above 0.138 with supportive EMA structure and positive continuation from a prior winning call.",
+      "level_history": [
+        {
+          "from": "2026-09-07T20:09:20.696352+00:00",
+          "stop": 0.1365,
+          "target": 0.1415
+        }
+      ],
+      "peak_price": 0.1382,
+      "trough_price": 0.1382,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-07T20:09:20.696352+00:00",
+      "mae_time": "2026-09-07T20:09:20.696352+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-07T19:42:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-07T19:45:00Z": [
       "ACE",
       "ADA",
@@ -6874,6 +6959,26 @@
       "ZEC"
     ],
     "2026-09-07T20:03:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-07T20:06:00Z": [
       "ACE",
       "ADA",
       "AVAX",
