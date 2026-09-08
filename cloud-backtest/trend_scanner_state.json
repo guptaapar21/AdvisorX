@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-08T12:16:00.793027+00:00",
+  "last_sent_at": "2026-09-08T12:18:49.877145+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-08T12:12:00Z",
+  "last_processed_candle_time": "2026-09-08T12:15:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -105,12 +105,6 @@
     "XRP": [
       {
         "direction": "short",
-        "entry_price": 1.3984,
-        "take_trade": false,
-        "time": "2026-09-07T10:57:21.589195+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 1.3983,
         "take_trade": false,
         "time": "2026-09-07T11:09:25.506779+00:00"
@@ -132,6 +126,12 @@
         "entry_price": 1.4027,
         "take_trade": false,
         "time": "2026-09-07T12:15:38.894278+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 1.3894,
+        "take_trade": true,
+        "time": "2026-09-08T12:18:25.203650+00:00"
       }
     ],
     "HYPE": [
@@ -2852,7 +2852,7 @@
       "mfe_r": 0.634,
       "mfe_time": "2026-09-08T12:03:00+00:00",
       "mae_time": "2026-09-08T11:09:00+00:00",
-      "mfe_giveback_pct": 24.2,
+      "mfe_giveback_pct": 21.2,
       "mfe_mae_policy_version": "2026-09-07-trade-management-v1"
     },
     {
@@ -3066,13 +3066,13 @@
         }
       ],
       "peak_price": 83.067,
-      "trough_price": 82.708,
-      "mfe_pnl_inr": 581.95,
+      "trough_price": 82.696,
+      "mfe_pnl_inr": 604.55,
       "mae_pnl_inr": -94.17,
-      "mfe_r": 0.554,
-      "mfe_time": "2026-09-08T12:14:00+00:00",
+      "mfe_r": 0.576,
+      "mfe_time": "2026-09-08T12:16:00+00:00",
       "mae_time": "2026-09-08T12:10:00+00:00",
-      "mfe_giveback_pct": 12.6,
+      "mfe_giveback_pct": 32.4,
       "mfe_mae_policy_version": "2026-09-07-trade-management-v1"
     },
     {
@@ -3170,37 +3170,122 @@
           "target": 0.0875
         }
       ],
-      "peak_price": 0.08877,
+      "peak_price": 0.08898,
       "trough_price": 0.08877,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": -247.66,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-08T12:15:38.382291+00:00",
+      "mae_time": "2026-09-08T12:17:00+00:00",
+      "mfe_giveback_pct": 0.0,
+      "mfe_mae_policy_version": "2026-09-07-trade-management-v1"
+    },
+    {
+      "coin": "XRP",
+      "direction": "short",
+      "entry_price": 1.3894,
+      "stop_loss": 1.394,
+      "target_price": 1.38,
+      "trade_amount_inr": 187079.79,
+      "quantity": 1354.061703063236,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "BOS",
+        "EMA_STRUCTURE",
+        "ADX_DI",
+        "MOMENTUM"
+      ],
+      "risk_tags": [
+        "RANGE_LOCATION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 1.3894,
+        "direction": "short",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.1799,
+        "entry_vs_recent_swing_low_pct": 0.0864,
+        "entry_vs_recent_swing_high_atr": -1.163,
+        "entry_vs_recent_swing_low_atr": 0.558,
+        "entry_vs_latest_break_pct": 0.0288,
+        "entry_vs_latest_break_atr": 0.186,
+        "entry_range_position_pct": 7.89,
+        "entry_distance_to_range_high_pct": 1.0076,
+        "entry_distance_to_range_low_pct": 0.0864,
+        "nearest_boundary": "low",
+        "nearest_boundary_distance_pct": 0.0864,
+        "nearest_boundary_distance_atr": 0.558,
+        "entry_location_class": "near_range_low",
+        "latest_break_direction": "bearish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-08 12:12:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 1,
+          "break_freshness": "fresh",
+          "break_direction": "bearish",
+          "break_type": "BOS",
+          "extension_pct_from_break": -0.029,
+          "extension_atr_from_break": -0.19,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 2,
+          "liquidity_sweep_count_3m": 5,
+          "high_rejection_sweeps_3m": 3,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 12,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": null,
+        "last_signal_direction": null,
+        "last_signal_take_trade": null,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-08T12:18:25.203650+00:00",
+      "reasoning": "XRP broke down with a confirmed bearish BOS at 1.3882, supported by minus DI dominance (31.31 vs 14.53) and negative momentum.",
+      "level_history": [
+        {
+          "from": "2026-09-08T12:18:25.203650+00:00",
+          "stop": 1.394,
+          "target": 1.38
+        }
+      ],
+      "peak_price": 1.3894,
+      "trough_price": 1.3894,
       "mfe_pnl_inr": 0.0,
       "mae_pnl_inr": 0.0,
       "mfe_r": 0.0,
-      "mfe_time": "2026-09-08T12:15:38.382291+00:00",
-      "mae_time": "2026-09-08T12:15:38.382291+00:00",
+      "mfe_time": "2026-09-08T12:18:25.203650+00:00",
+      "mae_time": "2026-09-08T12:18:25.203650+00:00",
       "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-08T11:51:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-08T11:54:00Z": [
       "ACE",
       "ADA",
@@ -3322,6 +3407,26 @@
       "ZEC"
     ],
     "2026-09-08T12:12:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-08T12:15:00Z": [
       "ACE",
       "ADA",
       "AVAX",
