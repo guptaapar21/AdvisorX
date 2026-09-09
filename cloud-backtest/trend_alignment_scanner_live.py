@@ -3,8 +3,8 @@
 This wrapper preserves the existing scanner/V2 telemetry architecture while
 fixing three concrete live-path problems identified in the current ledger:
 
-1) V2 entry-quality diagnostics are observational; the wrapper no longer
-   hard-vetoes Gemini TAKE decisions with entry_quality_gate.py.
+1) Gemini retains discretionary direction/selection, but TAKE decisions are
+   executable only after the deterministic entry-quality sanity gate passes.
 2) Gemini tighten_stop requests are executable only after the trade has earned
    at least +0.50R. Genuine exit_now requests are never blocked by this rule.
 3) MFE/MAE telemetry stops at the first target/stop event visible in the 1m
@@ -22,6 +22,7 @@ from pathlib import Path
 
 import requests
 import gemini_advisor
+from entry_quality_gate import apply_entry_quality_gate
 from advisorx_trade_management_policy import (
     DEFAULT_MIN_TIGHTEN_R,
     add_signal_provenance,
@@ -95,9 +96,14 @@ def _quality_checked_batch(signals, scorecard=None, open_positions=None):
         V2_CYCLE.update({"signals": None, "flagged": None, "open_positions": None, "recorded": False})
         return ok, flagged, position_updates
 
-    # Entry-quality V2 diagnostics are observational by architecture. The
-    # deterministic risk/geometry gate inside gemini_advisor remains active.
+    # V2 diagnostics remain observational, but a TAKE decision is not
+    # executable until it passes the deterministic entry-quality sanity gate.
+    # Gemini still chooses direction/levels; Python only vetoes objectively
+    # unsafe/exhausted execution locations.
+    quality_rejected = apply_entry_quality_gate(flagged, signals)
     add_signal_provenance(flagged)
+    if quality_rejected:
+        print(f"  Entry-quality gate rejected {quality_rejected} TAKE decision(s).")
     position_updates = apply_management_policy(
         position_updates,
         open_positions or [],
