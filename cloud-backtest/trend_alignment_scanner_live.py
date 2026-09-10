@@ -24,9 +24,11 @@ from advisorx_trade_management_policy import (
     apply_profit_ladder,
     update_mfe_mae_until_exit,
 )
+from advisorx_trade_resolution import resolve_ledger_1m
 from v2_live_integration import record_cycle, record_position_exits
 
 V2_CYCLE = {"signals": None, "flagged": None, "open_positions": None, "recorded": False}
+V4_RUNTIME = {"fetched": {}}
 
 
 def _management_prompt_addendum() -> str:
@@ -62,9 +64,6 @@ profit; Python may suppress premature or non-monotonic adjustments.
 def _augment_gemini_prompt() -> None:
     marker = "V4 ENTRY-QUALITY DISCIPLINE:"
     prompt = gemini_advisor.SYSTEM_PROMPT
-    # Remove the old instruction that entry-location/freshness variables are
-    # strictly observational; V4 promotes the repeatedly validated failure
-    # modes into the live decision process.
     prompt = prompt.replace(
         "The entry_quality_context, recent_signal_context, and entry_location_telemetry are observational diagnostics: use them as evidence, but do not apply a hard BOS-age, extension, re-entry, session, or entry-location rule. We are collecting this telemetry to test which variables actually predict outcomes.",
         "The entry_quality_context, recent_signal_context, and entry_location_telemetry are now decision-relevant evidence. Treat BOS age, extension, re-entry, entry location, exhaustion, failed breaks, and liquidity sweeps as material parts of the TAKE/SKIP judgment. Python still performs the final deterministic execution gate."
@@ -121,10 +120,31 @@ _scanner.get_trade_suggestions_batch = _quality_checked_batch
 
 
 def _update_position_telemetry_compat(ledger, fetched, now=None):
+    # Cache the same closed-candle set for the live management phase. This is
+    # intentionally kept in the launcher so the production path, not the
+    # legacy base scanner, controls outcome resolution and profit protection.
+    V4_RUNTIME["fetched"] = fetched or {}
     return update_mfe_mae_until_exit(ledger, fetched)
 
 
 _scanner.update_position_telemetry = _update_position_telemetry_compat
+
+
+def _resolve_ledger_v4(ledger, fetched, now):
+    return resolve_ledger_1m(
+        ledger,
+        fetched,
+        now,
+        usdt_inr_rate=float(os.environ.get("USDT_INR_RATE", "99.44")),
+        taker_fee_rate=float(os.environ.get("TAKER_FEE_RATE", "0.00075")),
+        expiry_hours=float(getattr(_scanner, "EXPIRY_HOURS", 2.0)),
+        ledger_max_age_hours=float(getattr(_scanner, "LEDGER_MAX_AGE_HOURS", 26.0)),
+        resolved_trades_file=getattr(_scanner, "RESOLVED_TRADES_FILE", "resolved_trades.jsonl"),
+        research_telemetry_version=getattr(_scanner, "RESEARCH_TELEMETRY_VERSION", ""),
+    )
+
+
+_scanner.resolve_ledger = _resolve_ledger_v4
 _original_apply_position_updates = _scanner.apply_position_updates
 
 
@@ -134,8 +154,23 @@ def _telemetry_position_updates(ledger, position_updates, current_prices, now):
         record_position_exits(open_positions, position_updates)
     except Exception as exc:
         print(f"  V4 exit telemetry WARNING: {exc}")
+
+    # Keep the deterministic health telemetry that the legacy protection code
+    # used to populate, but do not execute the legacy stop/exit mutations.
+    fetched = V4_RUNTIME.get("fetched") or {}
     try:
-        profit_actions = apply_profit_ladder(ledger, current_prices, now, fetched=None)
+        for entry in ledger:
+            if entry.get("status") != "pending" or entry.get("coin") not in fetched:
+                continue
+            health = _scanner._profit_health_from_fetched(entry, fetched)
+            entry["profit_health_score"] = int(health.get("score") or 0)
+            entry["profit_health_state"] = health.get("state")
+            entry["profit_health_reasons"] = health.get("reasons", [])
+    except Exception as exc:
+        print(f"  V4 profit-health WARNING: {exc}")
+
+    try:
+        profit_actions = apply_profit_ladder(ledger, current_prices, now, fetched=fetched)
         for item in profit_actions:
             print(f"  V4 profit management: {item}")
     except Exception as exc:
@@ -144,6 +179,14 @@ def _telemetry_position_updates(ledger, position_updates, current_prices, now):
 
 
 _scanner.apply_position_updates = _telemetry_position_updates
+# The base scanner still exposes its older protection routine for historical
+# backtests. In the production launcher it must not run, otherwise two
+# independent Python authorities could revise the same stop in one cycle.
+def _legacy_profit_protection_disabled(*args, **kwargs):
+    return []
+
+
+_scanner.apply_python_profit_protection = _legacy_profit_protection_disabled
 _original_build_message = _scanner._build_message
 
 
@@ -188,7 +231,7 @@ def _safe_send_telegram(text, reply_markup=None, parse_mode="HTML"):
     plain = html.unescape(re.sub(r"</?b>", "", str(text), flags=re.IGNORECASE))
     fallback = {"chat_id": chat_id, "text": plain}
     if reply_markup:
-        fallback["reply_markup"] = markup if False else reply_markup
+        fallback["reply_markup"] = reply_markup
     fallback_response = requests.post(url, json=fallback, timeout=15)
     if fallback_response.ok:
         print("Telegram plain-text fallback delivered.")
