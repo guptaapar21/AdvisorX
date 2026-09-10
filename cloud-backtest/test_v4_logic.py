@@ -122,6 +122,7 @@ class V4LogicTests(unittest.TestCase):
     def test_non_monotonic_short_stop_is_suppressed(self):
         position = _position("short")
         position["current_price"] = 98.0
+        position["mfe_pnl_inr"] = 500.0
         updates = {"TEST": {"action": "tighten_stop", "updated_stop_loss": 106.0}}
         result = apply_management_policy(updates, [position], min_tighten_r=0.5)
         self.assertEqual(result["TEST"]["action"], "hold")
@@ -147,7 +148,7 @@ class V4LogicTests(unittest.TestCase):
 
     def test_1m_resolution_prefers_target_when_only_target_is_touched(self):
         ledger = [_position("long")]
-        ledger[0]["time"] = "2026-09-10T10:00:00+00:00"
+        ledger[0]["time"] = "2026-09-10T09:59:00+00:00"
         candles = _candles([
             [100, 101, 99.5, 100.5, 10],
             [100.5, 110.1, 100.0, 109.0, 10],
@@ -157,12 +158,13 @@ class V4LogicTests(unittest.TestCase):
                 ledger, {"TEST": (None, None, None, candles)}, "2026-09-10T10:03:00+00:00",
                 usdt_inr_rate=99.44, taker_fee_rate=0.00075, resolved_trades_file=archive.name,
             )
-        self.assertEqual(result[0]["status"], "target_hit")
-        self.assertEqual(result[0]["resolution_timeframe"], "1m")
+        self.assertEqual(result, [])
+        self.assertEqual(ledger[0]["status"], "target_hit")
+        self.assertEqual(ledger[0]["resolution_timeframe"], "1m")
 
     def test_1m_resolution_conservatively_marks_both_sides_as_stop(self):
         ledger = [_position("long")]
-        ledger[0]["time"] = "2026-09-10T10:00:00+00:00"
+        ledger[0]["time"] = "2026-09-10T09:59:00+00:00"
         candles = _candles([
             [100, 110.5, 94.5, 100.0, 10],
         ])
@@ -171,9 +173,10 @@ class V4LogicTests(unittest.TestCase):
                 ledger, {"TEST": (None, None, None, candles)}, "2026-09-10T10:02:00+00:00",
                 usdt_inr_rate=99.44, taker_fee_rate=0.00075, resolved_trades_file=archive.name,
             )
-        self.assertEqual(result[0]["status"], "stop_hit")
+        self.assertEqual(result, [])
+        self.assertEqual(ledger[0]["status"], "stop_hit")
         self.assertEqual(
-            result[0]["resolution_policy"],
+            ledger[0]["resolution_policy"],
             "conservative_stop_when_target_and_stop_share_candle",
         )
 
