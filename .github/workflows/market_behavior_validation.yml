@@ -1,0 +1,26 @@
+name: Market Behaviour Recorder Validation
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+      - name: Compile and test recorder
+        working-directory: cloud-backtest
+        run: |
+          python -m py_compile market_behavior_recorder.py test_market_behavior_recorder.py
+          PYTHONPATH=. python -m unittest -v test_market_behavior_recorder.py
