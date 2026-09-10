@@ -26,7 +26,7 @@ jobs:
       - name: Verify V4 integration
         working-directory: cloud-backtest
         run: |
-          python -m py_compile trend_alignment_scanner_live.py advisorx_trade_management_policy.py entry_quality_gate.py portfolio_risk.py v2_live_integration.py candidate_funnel.py trade_counterfactuals.py test_v2_integration.py test_v2_invariants.py test_v4_logic.py
+          python -m py_compile trend_alignment_scanner_live.py advisorx_trade_management_policy.py advisorx_trade_resolution.py entry_quality_gate.py portfolio_risk.py v2_live_integration.py candidate_funnel.py trade_counterfactuals.py test_v2_integration.py test_v2_invariants.py test_v4_logic.py
           PYTHONPATH=. python -m unittest -v test_v2_integration.py test_v2_invariants.py test_v4_logic.py
       - name: Run trend alignment scanner with V4 execution logic
         working-directory: cloud-backtest
@@ -79,6 +79,7 @@ jobs:
             cloud-backtest/gemini_raw_responses.log
           if-no-files-found: ignore
           retention-days: 30
+          overwrite: false
       - name: Persist scanner state
         working-directory: cloud-backtest
         run: |
