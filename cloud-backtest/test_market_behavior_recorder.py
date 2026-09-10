@@ -15,12 +15,11 @@ class MarketBehaviorRecorderTests(unittest.TestCase):
 
     def test_support_long_wick_creates_event(self):
         bars = self._bars()
-        last = bars[-1]
-        bars[-1] = Bar(last.ts_ms, 100.72, 100.76, 99.80, 100.70, 250.0)
-        # Put the recent support level near the rejection low.
-        for i in range(10, 40):
+        for i in range(49, 79):
             b = bars[i]
             bars[i] = Bar(b.ts_ms, b.open, b.high, 99.80, b.close, b.volume)
+        last = bars[-1]
+        bars[-1] = Bar(last.ts_ms, 100.72, 100.76, 99.80, 100.70, 250.0)
         event = build_event("TEST", bars)
         self.assertIsNotNone(event)
         self.assertIn("long_wick_support_rejection", event["event_families"])
@@ -30,7 +29,7 @@ class MarketBehaviorRecorderTests(unittest.TestCase):
 
     def test_failed_resistance_break_is_bearish(self):
         bars = self._bars()
-        for i in range(10, 40):
+        for i in range(49, 79):
             b = bars[i]
             bars[i] = Bar(b.ts_ms, b.open, 100.45, b.low, b.close, b.volume)
         last = bars[-1]
