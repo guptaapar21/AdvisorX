@@ -1,0 +1,31 @@
+name: V4 Current-Commit Validation
+
+on:
+  push:
+    paths:
+      - '.github/workflows/v4-current-validation.yml'
+      - 'cloud-backtest/test_v4_logic.py'
+      - 'cloud-backtest/advisorx_trade_management_policy.py'
+      - 'cloud-backtest/advisorx_trade_resolution.py'
+      - 'cloud-backtest/trend_alignment_scanner_live.py'
+      - 'cloud-backtest/entry_quality_gate.py'
+      - 'cloud-backtest/portfolio_risk.py'
+      - 'cloud-backtest/v2_live_integration.py'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r cloud-backtest/requirements.txt
+      - name: Compile and test V4
+        working-directory: cloud-backtest
+        run: |
+          python -m py_compile trend_alignment_scanner_live.py advisorx_trade_management_policy.py advisorx_trade_resolution.py entry_quality_gate.py portfolio_risk.py v2_live_integration.py candidate_funnel.py trade_counterfactuals.py test_v2_integration.py test_v2_invariants.py test_v4_logic.py
+          PYTHONPATH=. python -m unittest -v test_v2_integration.py test_v2_invariants.py test_v4_logic.py
