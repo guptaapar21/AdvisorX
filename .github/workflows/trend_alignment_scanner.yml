@@ -13,7 +13,7 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Ensure freshest state
@@ -23,11 +23,11 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
-      - name: Verify V4 integration
+      - name: Verify V4 integration and market research recorder
         working-directory: cloud-backtest
         run: |
-          python -m py_compile trend_alignment_scanner_live.py advisorx_trade_management_policy.py advisorx_trade_resolution.py entry_quality_gate.py portfolio_risk.py v2_live_integration.py candidate_funnel.py trade_counterfactuals.py test_v2_integration.py test_v2_invariants.py test_v4_logic.py
-          PYTHONPATH=. python -m unittest -v test_v2_integration.py test_v2_invariants.py test_v4_logic.py
+          python -m py_compile trend_alignment_scanner_live.py advisorx_trade_management_policy.py advisorx_trade_resolution.py entry_quality_gate.py portfolio_risk.py v2_live_integration.py candidate_funnel.py trade_counterfactuals.py market_behavior_recorder.py test_v2_integration.py test_v2_invariants.py test_v4_logic.py test_market_behavior_recorder.py
+          PYTHONPATH=. python -m unittest -v test_v2_integration.py test_v2_invariants.py test_v4_logic.py test_market_behavior_recorder.py
       - name: Run trend alignment scanner with V4 execution logic
         working-directory: cloud-backtest
         env:
@@ -66,7 +66,16 @@ jobs:
         run: >
           python trend_alignment_scanner_live.py
           --coins BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX,HEI,BICO,HYPE,ZEC,ZBT,ADA,ACE,PAXG
-      - name: Upload research and operational diagnostics
+      - name: Capture future market behaviour evidence
+        continue-on-error: true
+        working-directory: cloud-backtest
+        run: >
+          python market_behavior_recorder.py
+          --coins BTC,ETH,BNB,SOL,XRP,DOGE,LTC,LINK,TRX,AVAX,HEI,BICO,HYPE,ZEC,ZBT,ADA,ACE,PAXG
+          --root market_behavior_research
+          --state market_behavior_state.json
+          --lookback-min 240
+      - name: Upload V4 and market research diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -77,26 +86,33 @@ jobs:
             cloud-backtest/resolved_trades.jsonl
             cloud-backtest/failure_to_launch_shadow.jsonl
             cloud-backtest/gemini_raw_responses.log
+            cloud-backtest/market_behavior_state.json
+            cloud-backtest/market_behavior_research/**/*.jsonl
           if-no-files-found: ignore
-          retention-days: 30
+          retention-days: 90
           overwrite: false
-      - name: Persist scanner state
+      - name: Persist scanner state and market behaviour evidence
         working-directory: cloud-backtest
         run: |
           git config user.name "coindcx-trend-scanner-bot"
           git config user.email "actions@github.com"
           git add trend_scanner_state.json
+          [ -f market_behavior_state.json ] && git add market_behavior_state.json || true
+          [ -d market_behavior_research ] && git add -A market_behavior_research || true
           git diff --staged --quiet && exit 0
-          git commit -m "Update trend alignment scanner state [skip ci]"
+          git commit -m "Update trend scanner and market research state [skip ci]"
           for i in 1 2 3; do
             if git push; then exit 0; fi
             echo "Push rejected (attempt $i), pulling and retrying..."
             if git pull --rebase; then continue; fi
+            echo "Rebase hit a real conflict - keeping this run's state values on top of latest remote."
             git rebase --abort
             git fetch origin main
             git reset --soft origin/main
             git add trend_scanner_state.json
-            git commit -m "Update trend alignment scanner state [skip ci]" --allow-empty
+            [ -f market_behavior_state.json ] && git add market_behavior_state.json || true
+            [ -d market_behavior_research ] && git add -A market_behavior_research || true
+            git commit -m "Update trend scanner and market research state [skip ci]" --allow-empty
           done
           echo "Failed to push state after 3 attempts."
           exit 1
