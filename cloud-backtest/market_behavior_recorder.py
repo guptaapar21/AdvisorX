@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
 """Capture compact market-behaviour events and their future outcomes.
 
-This module deliberately does NOT discover or alter trading rules.  It records
-observable 1m CoinDCX futures behaviour so future research can measure whether
+This module deliberately does NOT discover or alter trading rules. It records
+observable 1m CoinDCX futures behaviour so later research can measure whether
 support/rejection, resistance/rejection, absorption, failed breaks and long
 wicks are followed by useful price behaviour.
 
 Important: ``delta_proxy`` is a signed-volume proxy derived from the direction
-of the 1m OHLC candle.  It is NOT exchange aggressor-side delta/CVD.  The field
-names and schema keep that distinction explicit so this dataset cannot be
-mistaken for true trade-level order-flow data.
+of the 1m OHLC candle. It is NOT exchange aggressor-side delta/CVD. The source
+is recorded explicitly so this dataset cannot be mistaken for true trade-level
+order-flow data.
 
 Storage is append-only at the observation/outcome level and sharded by UTC
-hour.  Pending observations live in a small state file.  No monolithic JSONL
-file is ever rewritten, avoiding the GitHub 100 MB failure mode that killed the
-former ResearchLab.
+hour. Pending observations live in a small state file. No monolithic JSONL is
+rewritten, avoiding the GitHub 100 MB failure mode of the former ResearchLab.
 """
 from __future__ import annotations
 
@@ -22,7 +21,6 @@ import argparse
 import hashlib
 import json
 import math
-import os
 import statistics
 import time
 from dataclasses import dataclass
@@ -89,8 +87,7 @@ def load_json(path: Path, default: Any) -> Any:
         return default
     try:
         with path.open("r", encoding="utf-8") as fh:
-            value = json.load(fh)
-        return value
+            return json.load(fh)
     except (OSError, ValueError, TypeError):
         return default
 
@@ -116,10 +113,8 @@ def append_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> int:
 
 
 def fetch_1m(symbol: str, lookback_min: int = LOOKBACK_MIN, timeout: int = 20) -> list[Bar]:
-    """Fetch closed CoinDCX futures 1m candles, newest first or unsorted."""
+    """Fetch closed CoinDCX futures 1m candles."""
     now_ms = int(utc_now().timestamp() * 1000)
-    # Move the right edge to the last completed minute so the forming candle
-    # can never leak into an observation or a future outcome.
     end_ms = (now_ms // INTERVAL_MS) * INTERVAL_MS
     start_ms = end_ms - int(lookback_min * INTERVAL_MS)
     params = {
@@ -182,16 +177,19 @@ def _event_id(symbol: str, ts_ms: int, families: list[str]) -> str:
     return hashlib.sha1(raw).hexdigest()[:16]
 
 
-def build_event(symbol: str, bars: list[Bar]) -> dict[str, Any] | None:
-    if len(bars) < 70:
+def build_event(symbol: str, bars: list[Bar], index: int = -1) -> dict[str, Any] | None:
+    """Build an event for one closed bar using only candles before that bar."""
+    if index < 0:
+        index = len(bars) + index
+    if index < 60 or index >= len(bars):
         return None
-    cur = bars[-1]
-    prior = bars[-61:-1]
-    prior30 = bars[-31:-1]
+    cur = bars[index]
+    prior = bars[index - 60:index]
+    prior30 = bars[index - 30:index]
     ranges = [max(b.high - b.low, 0.0) for b in prior]
     vols = [b.volume for b in prior]
     atr = median(ranges[-20:], fallback=max(cur.high - cur.low, cur.close * 0.001))
-    vol_base = median(vols[-60:], fallback=max(cur.volume, 1e-12))
+    vol_base = median(vols, fallback=max(cur.volume, 1e-12))
     rng = max(cur.high - cur.low, 1e-12)
     body = abs(cur.close - cur.open)
     upper_wick = max(cur.high - max(cur.open, cur.close), 0.0)
@@ -247,8 +245,8 @@ def build_event(symbol: str, bars: list[Bar]) -> dict[str, Any] | None:
     if not families:
         return None
 
-    score = min(5, 1 + len(families) + int(high_activity) + int(abs(delta_proxy_ratio) >= 0.65))
     families = list(dict.fromkeys(families))
+    score = min(5, 1 + len(families) + int(high_activity) + int(abs(delta_proxy_ratio) >= 0.65))
     event_direction = direction or ("bullish" if close_position >= 0.5 else "bearish")
     level_type = "support" if event_direction == "bullish" else "resistance"
     level = float(level if level is not None else cur.close)
@@ -302,6 +300,14 @@ def resolve_outcome(event: dict[str, Any], bars: list[Bar], horizon_min: int) ->
     future = _future_slice(bars, int(event["observed_at_ms"]), horizon_min)
     if len(future) < horizon_min:
         return None
+    expected_ts = int(event["observed_at_ms"]) + INTERVAL_MS
+    for bar in future:
+        if bar.ts_ms != expected_ts:
+            return None
+        expected_ts += INTERVAL_MS
+    if future[-1].ts_ms != int(event["observed_at_ms"]) + horizon_min * INTERVAL_MS:
+        return None
+
     entry = float(event["close"])
     bullish = event["direction"] == "bullish"
     final_close = future[-1].close
@@ -350,58 +356,20 @@ def prune_old(root: Path, now: datetime) -> None:
                 continue
 
 
-def record_run(
-    coins: list[str],
-    root: Path,
-    state_path: Path,
-    lookback_min: int = LOOKBACK_MIN,
-) -> dict[str, Any]:
-    now = utc_now()
-    state = load_json(state_path, {"schema_version": 1, "pending": {}, "last_event_ms": {}})
-    pending: dict[str, dict[str, Any]] = dict(state.get("pending") or {})
-    last_event_ms: dict[str, int] = {k: int(v) for k, v in (state.get("last_event_ms") or {}).items()}
-    observed_count = 0
-    outcome_count = 0
-    fetch_failures: list[dict[str, str]] = []
-    by_symbol: dict[str, list[Bar]] = {}
+def _unseen_indices(bars: list[Bar], last_processed_ms: int | None) -> list[int]:
+    if len(bars) <= 60:
+        return []
+    if last_processed_ms is None:
+        return [len(bars) - 1]
+    return [i for i in range(60, len(bars)) if bars[i].ts_ms > last_processed_ms]
 
-    for coin in coins:
-        try:
-            bars = fetch_1m(coin, lookback_min=lookback_min)
-            by_symbol[coin] = bars
-        except Exception as exc:  # research must never break production scanning
-            fetch_failures.append({"symbol": coin, "error": str(exc)[:240]})
-            continue
 
-        event = build_event(coin, bars)
-        if event is not None:
-            last_ms = last_event_ms.get(coin, 0)
-            if int(event["observed_at_ms"]) - last_ms >= COOLDOWN_MIN * INTERVAL_MS:
-                obs_path = shard_for(int(event["observed_at_ms"]), root, "observations")
-                observed_count += append_jsonl(obs_path, [event])
-                pending[event["event_id"]] = event
-                last_event_ms[coin] = int(event["observed_at_ms"])
-
-    remaining: dict[str, dict[str, Any]] = {}
-    outcome_groups: dict[Path, list[dict[str, Any]]] = {}
-    for event_id, event in pending.items():
-        bars = by_symbol.get(event["symbol"])
-        if not bars:
-            remaining[event_id] = event
-            continue
-        emitted_any = False
-        for horizon in HORIZONS_MIN:
-            outcome = resolve_outcome(event, bars, horizon)
-            if outcome is None:
-                continue
-            outcome_groups.setdefault(shard_for(int(event["observed_at_ms"]), root, "outcomes"), []).append(outcome)
-            emitted_any = True
-        age_min = (now - datetime.fromtimestamp(int(event["observed_at_ms"]) / 1000, tz=timezone.utc)).total_seconds() / 60.0
-        if age_min < max(HORIZONS_MIN) or not emitted_any:
-            remaining[event_id] = event
-
-    for path, rows in outcome_groups.items():
-        # Idempotency within a shard: outcomes are keyed by event_id+horizon.
+def _write_new_outcomes(root: Path, rows: list[dict[str, Any]]) -> int:
+    grouped: dict[Path, list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(shard_for(int(row["observed_at_ms"]), root, "outcomes"), []).append(row)
+    count = 0
+    for path, batch in grouped.items():
         existing = set()
         if path.exists():
             try:
@@ -412,22 +380,78 @@ def record_run(
                             existing.add(f"{rec.get('event_id')}|{rec.get('horizon_min')}")
             except (OSError, ValueError, TypeError):
                 existing = set()
-        fresh = [r for r in rows if f"{r['event_id']}|{r['horizon_min']}" not in existing]
-        outcome_count += append_jsonl(path, fresh)
+        fresh = [r for r in batch if f"{r['event_id']}|{r['horizon_min']}" not in existing]
+        count += append_jsonl(path, fresh)
+    return count
 
-    state = {
-        "schema_version": 1,
-        "updated_at": now.isoformat(),
-        "last_event_ms": last_event_ms,
-        "pending": remaining,
-        "stats": {
-            "observations_written_this_run": observed_count,
-            "outcomes_written_this_run": outcome_count,
-            "pending_events": len(remaining),
-            "fetch_failures": len(fetch_failures),
+
+def record_run(coins: list[str], root: Path, state_path: Path, lookback_min: int = LOOKBACK_MIN) -> dict[str, Any]:
+    now = utc_now()
+    state = load_json(state_path, {"schema_version": 1, "pending": {}, "last_event_ms": {}, "last_processed_bar_ms": {}})
+    pending: dict[str, dict[str, Any]] = dict(state.get("pending") or {})
+    last_event_ms: dict[str, int] = {k: int(v) for k, v in (state.get("last_event_ms") or {}).items()}
+    last_processed: dict[str, int] = {k: int(v) for k, v in (state.get("last_processed_bar_ms") or {}).items()}
+    observed_count = 0
+    outcome_rows: list[dict[str, Any]] = []
+    fetch_failures: list[dict[str, str]] = []
+    by_symbol: dict[str, list[Bar]] = {}
+
+    for coin in coins:
+        try:
+            bars = fetch_1m(coin, lookback_min=lookback_min)
+            by_symbol[coin] = bars
+        except Exception as exc:
+            fetch_failures.append({"symbol": coin, "error": str(exc)[:240]})
+            continue
+        indices = _unseen_indices(bars, last_processed.get(coin))
+        for index in indices:
+            event = build_event(coin, bars, index)
+            if event is None:
+                continue
+            if int(event["observed_at_ms"]) - last_event_ms.get(coin, 0) < COOLDOWN_MIN * INTERVAL_MS:
+                continue
+            observed_count += append_jsonl(
+                shard_for(int(event["observed_at_ms"]), root, "observations"), [event]
+            )
+            pending[event["event_id"]] = event
+            last_event_ms[coin] = int(event["observed_at_ms"])
+        if bars:
+            last_processed[coin] = bars[-1].ts_ms
+
+    remaining: dict[str, dict[str, Any]] = {}
+    for event_id, event in pending.items():
+        bars = by_symbol.get(event["symbol"])
+        if not bars:
+            remaining[event_id] = event
+            continue
+        emitted_any = False
+        for horizon in HORIZONS_MIN:
+            outcome = resolve_outcome(event, bars, horizon)
+            if outcome is not None:
+                outcome["observed_at_ms"] = event["observed_at_ms"]
+                outcome_rows.append(outcome)
+                emitted_any = True
+        age_min = (now - datetime.fromtimestamp(int(event["observed_at_ms"]) / 1000, tz=timezone.utc)).total_seconds() / 60.0
+        if age_min < max(HORIZONS_MIN) or not emitted_any:
+            remaining[event_id] = event
+
+    outcome_count = _write_new_outcomes(root, outcome_rows)
+    write_json_atomic(
+        state_path,
+        {
+            "schema_version": 1,
+            "updated_at": now.isoformat(),
+            "last_event_ms": last_event_ms,
+            "last_processed_bar_ms": last_processed,
+            "pending": remaining,
+            "stats": {
+                "observations_written_this_run": observed_count,
+                "outcomes_written_this_run": outcome_count,
+                "pending_events": len(remaining),
+                "fetch_failures": len(fetch_failures),
+            },
         },
-    }
-    write_json_atomic(state_path, state)
+    )
     prune_old(root, now)
     return {
         "observations_written": observed_count,
@@ -446,7 +470,6 @@ def main() -> int:
     args = parser.parse_args()
     result = record_run(parse_coin_list(args.coins), Path(args.root), Path(args.state), args.lookback_min)
     print(json.dumps(result, indent=2, sort_keys=True))
-    # Fetch gaps are expected to be observable but must never break the scanner.
     return 0
 
 
