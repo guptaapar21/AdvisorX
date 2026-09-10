@@ -34,6 +34,7 @@ def _signal(**extra):
 def _position(direction="long"):
     return {
         "coin": "TEST",
+        "status": "pending",
         "direction": direction,
         "entry_price": 100.0,
         "trade_amount_inr": 10000.0,
@@ -121,7 +122,7 @@ class V4LogicTests(unittest.TestCase):
 
     def test_non_monotonic_short_stop_is_suppressed(self):
         position = _position("short")
-        position["current_price"] = 98.0
+        position["current_price"] = 97.0
         position["mfe_pnl_inr"] = 500.0
         updates = {"TEST": {"action": "tighten_stop", "updated_stop_loss": 106.0}}
         result = apply_management_policy(updates, [position], min_tighten_r=0.5)
@@ -158,9 +159,8 @@ class V4LogicTests(unittest.TestCase):
                 ledger, {"TEST": (None, None, None, candles)}, "2026-09-10T10:03:00+00:00",
                 usdt_inr_rate=99.44, taker_fee_rate=0.00075, resolved_trades_file=archive.name,
             )
-        self.assertEqual(result, [])
-        self.assertEqual(ledger[0]["status"], "target_hit")
-        self.assertEqual(ledger[0]["resolution_timeframe"], "1m")
+        self.assertEqual(result[0]["status"], "target_hit")
+        self.assertEqual(result[0]["resolution_timeframe"], "1m")
 
     def test_1m_resolution_conservatively_marks_both_sides_as_stop(self):
         ledger = [_position("long")]
@@ -173,10 +173,9 @@ class V4LogicTests(unittest.TestCase):
                 ledger, {"TEST": (None, None, None, candles)}, "2026-09-10T10:02:00+00:00",
                 usdt_inr_rate=99.44, taker_fee_rate=0.00075, resolved_trades_file=archive.name,
             )
-        self.assertEqual(result, [])
-        self.assertEqual(ledger[0]["status"], "stop_hit")
+        self.assertEqual(result[0]["status"], "stop_hit")
         self.assertEqual(
-            ledger[0]["resolution_policy"],
+            result[0]["resolution_policy"],
             "conservative_stop_when_target_and_stop_share_candle",
         )
 
