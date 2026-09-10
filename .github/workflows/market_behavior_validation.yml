@@ -19,8 +19,8 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
-      - name: Compile and test recorder
+      - name: Compile and test current AdvisorX logic
         working-directory: cloud-backtest
         run: |
-          python -m py_compile market_behavior_recorder.py test_market_behavior_recorder.py
-          PYTHONPATH=. python -m unittest -v test_market_behavior_recorder.py
+          python -m py_compile trend_alignment_scanner_live.py advisorx_trade_management_policy.py advisorx_trade_resolution.py entry_quality_gate.py portfolio_risk.py v2_live_integration.py candidate_funnel.py trade_counterfactuals.py market_behavior_recorder.py test_v2_integration.py test_v2_invariants.py test_v4_logic.py test_market_behavior_recorder.py
+          PYTHONPATH=. python -m unittest -v test_v2_integration.py test_v2_invariants.py test_v4_logic.py test_market_behavior_recorder.py
