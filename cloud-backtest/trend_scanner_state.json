@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-10T15:34:59.195422+00:00",
+  "last_sent_at": "2026-09-10T15:37:02.424866+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-10T15:30:00Z",
+  "last_processed_candle_time": "2026-09-10T15:33:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -360,12 +360,6 @@
     ],
     "BNB": [
       {
-        "direction": "long",
-        "entry_price": 745.2,
-        "take_trade": false,
-        "time": "2026-09-07T12:15:38.894278+00:00"
-      },
-      {
         "direction": "short",
         "entry_price": 749.31,
         "take_trade": false,
@@ -388,6 +382,12 @@
         "entry_price": 720.95,
         "take_trade": false,
         "time": "2026-09-10T01:01:04.668486+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 708.14,
+        "take_trade": true,
+        "time": "2026-09-10T15:36:24.434609+00:00"
       }
     ],
     "HEI": [
@@ -915,29 +915,113 @@
       "resolved_pnl": -267.92,
       "resolved_time": "2026-09-10T12:31:00.535079+00:00",
       "exit_reasoning": "Deterministic profit protection: 94% MFE giveback, health score 3 (3m lost EMA9, rejection wick against position, recent failed break)."
+    },
+    {
+      "coin": "BNB",
+      "direction": "short",
+      "entry_price": 708.14,
+      "stop_loss": 711.5,
+      "target_price": 700.0,
+      "trade_amount_inr": 144119.34,
+      "quantity": 2.0466427034095767,
+      "max_loss_this_trade_inr": 900.0,
+      "conviction": 6,
+      "supporting_tags": [
+        "BOS",
+        "CONTINUATION",
+        "EMA_STRUCTURE",
+        "ADX_DI"
+      ],
+      "risk_tags": [
+        "RANGE_LOCATION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 708.14,
+        "direction": "short",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.3403,
+        "entry_vs_recent_swing_low_pct": 0.0226,
+        "entry_vs_recent_swing_high_atr": -2.162,
+        "entry_vs_recent_swing_low_atr": 0.144,
+        "entry_vs_latest_break_pct": 0.1666,
+        "entry_vs_latest_break_atr": 1.058,
+        "entry_range_position_pct": 29.82,
+        "entry_distance_to_range_high_pct": 0.5451,
+        "entry_distance_to_range_low_pct": 0.2316,
+        "nearest_boundary": "low",
+        "nearest_boundary_distance_pct": 0.2316,
+        "nearest_boundary_distance_atr": 1.471,
+        "entry_location_class": "range_middle",
+        "latest_break_direction": "bearish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-10 15:27:00",
+        "break_distance_class": "extended_1_to_2_atr"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 2,
+          "break_freshness": "fresh",
+          "break_direction": "bearish",
+          "break_type": "BOS",
+          "extension_pct_from_break": -0.167,
+          "extension_atr_from_break": -1.06,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 5,
+          "liquidity_sweep_count_3m": 4,
+          "high_rejection_sweeps_3m": 1,
+          "low_reclaim_sweeps_3m": 3,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 15,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": null,
+        "last_signal_direction": null,
+        "last_signal_take_trade": null,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-10T15:36:24.434609+00:00",
+      "reasoning": "BNB shows strong downside continuation under TREND_DOWN regime with a fresh bearish BOS and negative momentum aligning with weak broader market breadth.",
+      "level_history": [
+        {
+          "from": "2026-09-10T15:36:24.434609+00:00",
+          "stop": 711.5,
+          "target": 700.0
+        }
+      ],
+      "peak_price": 708.14,
+      "trough_price": 708.14,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-10T15:36:24.434609+00:00",
+      "mae_time": "2026-09-10T15:36:24.434609+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-10T15:09:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-10T15:12:00Z": [
       "ACE",
       "ADA",
@@ -1059,6 +1143,26 @@
       "ZEC"
     ],
     "2026-09-10T15:30:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-10T15:33:00Z": [
       "ACE",
       "ADA",
       "AVAX",
