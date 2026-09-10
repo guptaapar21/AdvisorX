@@ -97,12 +97,15 @@ class V4LogicTests(unittest.TestCase):
         self.assertFalse(flagged["ETH"]["take_trade"])
         self.assertFalse(flagged["SOL"]["take_trade"])
 
-    def test_portfolio_allows_mixed_direction_until_cluster_total(self):
+    def test_portfolio_applies_cluster_total_after_higher_conviction_candidate(self):
         flagged = {
             "ETH": {"take_trade": True, "direction": "short", "conviction": 8},
             "SOL": {"take_trade": True, "direction": "long", "conviction": 7},
         }
-        opened = [{"coin": "BTC", "direction": "long"}]
+        opened = [
+            {"coin": "BTC", "direction": "long"},
+            {"coin": "ADA", "direction": "short"},
+        ]
         self.assertEqual(apply_execution_gate(flagged, opened), 1)
         self.assertTrue(flagged["ETH"]["take_trade"])
         self.assertFalse(flagged["SOL"]["take_trade"])
@@ -132,7 +135,7 @@ class V4LogicTests(unittest.TestCase):
         self.assertEqual(actions[0]["action"], "profit_ladder")
         self.assertAlmostEqual(position["stop_loss"], 101.25, places=6)
         self.assertEqual(position["profit_lock_r"], 0.25)
-        self.assertTrue(position["level_history"][-1]["source"], "python_v4_profit_ladder")
+        self.assertEqual(position["level_history"][-1]["source"], "python_v4_profit_ladder")
 
     def test_profit_ladder_is_symmetric_for_short(self):
         position = _position("short")
