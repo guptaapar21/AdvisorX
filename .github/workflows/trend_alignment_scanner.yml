@@ -26,7 +26,7 @@ jobs:
       - name: Verify V4 integration and research bridge
         working-directory: cloud-backtest
         run: |
-          python -m py_compile trend_alignment_scanner_live.py advisorx_trade_management_policy.py advisorx_trade_resolution.py entry_quality_gate.py portfolio_risk.py v2_live_integration.py candidate_funnel.py trade_counterfactuals.py market_behavior_recorder.py research_analyst.py run_scanner_with_research.py test_v2_integration.py test_v2_invariants.py test_v4_logic.py test_market_behavior_recorder.py test_research_analyst.py
+          python -m py_compile trend_alignment_scanner_live.py advisorx_trade_management_policy.py advisorx_trade_resolution.py entry_quality_gate.py portfolio_risk.py v2_live_integration.py candidate_funnel.py trade_counterfactuals.py market_behavior_recorder.py research_analyst.py research_diagnostics.py run_scanner_with_research.py test_v2_integration.py test_v2_invariants.py test_v4_logic.py test_market_behavior_recorder.py test_research_analyst.py
           PYTHONPATH=. python -m unittest -v test_v2_integration.py test_v2_invariants.py test_v4_logic.py test_market_behavior_recorder.py test_research_analyst.py
       - name: Decide whether 30-minute research refresh is due
         id: research_due
@@ -66,6 +66,7 @@ jobs:
             --root market_behavior_research \
             --output research_formulations.json \
             --fee-pct 0.15
+          python research_diagnostics.py
           python - <<'PY'
           import json
           import time
@@ -148,6 +149,7 @@ jobs:
             cloud-backtest/gemini_raw_responses.log
             cloud-backtest/market_behavior_state.json
             cloud-backtest/research_formulations.json
+            cloud-backtest/research_diagnostics.json
             cloud-backtest/research_schedule_state.json
             cloud-backtest/market_behavior_research/**/*.jsonl
           if-no-files-found: ignore
@@ -161,6 +163,7 @@ jobs:
           git add trend_scanner_state.json
           [ -f market_behavior_state.json ] && git add market_behavior_state.json || true
           [ -f research_formulations.json ] && git add research_formulations.json || true
+          [ -f research_diagnostics.json ] && git add research_diagnostics.json || true
           [ -f research_schedule_state.json ] && git add research_schedule_state.json || true
           [ -d market_behavior_research ] && git add -A market_behavior_research || true
           git diff --staged --quiet && exit 0
@@ -176,6 +179,7 @@ jobs:
             git add trend_scanner_state.json
             [ -f market_behavior_state.json ] && git add market_behavior_state.json || true
             [ -f research_formulations.json ] && git add research_formulations.json || true
+            [ -f research_diagnostics.json ] && git add research_diagnostics.json || true
             [ -f research_schedule_state.json ] && git add research_schedule_state.json || true
             [ -d market_behavior_research ] && git add -A market_behavior_research || true
             git commit -m "Update trend scanner state, research and evidence [skip ci]" --allow-empty
