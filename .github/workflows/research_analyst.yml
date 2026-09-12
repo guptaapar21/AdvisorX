@@ -1,0 +1,70 @@
+name: AdvisorX Research Analyst (30-minute cadence)
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: advisorx-research-analyst
+  cancel-in-progress: false
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure freshest state
+        run: git fetch origin main && git reset --hard origin/main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+      - name: Verify research analyst
+        working-directory: cloud-backtest
+        run: |
+          python -m py_compile research_analyst.py run_scanner_with_research.py market_behavior_recorder.py test_research_analyst.py
+          PYTHONPATH=. python -m unittest -v test_research_analyst.py
+      - name: Generate validated research formulations
+        working-directory: cloud-backtest
+        run: |
+          python research_analyst.py \
+            --root market_behavior_research \
+            --output research_formulations.json \
+            --fee-pct 0.15
+      - name: Upload research diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: advisorx-research-${{ github.run_id }}
+          path: |
+            cloud-backtest/research_formulations.json
+            cloud-backtest/market_behavior_research/**/*.jsonl
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Persist research formulations
+        working-directory: cloud-backtest
+        run: |
+          git config user.name "coindcx-trend-scanner-bot"
+          git config user.email "actions@github.com"
+          git add research_formulations.json
+          git diff --staged --quiet && exit 0
+          git commit -m "Refresh research formulations [skip ci]"
+          for i in 1 2 3; do
+            if git push; then exit 0; fi
+            echo "Push rejected (attempt $i), pulling and retrying..."
+            if git pull --rebase; then continue; fi
+            echo "Rebase hit a real conflict - keeping this run's research result on top of latest remote."
+            git rebase --abort
+            git fetch origin main
+            git reset --soft origin/main
+            git add research_formulations.json
+            git commit -m "Refresh research formulations [skip ci]" --allow-empty
+          done
+          echo "Failed to push research formulations after 3 attempts."
+          exit 1
