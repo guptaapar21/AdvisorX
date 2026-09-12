@@ -10,6 +10,10 @@ concurrency:
   group: trend-alignment-scanner
   cancel-in-progress: false
 
+env:
+  RESEARCH_CADENCE_SECONDS: "1800"
+  RESEARCH_SCHEDULE_STATE: "cloud-backtest/research_schedule_state.json"
+
 jobs:
   scan:
     runs-on: ubuntu-latest
@@ -28,6 +32,62 @@ jobs:
         run: |
           python -m py_compile trend_alignment_scanner_live.py advisorx_trade_management_policy.py advisorx_trade_resolution.py entry_quality_gate.py portfolio_risk.py v2_live_integration.py candidate_funnel.py trade_counterfactuals.py market_behavior_recorder.py research_analyst.py run_scanner_with_research.py test_v2_integration.py test_v2_invariants.py test_v4_logic.py test_market_behavior_recorder.py test_research_analyst.py
           PYTHONPATH=. python -m unittest -v test_v2_integration.py test_v2_invariants.py test_v4_logic.py test_market_behavior_recorder.py test_research_analyst.py
+      - name: Decide whether 30-minute research refresh is due
+        id: research_due
+        working-directory: cloud-backtest
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          from pathlib import Path
+
+          path = Path("research_schedule_state.json")
+          now = int(time.time())
+          last = None
+          if path.exists():
+              try:
+                  payload = json.loads(path.read_text(encoding="utf-8"))
+                  last = int(payload.get("last_run_epoch")) if payload.get("last_run_epoch") is not None else None
+              except (OSError, ValueError, TypeError):
+                  last = None
+
+          due = last is None or (now - last) >= 1800
+          print(f"research_last_run_epoch={last}")
+          print(f"research_now_epoch={now}")
+          print(f"research_due={str(due).lower()}")
+          with open("$GITHUB_OUTPUT", "a", encoding="utf-8") as out:
+              out.write(f"due={'true' if due else 'false'}\n")
+          PY
+      - name: Refresh validated research formulations
+        if: steps.research_due.outputs.due == 'true'
+        working-directory: cloud-backtest
+        run: |
+          python research_analyst.py \
+            --root market_behavior_research \
+            --output research_formulations.json \
+            --fee-pct 0.15
+          python - <<'PY'
+          import json
+          import time
+          from pathlib import Path
+
+          Path("research_schedule_state.json").write_text(
+              json.dumps({
+                  "last_run_epoch": int(time.time()),
+                  "cadence_seconds": 1800,
+                  "updated_by": "trend_alignment_scanner",
+              }, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+      - name: Report research cadence
+        working-directory: cloud-backtest
+        run: |
+          if [ "${{ steps.research_due.outputs.due }}" = "true" ]; then
+            echo "Research analyst refreshed this scanner cycle (30-minute cadence reached)."
+          else
+            echo "Research analyst not due; scanner will use the latest validated research formulations."
+          fi
       - name: Run trend alignment scanner with V4 execution and latest research feedback
         working-directory: cloud-backtest
         env:
@@ -88,20 +148,23 @@ jobs:
             cloud-backtest/gemini_raw_responses.log
             cloud-backtest/market_behavior_state.json
             cloud-backtest/research_formulations.json
+            cloud-backtest/research_schedule_state.json
             cloud-backtest/market_behavior_research/**/*.jsonl
           if-no-files-found: ignore
           retention-days: 90
           overwrite: false
-      - name: Persist scanner state and evidence
+      - name: Persist scanner state and research evidence
         working-directory: cloud-backtest
         run: |
           git config user.name "coindcx-trend-scanner-bot"
           git config user.email "actions@github.com"
           git add trend_scanner_state.json
           [ -f market_behavior_state.json ] && git add market_behavior_state.json || true
+          [ -f research_formulations.json ] && git add research_formulations.json || true
+          [ -f research_schedule_state.json ] && git add research_schedule_state.json || true
           [ -d market_behavior_research ] && git add -A market_behavior_research || true
           git diff --staged --quiet && exit 0
-          git commit -m "Update trend scanner state and evidence [skip ci]"
+          git commit -m "Update trend scanner state, research and evidence [skip ci]"
           for i in 1 2 3; do
             if git push; then exit 0; fi
             echo "Push rejected (attempt $i), pulling and retrying..."
@@ -112,8 +175,10 @@ jobs:
             git reset --soft origin/main
             git add trend_scanner_state.json
             [ -f market_behavior_state.json ] && git add market_behavior_state.json || true
+            [ -f research_formulations.json ] && git add research_formulations.json || true
+            [ -f research_schedule_state.json ] && git add research_schedule_state.json || true
             [ -d market_behavior_research ] && git add -A market_behavior_research || true
-            git commit -m "Update trend scanner state and evidence [skip ci]" --allow-empty
+            git commit -m "Update trend scanner state, research and evidence [skip ci]" --allow-empty
           done
           echo "Failed to push state after 3 attempts."
           exit 1
