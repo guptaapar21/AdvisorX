@@ -23,19 +23,12 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: pip install -r cloud-backtest/requirements.txt
-      - name: Verify V4 integration and research analyst
+      - name: Verify V4 integration and research bridge
         working-directory: cloud-backtest
         run: |
           python -m py_compile trend_alignment_scanner_live.py advisorx_trade_management_policy.py advisorx_trade_resolution.py entry_quality_gate.py portfolio_risk.py v2_live_integration.py candidate_funnel.py trade_counterfactuals.py market_behavior_recorder.py research_analyst.py run_scanner_with_research.py test_v2_integration.py test_v2_invariants.py test_v4_logic.py test_market_behavior_recorder.py test_research_analyst.py
           PYTHONPATH=. python -m unittest -v test_v2_integration.py test_v2_invariants.py test_v4_logic.py test_market_behavior_recorder.py test_research_analyst.py
-      - name: Run research analyst before live scan
-        working-directory: cloud-backtest
-        run: >
-          python research_analyst.py
-          --root market_behavior_research
-          --output research_formulations.json
-          --fee-pct 0.15
-      - name: Run trend alignment scanner with V4 execution and research feedback
+      - name: Run trend alignment scanner with V4 execution and latest research feedback
         working-directory: cloud-backtest
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -99,17 +92,16 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
           overwrite: false
-      - name: Persist scanner state, research formulations and evidence
+      - name: Persist scanner state and evidence
         working-directory: cloud-backtest
         run: |
           git config user.name "coindcx-trend-scanner-bot"
           git config user.email "actions@github.com"
           git add trend_scanner_state.json
           [ -f market_behavior_state.json ] && git add market_behavior_state.json || true
-          [ -f research_formulations.json ] && git add research_formulations.json || true
           [ -d market_behavior_research ] && git add -A market_behavior_research || true
           git diff --staged --quiet && exit 0
-          git commit -m "Update trend scanner and research state [skip ci]"
+          git commit -m "Update trend scanner state and evidence [skip ci]"
           for i in 1 2 3; do
             if git push; then exit 0; fi
             echo "Push rejected (attempt $i), pulling and retrying..."
@@ -120,9 +112,8 @@ jobs:
             git reset --soft origin/main
             git add trend_scanner_state.json
             [ -f market_behavior_state.json ] && git add market_behavior_state.json || true
-            [ -f research_formulations.json ] && git add research_formulations.json || true
             [ -d market_behavior_research ] && git add -A market_behavior_research || true
-            git commit -m "Update trend scanner and research state [skip ci]" --allow-empty
+            git commit -m "Update trend scanner state and evidence [skip ci]" --allow-empty
           done
           echo "Failed to push state after 3 attempts."
           exit 1
