@@ -28,6 +28,12 @@ jobs:
         run: |
           python -m py_compile trend_alignment_scanner_live.py advisorx_trade_management_policy.py advisorx_trade_resolution.py entry_quality_gate.py portfolio_risk.py v2_live_integration.py candidate_funnel.py trade_counterfactuals.py market_behavior_recorder.py research_analyst.py research_diagnostics.py run_scanner_with_research.py test_v2_integration.py test_v2_invariants.py test_v4_logic.py test_market_behavior_recorder.py test_research_analyst.py
           PYTHONPATH=. python -m unittest -v test_v2_integration.py test_v2_invariants.py test_v4_logic.py test_market_behavior_recorder.py test_research_analyst.py
+      - name: Record protected source baseline
+        run: |
+          mkdir -p /tmp/advisorx-protected
+          git rev-parse HEAD:cloud-backtest/research_analyst.py > /tmp/advisorx-protected/research_analyst.sha
+          git rev-parse HEAD:cloud-backtest/research_diagnostics.py > /tmp/advisorx-protected/research_diagnostics.sha
+          git rev-parse HEAD:cloud-backtest/test_research_analyst.py > /tmp/advisorx-protected/test_research_analyst.sha
       - name: Decide whether 30-minute research refresh is due
         id: research_due
         working-directory: cloud-backtest
@@ -160,6 +166,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
           overwrite: false
+      - name: Restore protected source files before persistence
+        if: always()
+        run: |
+          git fetch origin main
+          # Scanner jobs may have been started from an older checkout while main
+          # advanced during the run. Never let generated state push stale source.
+          git restore --source=origin/main --worktree -- cloud-backtest/research_analyst.py cloud-backtest/research_diagnostics.py cloud-backtest/test_research_analyst.py
       - name: Persist scanner state and research evidence
         working-directory: cloud-backtest
         run: |
@@ -181,6 +194,7 @@ jobs:
             git rebase --abort
             git fetch origin main
             git reset --soft origin/main
+            git restore --source=origin/main --worktree -- cloud-backtest/research_analyst.py cloud-backtest/research_diagnostics.py cloud-backtest/test_research_analyst.py
             git add trend_scanner_state.json
             [ -f market_behavior_state.json ] && git add market_behavior_state.json || true
             [ -f research_formulations.json ] && git add research_formulations.json || true
