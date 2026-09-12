@@ -49,14 +49,12 @@ def build_context(formulations: list[dict]) -> str:
 
 
 formulations = load_formulations()
-gemini_advisor.SYSTEM_PROMPT += build_context(formulations)
-print(f"Research feedback loaded: {len(formulations)} holdout-passed formulation(s).")
-
 import trend_alignment_scanner_live  # noqa: E402
 
-# The launcher adds the production V4 prompt during import. Re-append the
-# research context afterward so it remains visible to the final Gemini call.
+# The production launcher finalizes the V4 prompt during import; append the
+# validated research context only after that, so the final Gemini prompt sees it.
 gemini_advisor.SYSTEM_PROMPT += build_context(formulations)
+print(f"Research feedback loaded: {len(formulations)} holdout-passed formulation(s).")
 
 if __name__ == "__main__":
     trend_alignment_scanner_live.main()
