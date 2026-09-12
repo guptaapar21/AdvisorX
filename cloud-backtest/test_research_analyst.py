@@ -88,7 +88,9 @@ class ResearchAnalystTests(unittest.TestCase):
     def test_percentile_activity_thresholds_are_generated_as_distinct_hypotheses(self):
         candidates = generate_candidates(self._rows())
         activity = [c for c in candidates if set(c["conditions"]) == {"activity_percentile_min"}]
-        self.assertEqual(len(activity), 12)
+        # Two percentile thresholds (85, 95) are generated for each of the
+        # two directions across all six research horizons: 2 x 2 x 6 = 24.
+        self.assertEqual(len(activity), 24)
 
 
 if __name__ == "__main__":
