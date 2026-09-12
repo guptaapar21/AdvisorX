@@ -39,6 +39,7 @@ jobs:
           from pathlib import Path
 
           path = Path("research_schedule_state.json")
+          diagnostics = Path("research_diagnostics.json")
           now = int(time.time())
           last = None
           if path.exists():
@@ -50,10 +51,14 @@ jobs:
                   last = None
 
           cadence = int(os.environ.get("RESEARCH_CADENCE_SECONDS", "1800"))
-          due = last is None or (now - last) >= cadence
+          due_by_time = last is None or (now - last) >= cadence
+          due_by_missing_diagnostics = not diagnostics.exists()
+          due = due_by_time or due_by_missing_diagnostics
           print(f"research_last_run_epoch={last}")
           print(f"research_now_epoch={now}")
           print(f"research_cadence_seconds={cadence}")
+          print(f"research_due_by_time={str(due_by_time).lower()}")
+          print(f"research_due_by_missing_diagnostics={str(due_by_missing_diagnostics).lower()}")
           print(f"research_due={str(due).lower()}")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
               out.write(f"due={'true' if due else 'false'}\n")
@@ -85,7 +90,7 @@ jobs:
         working-directory: cloud-backtest
         run: |
           if [ "${{ steps.research_due.outputs.due }}" = "true" ]; then
-            echo "Research analyst refreshed this scanner cycle (30-minute cadence reached)."
+            echo "Research analyst refreshed this scanner cycle (30-minute cadence reached or diagnostics missing)."
           else
             echo "Research analyst not due; scanner will use the latest validated research formulations."
           fi
