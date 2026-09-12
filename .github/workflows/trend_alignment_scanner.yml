@@ -6,10 +6,6 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: trend-alignment-scanner
-  cancel-in-progress: false
-
 env:
   RESEARCH_CADENCE_SECONDS: "1800"
   RESEARCH_SCHEDULE_STATE: "cloud-backtest/research_schedule_state.json"
@@ -38,6 +34,7 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          import os
           import time
           from pathlib import Path
 
@@ -47,15 +44,18 @@ jobs:
           if path.exists():
               try:
                   payload = json.loads(path.read_text(encoding="utf-8"))
-                  last = int(payload.get("last_run_epoch")) if payload.get("last_run_epoch") is not None else None
+                  value = payload.get("last_run_epoch")
+                  last = int(value) if value is not None else None
               except (OSError, ValueError, TypeError):
                   last = None
 
-          due = last is None or (now - last) >= 1800
+          cadence = int(os.environ.get("RESEARCH_CADENCE_SECONDS", "1800"))
+          due = last is None or (now - last) >= cadence
           print(f"research_last_run_epoch={last}")
           print(f"research_now_epoch={now}")
+          print(f"research_cadence_seconds={cadence}")
           print(f"research_due={str(due).lower()}")
-          with open("$GITHUB_OUTPUT", "a", encoding="utf-8") as out:
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
               out.write(f"due={'true' if due else 'false'}\n")
           PY
       - name: Refresh validated research formulations
