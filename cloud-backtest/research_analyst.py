@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import random
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass
@@ -35,6 +36,9 @@ MIN_POSITIVE_BLOCK_FRACTION = 0.55
 MIN_POSITIVE_COIN_FRACTION = 0.55
 MAX_VALIDATED = 20
 BLOCK_MINUTES = 60
+FDR_Q = 0.05
+BOOTSTRAP_REPS = 1000
+BOOTSTRAP_BLOCK_LEN = 3
 
 @dataclass(frozen=True)
 class Row:
@@ -120,12 +124,64 @@ def load_rows(root: Path) -> list[Row]:
     return rows
 
 
+def _group_block_values(rows: list[Row], fee_pct: float) -> list[float]:
+    blocks: dict[str, list[float]] = defaultdict(list)
+    for r in rows:
+        key = r.observed_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H")
+        blocks[key].append(r.signed_forward_return_pct - fee_pct)
+    return [sum(v) / len(v) for v in blocks.values() if v]
+
+
+def _normal_one_sided_p(block_avgs: list[float]) -> float:
+    if len(block_avgs) < 2:
+        return 1.0
+    mean = statistics.mean(block_avgs)
+    sd = statistics.stdev(block_avgs)
+    if sd <= 0:
+        return 0.0 if mean > 0 else 1.0
+    z = mean / (sd / math.sqrt(len(block_avgs)))
+    return 0.5 * math.erfc(z / math.sqrt(2.0))
+
+
+def _bootstrap_block_ci_low(block_avgs: list[float], reps: int = BOOTSTRAP_REPS,
+                            block_len: int = BOOTSTRAP_BLOCK_LEN) -> float:
+    """One-sided 95% lower CI using deterministic moving-block bootstrap.
+
+    Hourly blocks can be autocorrelated, so resample short contiguous blocks
+    instead of treating every hour as independent. The fixed seed keeps the
+    research output reproducible across CI runs.
+    """
+    n = len(block_avgs)
+    if n == 0:
+        return -1e9
+    if n == 1:
+        return block_avgs[0]
+    block_len = max(1, min(block_len, n))
+    rng = random.Random(20260912 + n * 1009 + round(sum(block_avgs) * 1_000_000))
+    starts = list(range(n))
+    means: list[float] = []
+    for _ in range(max(200, reps)):
+        sample: list[float] = []
+        while len(sample) < n:
+            start = rng.choice(starts)
+            for offset in range(block_len):
+                sample.append(block_avgs[(start + offset) % n])
+                if len(sample) >= n:
+                    break
+        means.append(sum(sample) / n)
+    means.sort()
+    # Lower endpoint of a two-sided 95% bootstrap interval.
+    idx = max(0, min(len(means) - 1, int(0.025 * len(means))))
+    return means[idx]
+
+
 def _stats(rows: list[Row], fee_pct: float) -> dict[str, Any]:
     if not rows:
         return {"n": 0, "positive_rate": 0.0, "avg_net_return": 0.0, "median_net_return": 0.0,
                 "profit_factor": 0.0, "worst_return": 0.0, "max_drawdown": 0.0,
                 "coin_count": 0, "time_block_count": 0, "positive_block_fraction": 0.0,
-                "positive_coin_fraction": 0.0, "block_ci95_low": -1e9}
+                "positive_coin_fraction": 0.0, "block_ci95_low": -1e9,
+                "block_p_value": 1.0, "bootstrap_block_ci95_low": -1e9}
     vals = [r.signed_forward_return_pct - fee_pct for r in rows]
     gains = sum(v for v in vals if v > 0)
     losses = -sum(v for v in vals if v < 0)
@@ -139,13 +195,16 @@ def _stats(rows: list[Row], fee_pct: float) -> dict[str, Any]:
     positive_blocks = sum(x > 0 for x in block_avgs)
     coin_avgs = [sum(v) / len(v) for v in coins.values() if v]
     positive_coins = sum(x > 0 for x in coin_avgs)
-    # Approximate 95% lower confidence bound on the mean over hourly blocks.
+    normal_p = _normal_one_sided_p(block_avgs)
+    bootstrap_ci = _bootstrap_block_ci_low(block_avgs)
+    # Retain the original normal lower CI as a diagnostic, but gate with the
+    # block-bootstrap lower bound to reduce reliance on Gaussian assumptions.
     if len(block_avgs) > 1:
         mean = statistics.mean(block_avgs)
-        se = statistics.pstdev(block_avgs) / math.sqrt(len(block_avgs))
-        ci_low = mean - 1.96 * se
+        se = statistics.stdev(block_avgs) / math.sqrt(len(block_avgs))
+        normal_ci = mean - 1.96 * se
     else:
-        ci_low = block_avgs[0] if block_avgs else -1e9
+        normal_ci = block_avgs[0] if block_avgs else -1e9
     equity = 0.0
     peak = 0.0
     max_dd = 0.0
@@ -165,12 +224,22 @@ def _stats(rows: list[Row], fee_pct: float) -> dict[str, Any]:
         "time_block_count": len(blocks),
         "positive_block_fraction": positive_blocks / len(blocks) if blocks else 0.0,
         "positive_coin_fraction": positive_coins / len(coins) if coins else 0.0,
-        "block_ci95_low": ci_low,
+        "block_ci95_low": normal_ci,
+        "block_p_value": normal_p,
+        "bootstrap_block_ci95_low": bootstrap_ci,
     }
 
 
 def _candidate_signature(h: dict[str, Any]) -> str:
     return json.dumps(h, sort_keys=True, separators=(",", ":"))
+
+
+def _modifier_group(h: dict[str, Any]) -> str:
+    """Group nested activity thresholds so one underlying effect is not counted three times."""
+    c = h.get("conditions") or {}
+    if set(c) == {"activity_ratio_min"} or set(c) == {"activity_percentile_min"}:
+        return "activity_thresholds"
+    return h.get("name", "")
 
 
 def generate_candidates(rows: list[Row]) -> list[dict[str, Any]]:
@@ -194,8 +263,6 @@ def generate_candidates(rows: list[Row]) -> list[dict[str, Any]]:
                          "direction": direction, "horizon_min": horizon,
                          "conditions": cond or {}}
                     candidates.append(h)
-    # A small, targeted interaction set captures the most plausible combinations
-    # without exploding multiple-testing burden.
     for family in families:
         for direction in ("bullish", "bearish"):
             for horizon in (15, 30, 60):
@@ -225,6 +292,35 @@ def _evaluate(h: dict[str, Any], rows: list[Row], fee_pct: float) -> dict[str, A
     return {"rows": matched, "metrics": _stats(matched, fee_pct)}
 
 
+def _apply_bh(evaluated: list[tuple[dict[str, Any], dict[str, Any]]], q: float = FDR_Q) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """Benjamini-Hochberg control over the discovery-stage hypothesis family."""
+    ranked = sorted(enumerate(evaluated), key=lambda x: x[1][1]["block_p_value"])
+    m = len(ranked)
+    cutoff_rank = 0
+    for rank, (_, (_, metrics)) in enumerate(ranked, start=1):
+        if metrics["block_p_value"] <= (rank / m) * q:
+            cutoff_rank = rank
+    passing = {idx for rank, (idx, _) in enumerate(ranked, start=1) if rank <= cutoff_rank}
+    return [(h, v) for idx, (h, v) in enumerate(evaluated) if idx in passing]
+
+
+def _dedupe_nested_activity(evaluated: list[tuple[dict[str, Any], dict[str, Any]]]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """Keep the strongest validation performer among nested activity modifiers."""
+    groups: dict[tuple[Any, ...], list[tuple[dict[str, Any], dict[str, Any]]]] = defaultdict(list)
+    result: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for h, v in evaluated:
+        c = h.get("conditions") or {}
+        if set(c) in ({"activity_ratio_min"}, {"activity_percentile_min"}):
+            key = (h.get("event_family"), h.get("direction"), h.get("horizon_min"))
+            groups[key].append((h, v))
+        else:
+            result.append((h, v))
+    for values in groups.values():
+        values.sort(key=lambda x: (x[1]["avg_net_return"], x[1]["profit_factor"], x[1]["positive_coin_fraction"]), reverse=True)
+        result.append(values[0])
+    return result
+
+
 def analyse(rows: list[Row], fee_pct: float) -> dict[str, Any]:
     if not rows:
         return {"schema_version": SCHEMA_VERSION, "status": "insufficient_data", "rows": 0,
@@ -232,24 +328,50 @@ def analyse(rows: list[Row], fee_pct: float) -> dict[str, Any]:
     split = max(1, int(len(rows) * 0.70))
     validation = rows[:split]
     holdout = rows[split:]
-    evaluated = []
+    evaluated_all = []
     for h in generate_candidates(rows):
         v = _evaluate(h, validation, fee_pct)["metrics"]
-        # Rank discovery only after requiring a minimally meaningful sample.
         if v["n"] < 10:
             continue
-        evaluated.append((h, v))
+        evaluated_all.append((h, v))
+
+    deduped = _dedupe_nested_activity(evaluated_all)
+    fdr_passed = _apply_bh(deduped)
+    fdr_keys = {_candidate_signature(h) for h, _ in fdr_passed}
+    evaluated = []
+    for h, v in deduped:
+        item = dict(v)
+        item["fdr_q"] = None
+        # BH adjusted q-value for transparency. Compute conservatively from the
+        # deduplicated discovery family rather than reporting the raw p-value.
+        evaluated.append((h, item))
+    ranked = sorted(evaluated, key=lambda x: x[1]["block_p_value"])
+    m = len(ranked)
+    running_q = 1.0
+    q_by_sig: dict[str, float] = {}
+    for rank, (h, v) in reversed(list(enumerate(ranked, start=1))):
+        raw = v["block_p_value"] * m / rank
+        running_q = min(running_q, raw)
+        q_by_sig[_candidate_signature(h)] = min(1.0, running_q)
+    for h, v in evaluated:
+        v["fdr_q"] = q_by_sig[_candidate_signature(h)]
+
     evaluated.sort(key=lambda x: (x[1]["avg_net_return"], x[1]["profit_factor"], x[1]["positive_coin_fraction"]), reverse=True)
     leads = [{"hypothesis": h, "validation": v} for h, v in evaluated[:30]]
     validated = []
     rejected = []
     for h, v in evaluated:
-        if not (v["n"] >= MIN_VALIDATION_N and v["profit_factor"] >= MIN_VALIDATION_PF
-                and v["avg_net_return"] >= MIN_VALIDATION_AVG
-                and v["positive_block_fraction"] >= MIN_POSITIVE_BLOCK_FRACTION
-                and v["positive_coin_fraction"] >= MIN_POSITIVE_COIN_FRACTION
-                and v["block_ci95_low"] > 0):
-            rejected.append({"hypothesis": h, "validation": v, "status": "validation_failed"})
+        fdr_ok = _candidate_signature(h) in fdr_keys and v["fdr_q"] <= FDR_Q
+        base_ok = (v["n"] >= MIN_VALIDATION_N and v["profit_factor"] >= MIN_VALIDATION_PF
+                   and v["avg_net_return"] >= MIN_VALIDATION_AVG
+                   and v["positive_block_fraction"] >= MIN_POSITIVE_BLOCK_FRACTION
+                   and v["positive_coin_fraction"] >= MIN_POSITIVE_COIN_FRACTION
+                   and v["bootstrap_block_ci95_low"] > 0)
+        if not (base_ok and fdr_ok):
+            rejected.append({"hypothesis": h, "validation": v,
+                             "status": "validation_failed",
+                             "fdr_passed": fdr_ok,
+                             "fdr_q": v["fdr_q"]})
             continue
         hm = _evaluate(h, holdout, fee_pct)["metrics"]
         stress = _evaluate(h, holdout, max(fee_pct, 0.20))["metrics"]
@@ -257,14 +379,21 @@ def analyse(rows: list[Row], fee_pct: float) -> dict[str, Any]:
                   and hm["avg_net_return"] >= MIN_HOLDOUT_AVG
                   and hm["positive_block_fraction"] >= MIN_POSITIVE_BLOCK_FRACTION
                   and hm["positive_coin_fraction"] >= MIN_POSITIVE_COIN_FRACTION
-                  and hm["block_ci95_low"] > 0 and stress["avg_net_return"] > 0)
+                  and hm["bootstrap_block_ci95_low"] > 0 and stress["avg_net_return"] > 0)
         item = {"hypothesis": h, "validation": v, "holdout": hm, "stress": stress,
-                "status": "HOLDOUT_PASSED" if passed else "holdout_failed"}
+                "status": "HOLDOUT_PASSED" if passed else "holdout_failed",
+                "fdr_q": v["fdr_q"]}
         (validated if passed else rejected).append(item)
         if len(validated) >= MAX_VALIDATED:
             break
     return {"schema_version": SCHEMA_VERSION, "status": "ok", "rows": len(rows),
             "validation_rows": len(validation), "holdout_rows": len(holdout),
+            "tested_candidates": len(evaluated_all),
+            "deduplicated_candidates": len(deduped),
+            "fdr_discovery_candidates": len(fdr_passed),
+            "fdr_q_threshold": FDR_Q,
+            "bootstrap_reps": BOOTSTRAP_REPS,
+            "bootstrap_block_len": BOOTSTRAP_BLOCK_LEN,
             "fee_pct": fee_pct, "discovery_leads": leads,
             "validated": validated, "rejected": rejected[:100]}
 
@@ -285,6 +414,7 @@ def render_live_context(result: dict[str, Any], path: Path) -> None:
                 "holdout": x["holdout"],
                 "stress": x["stress"],
                 "status": x["status"],
+                "fdr_q": x["fdr_q"],
             }
             for x in result.get("validated", [])
         ],
@@ -307,6 +437,9 @@ def main() -> int:
     print(json.dumps({
         "status": result.get("status"),
         "rows": result.get("rows", 0),
+        "tested_candidates": result.get("tested_candidates", 0),
+        "deduplicated_candidates": result.get("deduplicated_candidates", 0),
+        "fdr_discovery_candidates": result.get("fdr_discovery_candidates", 0),
         "discovery_leads": len(result.get("discovery_leads", [])),
         "validated_formulations": len(result.get("validated", [])),
         "rejected": len(result.get("rejected", [])),
