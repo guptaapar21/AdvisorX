@@ -5,6 +5,8 @@ not alter the research engine. It closes integration-level gaps that are safer
 to fix as a final wrapper than by changing the mature V4/V5 modules in place:
 
 * derive local-regime confidence from actual evidence instead of constants;
+* reconcile RANGE playbooks strictly with the side of the range actually
+  supporting the proposed direction;
 * resynchronise WATCH playbooks after Gemini direction reconciliation;
 * seed WATCH for sweep-only setups where the first-pass preferred-playbook
   heuristic has no LONG/SHORT token;
@@ -26,6 +28,7 @@ import trend_alignment_scanner_live as live
 _PATCHED = False
 _BASE_ENRICH = hardening._BASE_ENRICH
 _BASE_GET = hardening.hardening_get_trade_suggestions_batch
+_BASE_PLAYBOOK = hardening._directional_playbook
 
 
 def _safe_float(value: Any) -> float | None:
@@ -84,6 +87,53 @@ def _local_regime_confidence(snapshot: Dict[str, Any]) -> tuple[float, Dict[str,
         if s3.get("liquidity_sweeps"): score += 0.05; evidence.append("liquidity_event")
 
     return round(min(0.95, max(0.20, score)), 3), {"base": 0.50, "evidence": evidence}
+
+
+def _directional_playbook_final(snapshot: Dict[str, Any], direction: str | None) -> str | None:
+    """Final direction/playbook reconciliation.
+
+    RANGE is intentionally strict: a LONG must have lower-boundary support or
+    a low sweep, while a SHORT must have upper-boundary support or a high
+    sweep. A directional break away from that boundary is a WATCH opportunity,
+    not permission to fade the opposite end of the range.
+    """
+    d = str(direction or "").lower()
+    if d not in {"long", "short"}:
+        return None
+    ms = snapshot.get("market_structure") or {}
+    regime = adaptive._normalize_regime(ms.get("market_regime"))
+    if regime != "RANGE":
+        return _BASE_PLAYBOOK(snapshot, d)
+    s3 = ms.get("3m") or {}
+    rng = ms.get("range") or {}
+    latest = s3.get("latest_break") or {}
+    latest_dir = str(latest.get("direction") or "").lower()
+    sweeps = s3.get("liquidity_sweeps") or []
+    low_sweep = any("low" in str(x.get("type") or "").lower() for x in sweeps)
+    high_sweep = any("high" in str(x.get("type") or "").lower() for x in sweeps)
+    near_low = bool(rng.get("near_low"))
+    near_high = bool(rng.get("near_high"))
+
+    if d == "long":
+        if low_sweep and high_sweep:
+            return "RANGE_REVERSAL"
+        if low_sweep:
+            return "RANGE_REVERSAL"
+        if near_low:
+            return "RANGE_LONG"
+        if latest_dir == "bullish":
+            return "RANGE_BREAKOUT_WATCH"
+        return None
+
+    if high_sweep and low_sweep:
+        return "RANGE_REVERSAL"
+    if high_sweep:
+        return "RANGE_REVERSAL"
+    if near_high:
+        return "RANGE_SHORT"
+    if latest_dir == "bearish":
+        return "RANGE_BREAKOUT_WATCH"
+    return None
 
 
 def _enrich_final(signals: Iterable[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
@@ -147,14 +197,14 @@ def _resync_flagged_watches(flagged: Dict[str, Dict[str, Any]], snapshots: Itera
                 signal["direction"] = direction
         if direction not in {"long", "short"}:
             continue
-        playbook = hardening._directional_playbook(snap, direction)
+        playbook = _directional_playbook_final(snap, direction)
         if not playbook:
             continue
         signal["adaptive_playbook"] = playbook
         signal["adaptive_allowed_playbooks"] = (((snap.get("entry_quality_context") or {}).get("adaptive") or {}).get("allowed_playbooks") or [])
         if str(signal.get("decision") or "").upper() == "WATCH" or int(setup.get("score") or 0) >= 3:
             signal["decision"] = "WATCH"
-            signal["lifecycle"] = "ARMED" if str(signal.get("lifecycle") or "").upper() == "ARMED" else "WATCH"
+            signal["lifecycle"] = "WATCH"
             hardening._upsert_watch_from_signal(signal, snap, signal.get("adaptive_watch_reason") or signal.get("reasoning") or "adaptive setup watch")
 
 
@@ -169,7 +219,7 @@ def _seed_sweep_only_watches(snapshots: Iterable[Dict[str, Any]]) -> None:
         direction = "long" if "LONG" in preferred else ("short" if "SHORT" in preferred else _direction_from_sweep(snap))
         if direction not in {"long", "short"}:
             continue
-        playbook = hardening._directional_playbook(snap, direction) or preferred
+        playbook = _directional_playbook_final(snap, direction) or preferred
         if not playbook:
             continue
         coin = str(snap.get("coin"))
@@ -194,17 +244,11 @@ def _final_get_trade_suggestions_batch(signals, scorecard=None, open_positions=N
 def _final_message(*args, **kwargs):
     text = _BASE_MESSAGE(*args, **kwargs)
     flagged = kwargs.get("flagged") or {}
-    # The older wrappers correctly add the watch list, but label the main
-    # decision row as SKIP because take_trade=False. Make the visible decision
-    # agree with the authoritative lifecycle field.
     for coin, signal in flagged.items():
         if str(signal.get("decision") or "").upper() != "WATCH":
             continue
         direction = str(signal.get("direction") or "?").upper()
         text = text.replace(f"{coin} {direction} — SKIP", f"{coin} {direction} — WATCH")
-    # Remove the earlier wrapper's status calculation, which lacked the fresh
-    # snapshot and therefore could only show WATCH, then render the persisted
-    # authoritative lifecycle values here.
     text = re.sub(r"\n\n🧭 Adaptive lifecycle: [^\n]*", "", text)
     text = re.sub(r"\n🧭 WATCH / ARMED candidates:\n(?:• .*\n?)*", "", text)
     watches = hardening._prune_watch()
@@ -228,6 +272,7 @@ def install() -> None:
     _BASE_MESSAGE = live._scanner._build_message
     hardening._BASE_ENRICH = _enrich_final
     adaptive._enrich_snapshots = _enrich_final
+    hardening._directional_playbook = _directional_playbook_final
     live._original_get_trade_suggestions_batch = _final_get_trade_suggestions_batch
     live._scanner._build_message = _final_message
     _PATCHED = True
