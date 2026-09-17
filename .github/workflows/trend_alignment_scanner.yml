@@ -6,6 +6,13 @@ on:
 permissions:
   contents: write
 
+# Only one scanner may execute the state-persistence section at a time.
+# This removes the primary source of non-fast-forward state races between the
+# external 3-minute dispatcher and longer-running scanner cycles.
+concurrency:
+  group: advisorx-trend-alignment-scanner
+  cancel-in-progress: false
+
 env:
   RESEARCH_CADENCE_SECONDS: "1800"
   RESEARCH_SCHEDULE_STATE: "cloud-backtest/research_schedule_state.json"
@@ -28,12 +35,6 @@ jobs:
         run: |
           python -m py_compile trend_alignment_scanner_live.py adaptive_playbook_layer.py adaptive_hardening.py adaptive_runtime_integrity.py advisorx_trade_management_policy.py advisorx_trade_resolution.py entry_quality_gate.py portfolio_risk.py v2_live_integration.py candidate_funnel.py trade_counterfactuals.py market_behavior_recorder.py research_analyst.py research_diagnostics.py run_scanner_with_research.py test_v2_integration.py test_v2_invariants.py test_v4_logic.py test_adaptive_playbooks.py test_adaptive_hardening.py test_adaptive_runtime_integrity.py test_market_behavior_recorder.py test_research_analyst.py
           PYTHONPATH=. python -m unittest -v test_v2_integration.py test_v2_invariants.py test_v4_logic.py test_adaptive_playbooks.py test_adaptive_hardening.py test_adaptive_runtime_integrity.py test_market_behavior_recorder.py test_research_analyst.py
-      - name: Record protected source baseline
-        run: |
-          mkdir -p /tmp/advisorx-protected
-          git rev-parse HEAD:cloud-backtest/research_analyst.py > /tmp/advisorx-protected/research_analyst.sha
-          git rev-parse HEAD:cloud-backtest/research_diagnostics.py > /tmp/advisorx-protected/research_diagnostics.sha
-          git rev-parse HEAD:cloud-backtest/test_research_analyst.py > /tmp/advisorx-protected/test_research_analyst.sha
       - name: Decide whether 30-minute research refresh is due
         id: research_due
         working-directory: cloud-backtest
@@ -176,48 +177,91 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
           overwrite: false
-      - name: Restore protected source files before persistence
-        if: always()
-        run: |
-          git fetch origin main
-          # Scanner jobs may have been started from an older checkout while main
-          # advanced during the run. Never let generated state push stale source.
-          git restore --source=origin/main --worktree -- cloud-backtest/research_analyst.py cloud-backtest/research_diagnostics.py cloud-backtest/test_research_analyst.py
       - name: Persist scanner state and adaptive evidence
         working-directory: cloud-backtest
         run: |
+          set -euo pipefail
           git config user.name "coindcx-trend-scanner-bot"
           git config user.email "actions@github.com"
-          git add trend_scanner_state.json
-          for f in adaptive_watch_state.json adaptive_regime_state.json adaptive_global_regime_memory.json daily_risk_state.json adaptive_playbook_telemetry.jsonl resolved_trades.jsonl; do
-            [ -f "$f" ] && git add "$f" || true
+
+          # Snapshot only generated state/evidence. We deliberately do not
+          # snapshot source files; the persistence base is always the latest
+          # origin/main checkout, so a scanner run can never push stale source.
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+
+          STATE_FILES=(
+            trend_scanner_state.json
+            adaptive_watch_state.json
+            adaptive_regime_state.json
+            adaptive_global_regime_memory.json
+            daily_risk_state.json
+            adaptive_playbook_telemetry.jsonl
+            resolved_trades.jsonl
+            market_behavior_state.json
+            research_formulations.json
+            research_diagnostics.json
+            research_schedule_state.json
+          )
+
+          for f in "${STATE_FILES[@]}"; do
+            if [ -f "$f" ]; then
+              mkdir -p "$TMP/$(dirname "$f")"
+              cp -p "$f" "$TMP/$f"
+            fi
           done
-          [ -f market_behavior_state.json ] && git add market_behavior_state.json || true
-          [ -f research_formulations.json ] && git add research_formulations.json || true
-          [ -f research_diagnostics.json ] && git add research_diagnostics.json || true
-          [ -f research_schedule_state.json ] && git add research_schedule_state.json || true
+          if [ -d market_behavior_research ]; then
+            cp -a market_behavior_research "$TMP/market_behavior_research"
+          fi
+
+          # Rebase-free reconciliation: reset to the newest remote source tree,
+          # then overlay this run's generated state/evidence. This avoids merge
+          # conflicts in JSON state while preserving the latest production code.
+          git fetch origin main
+          git reset --hard origin/main
+
+          for f in "${STATE_FILES[@]}"; do
+            if [ -f "$TMP/$f" ]; then
+              mkdir -p "$(dirname "$f")"
+              cp -p "$TMP/$f" "$f"
+            fi
+          done
+          if [ -d "$TMP/market_behavior_research" ]; then
+            rm -rf market_behavior_research
+            cp -a "$TMP/market_behavior_research" market_behavior_research
+          fi
+
+          git add "${STATE_FILES[@]}"
           [ -d market_behavior_research ] && git add -A market_behavior_research || true
           git diff --staged --quiet && exit 0
           git commit -m "Update adaptive scanner state and evidence [skip ci]"
-          for i in 1 2 3; do
-            if git push; then exit 0; fi
-            echo "Push rejected (attempt $i), pulling and retrying..."
-            if git pull --rebase; then continue; fi
-            echo "Rebase hit a real conflict - keeping this run's state values on top of latest remote."
-            git rebase --abort
+
+          # A manual/source push can still race this exact moment. Retry from a
+          # fresh origin/main snapshot without ever invoking a source-file merge.
+          for i in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "State push race detected (attempt $i); rebuilding on newest main."
             git fetch origin main
-            git reset --soft origin/main
-            git restore --source=origin/main --worktree -- cloud-backtest/research_analyst.py cloud-backtest/research_diagnostics.py cloud-backtest/test_research_analyst.py
-            git add trend_scanner_state.json
-            for f in adaptive_watch_state.json adaptive_regime_state.json adaptive_global_regime_memory.json daily_risk_state.json adaptive_playbook_telemetry.jsonl resolved_trades.jsonl; do
-              [ -f "$f" ] && git add "$f" || true
+            git reset --hard origin/main
+            for f in "${STATE_FILES[@]}"; do
+              if [ -f "$TMP/$f" ]; then
+                mkdir -p "$(dirname "$f")"
+                cp -p "$TMP/$f" "$f"
+              fi
             done
-            [ -f market_behavior_state.json ] && git add market_behavior_state.json || true
-            [ -f research_formulations.json ] && git add research_formulations.json || true
-            [ -f research_diagnostics.json ] && git add research_diagnostics.json || true
-            [ -f research_schedule_state.json ] && git add research_schedule_state.json || true
+            if [ -d "$TMP/market_behavior_research" ]; then
+              rm -rf market_behavior_research
+              cp -a "$TMP/market_behavior_research" market_behavior_research
+            fi
+            git add "${STATE_FILES[@]}"
             [ -d market_behavior_research ] && git add -A market_behavior_research || true
-            git commit -m "Update adaptive scanner state and evidence [skip ci]" --allow-empty
+            if git diff --staged --quiet; then
+              exit 0
+            fi
+            git commit -m "Update adaptive scanner state and evidence [skip ci]"
           done
-          echo "Failed to push state after 3 attempts."
+
+          echo "Failed to persist scanner state after repeated fresh-base retries."
           exit 1
