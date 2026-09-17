@@ -159,7 +159,7 @@ def _direction_from_sweep(snapshot: Dict[str, Any]) -> str | None:
 
 
 def _persist_watch_status(snapshots: Iterable[Dict[str, Any]]) -> None:
-    state = hardening._prune_watch()
+    state = adaptive._prune_watch()
     changed = False
     now = datetime.now(timezone.utc).isoformat()
     for snap in snapshots:
@@ -209,7 +209,7 @@ def _resync_flagged_watches(flagged: Dict[str, Dict[str, Any]], snapshots: Itera
 
 
 def _seed_sweep_only_watches(snapshots: Iterable[Dict[str, Any]]) -> None:
-    state = hardening._prune_watch()
+    state = adaptive._prune_watch()
     for snap in snapshots:
         adaptive_ctx = ((snap.get("entry_quality_context") or {}).get("adaptive") or {})
         setup = adaptive_ctx.get("setup_quality") or {}
@@ -251,7 +251,7 @@ def _final_message(*args, **kwargs):
         text = text.replace(f"{coin} {direction} — SKIP", f"{coin} {direction} — WATCH")
     text = re.sub(r"\n\n🧭 Adaptive lifecycle: [^\n]*", "", text)
     text = re.sub(r"\n🧭 WATCH / ARMED candidates:\n(?:• .*\n?)*", "", text)
-    watches = hardening._prune_watch()
+    watches = adaptive._prune_watch()
     if watches:
         lines = ["\n🧭 WATCH / ARMED candidates:"]
         for coin in sorted(watches):
