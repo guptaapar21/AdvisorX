@@ -1,0 +1,56 @@
+name: AdvisorX Validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r cloud-backtest/requirements.txt
+      - name: Compile production and research modules
+        working-directory: cloud-backtest
+        run: |
+          python -m py_compile \
+            trend_alignment_scanner.py \
+            trend_alignment_scanner_live.py \
+            gemini_advisor.py \
+            entry_quality_gate.py \
+            portfolio_risk.py \
+            advisorx_trade_resolution.py \
+            advisorx_trade_management_policy.py \
+            candidate_funnel.py \
+            trade_counterfactuals.py \
+            market_behavior_recorder.py \
+            adaptive_playbook_layer.py \
+            adaptive_hardening.py \
+            adaptive_runtime_integrity.py \
+            v2_live_integration.py \
+            research_analyst.py \
+            research_diagnostics.py \
+            run_scanner_with_research.py
+      - name: Run full deterministic test suite
+        working-directory: cloud-backtest
+        run: |
+          PYTHONPATH=. python -m unittest -v \
+            test_v2_integration.py \
+            test_v2_invariants.py \
+            test_v4_logic.py \
+            test_adaptive_playbooks.py \
+            test_adaptive_hardening.py \
+            test_adaptive_runtime_integrity.py \
+            test_market_behavior_recorder.py \
+            test_research_analyst.py
