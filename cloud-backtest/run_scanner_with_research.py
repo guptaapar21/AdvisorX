@@ -52,6 +52,10 @@ formulations = load_formulations()
 # Importing this layer loads the existing production launcher and installs the
 # adaptive regime/playbook/watch/risk wrappers before the scanner is started.
 import adaptive_playbook_layer  # noqa: E402,F401
+# Second-pass hardening fixes playbook/direction reconciliation, trigger
+# confirmation, durable setup watches, global-regime memory and IST risk-day
+# semantics without changing the research engine.
+import adaptive_hardening  # noqa: E402,F401
 import trend_alignment_scanner_live  # noqa: E402
 
 # The production launcher finalizes its V4 prompt during import; append the
