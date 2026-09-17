@@ -166,6 +166,7 @@ jobs:
             cloud-backtest/adaptive_playbook_telemetry.jsonl
             cloud-backtest/adaptive_watch_state.json
             cloud-backtest/adaptive_regime_state.json
+            cloud-backtest/adaptive_global_regime_memory.json
             cloud-backtest/daily_risk_state.json
             cloud-backtest/market_behavior_state.json
             cloud-backtest/research_formulations.json
@@ -188,7 +189,7 @@ jobs:
           git config user.name "coindcx-trend-scanner-bot"
           git config user.email "actions@github.com"
           git add trend_scanner_state.json
-          for f in adaptive_watch_state.json adaptive_regime_state.json daily_risk_state.json adaptive_playbook_telemetry.jsonl resolved_trades.jsonl; do
+          for f in adaptive_watch_state.json adaptive_regime_state.json adaptive_global_regime_memory.json daily_risk_state.json adaptive_playbook_telemetry.jsonl resolved_trades.jsonl; do
             [ -f "$f" ] && git add "$f" || true
           done
           [ -f market_behavior_state.json ] && git add market_behavior_state.json || true
@@ -208,7 +209,7 @@ jobs:
             git reset --soft origin/main
             git restore --source=origin/main --worktree -- cloud-backtest/research_analyst.py cloud-backtest/research_diagnostics.py cloud-backtest/test_research_analyst.py
             git add trend_scanner_state.json
-            for f in adaptive_watch_state.json adaptive_regime_state.json daily_risk_state.json adaptive_playbook_telemetry.jsonl resolved_trades.jsonl; do
+            for f in adaptive_watch_state.json adaptive_regime_state.json adaptive_global_regime_memory.json daily_risk_state.json adaptive_playbook_telemetry.jsonl resolved_trades.jsonl; do
               [ -f "$f" ] && git add "$f" || true
             done
             [ -f market_behavior_state.json ] && git add market_behavior_state.json || true
