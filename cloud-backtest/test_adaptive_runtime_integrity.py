@@ -53,29 +53,30 @@ class AdaptiveRuntimeIntegrityTests(unittest.TestCase):
 
     def test_armed_status_uses_trigger_distance(self):
         snap = self._snap()
-        original = r.hardening._watch_state
+        original_state = r.adaptive._watch_state
         original_prune = r.hardening._prune_watch
         original_write = r.adaptive._write_json
-        try:
-            r.hardening._watch_state = lambda: {
-                "TEST": {
-                    "coin": "TEST",
-                    "direction": "long",
-                    "playbook": "LONG_BREAKOUT",
-                    "created_at": "2026-09-17T13:00:00+00:00",
-                    "trigger_type": "STRUCTURAL_BREAK",
-                    "trigger_level": 100.2,
-                    "status": "WATCH",
-                }
+        fake_state = {
+            "TEST": {
+                "coin": "TEST",
+                "direction": "long",
+                "playbook": "LONG_BREAKOUT",
+                "created_at": "2026-09-17T13:00:00+00:00",
+                "trigger_type": "STRUCTURAL_BREAK",
+                "trigger_level": 100.2,
+                "status": "WATCH",
             }
-            r.hardening._prune_watch = lambda: r.hardening._watch_state()
+        }
+        try:
+            r.adaptive._watch_state = lambda: dict(fake_state)
+            r.hardening._prune_watch = lambda: dict(fake_state)
             writes = []
             r.adaptive._write_json = lambda path, payload: writes.append((path, payload))
             r._persist_watch_status([snap])
             self.assertTrue(writes)
             self.assertEqual(writes[-1][1]["TEST"]["status"], "ARMED")
         finally:
-            r.hardening._watch_state = original
+            r.adaptive._watch_state = original_state
             r.hardening._prune_watch = original_prune
             r.adaptive._write_json = original_write
 
