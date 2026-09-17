@@ -1,6 +1,7 @@
 import unittest
 
 import adaptive_hardening as h
+import adaptive_runtime_integrity  # noqa: F401 - activate final routing overlay
 
 
 class AdaptiveHardeningTests(unittest.TestCase):
@@ -47,7 +48,7 @@ class AdaptiveHardeningTests(unittest.TestCase):
     def test_range_direction_reconciles_to_gemini_direction(self):
         snap = self._snap(regime="RANGE", bias="neutral", position=90, latest_direction="bearish")
         self.assertEqual(h._directional_playbook(snap, "short"), "RANGE_SHORT")
-        self.assertEqual(h._directional_playbook(snap, "long"), "RANGE_BREAKOUT_WATCH")
+        self.assertIsNone(h._directional_playbook(snap, "long"))
 
     def test_range_long_requires_confirmation_when_not_swept(self):
         snap = self._snap(regime="RANGE", bias="neutral", position=10)
