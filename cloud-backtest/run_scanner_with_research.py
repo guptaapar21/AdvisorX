@@ -49,9 +49,12 @@ def build_context(formulations: list[dict]) -> str:
 
 
 formulations = load_formulations()
+# Importing this layer loads the existing production launcher and installs the
+# adaptive regime/playbook/watch/risk wrappers before the scanner is started.
+import adaptive_playbook_layer  # noqa: E402,F401
 import trend_alignment_scanner_live  # noqa: E402
 
-# The production launcher finalizes the V4 prompt during import; append the
+# The production launcher finalizes its V4 prompt during import; append the
 # validated research context only after that, so the final Gemini prompt sees it.
 gemini_advisor.SYSTEM_PROMPT += build_context(formulations)
 print(f"Research feedback loaded: {len(formulations)} holdout-passed formulation(s).")
