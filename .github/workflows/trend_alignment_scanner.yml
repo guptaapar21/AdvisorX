@@ -6,9 +6,7 @@ on:
 permissions:
   contents: write
 
-# Only one scanner may execute the state-persistence section at a time.
-# This removes the primary source of non-fast-forward state races between the
-# external 3-minute dispatcher and longer-running scanner cycles.
+# Serialize scanner runs so state persistence cannot race another scanner job.
 concurrency:
   group: advisorx-trend-alignment-scanner
   cancel-in-progress: false
@@ -184,9 +182,6 @@ jobs:
           git config user.name "coindcx-trend-scanner-bot"
           git config user.email "actions@github.com"
 
-          # Snapshot only generated state/evidence. We deliberately do not
-          # snapshot source files; the persistence base is always the latest
-          # origin/main checkout, so a scanner run can never push stale source.
           TMP="$(mktemp -d)"
           trap 'rm -rf "$TMP"' EXIT
 
@@ -204,47 +199,19 @@ jobs:
             research_schedule_state.json
           )
 
-          for f in "${STATE_FILES[@]}"; do
-            if [ -f "$f" ]; then
-              mkdir -p "$TMP/$(dirname "$f")"
-              cp -p "$f" "$TMP/$f"
+          backup_state() {
+            for f in "${STATE_FILES[@]}"; do
+              if [ -f "$f" ]; then
+                mkdir -p "$TMP/$(dirname "$f")"
+                cp -p "$f" "$TMP/$f"
+              fi
+            done
+            if [ -d market_behavior_research ]; then
+              cp -a market_behavior_research "$TMP/market_behavior_research"
             fi
-          done
-          if [ -d market_behavior_research ]; then
-            cp -a market_behavior_research "$TMP/market_behavior_research"
-          fi
+          }
 
-          # Rebase-free reconciliation: reset to the newest remote source tree,
-          # then overlay this run's generated state/evidence. This avoids merge
-          # conflicts in JSON state while preserving the latest production code.
-          git fetch origin main
-          git reset --hard origin/main
-
-          for f in "${STATE_FILES[@]}"; do
-            if [ -f "$TMP/$f" ]; then
-              mkdir -p "$(dirname "$f")"
-              cp -p "$TMP/$f" "$f"
-            fi
-          done
-          if [ -d "$TMP/market_behavior_research" ]; then
-            rm -rf market_behavior_research
-            cp -a "$TMP/market_behavior_research" market_behavior_research
-          fi
-
-          git add "${STATE_FILES[@]}"
-          [ -d market_behavior_research ] && git add -A market_behavior_research || true
-          git diff --staged --quiet && exit 0
-          git commit -m "Update adaptive scanner state and evidence [skip ci]"
-
-          # A manual/source push can still race this exact moment. Retry from a
-          # fresh origin/main snapshot without ever invoking a source-file merge.
-          for i in 1 2 3 4 5; do
-            if git push origin HEAD:main; then
-              exit 0
-            fi
-            echo "State push race detected (attempt $i); rebuilding on newest main."
-            git fetch origin main
-            git reset --hard origin/main
+          restore_state() {
             for f in "${STATE_FILES[@]}"; do
               if [ -f "$TMP/$f" ]; then
                 mkdir -p "$(dirname "$f")"
@@ -255,8 +222,50 @@ jobs:
               rm -rf market_behavior_research
               cp -a "$TMP/market_behavior_research" market_behavior_research
             fi
-            git add "${STATE_FILES[@]}"
+          }
+
+          stage_state() {
+            for f in "${STATE_FILES[@]}"; do
+              [ -f "$f" ] && git add "$f" || true
+            done
             [ -d market_behavior_research ] && git add -A market_behavior_research || true
+          }
+
+          assert_only_state_changes() {
+            local unexpected
+            unexpected="$(git diff --cached --name-only | grep -Ev '^(trend_scanner_state\.json|adaptive_watch_state\.json|adaptive_regime_state\.json|adaptive_global_regime_memory\.json|daily_risk_state\.json|adaptive_playbook_telemetry\.jsonl|resolved_trades\.jsonl|market_behavior_state\.json|research_formulations\.json|research_diagnostics\.json|research_schedule_state\.json|market_behavior_research/)' || true)"
+            if [ -n "$unexpected" ]; then
+              echo "Unexpected non-state files staged:"
+              printf '%s\n' "$unexpected"
+              exit 1
+            fi
+          }
+
+          # Snapshot generated outputs. Source files are intentionally excluded.
+          backup_state
+
+          # Always rebuild the persistence commit on the latest remote main.
+          # This replaces fragile rebase/merge conflict handling.
+          git fetch origin main
+          git reset --hard origin/main
+          restore_state
+          stage_state
+          assert_only_state_changes
+          git diff --staged --quiet && exit 0
+          git commit -m "Update adaptive scanner state and evidence [skip ci]"
+
+          # Manual/source pushes can still happen at the exact push boundary.
+          # Retry from a fresh remote base; never merge source files.
+          for i in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "State push race detected (attempt $i); rebuilding on newest main."
+            git fetch origin main
+            git reset --hard origin/main
+            restore_state
+            stage_state
+            assert_only_state_changes
             if git diff --staged --quiet; then
               exit 0
             fi
