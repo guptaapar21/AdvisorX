@@ -53,7 +53,7 @@ class AdaptiveRuntimeIntegrityTests(unittest.TestCase):
 
     def test_armed_status_uses_trigger_distance(self):
         snap = self._snap()
-        original_state = r.adaptive._watch_state
+        original_prune = r.adaptive._prune_watch
         original_write = r.adaptive._write_json
         fake_state = {
             "TEST": {
@@ -67,14 +67,16 @@ class AdaptiveRuntimeIntegrityTests(unittest.TestCase):
             }
         }
         try:
-            r.adaptive._watch_state = lambda: dict(fake_state)
+            r.adaptive._prune_watch = lambda: fake_state
             writes = []
             r.adaptive._write_json = lambda path, payload: writes.append((path, payload))
             r._persist_watch_status([snap])
             self.assertTrue(writes)
-            self.assertEqual(writes[-1][1]["TEST"]["status"], "ARMED")
+            payload = writes[-1][1]
+            self.assertIn("TEST", payload)
+            self.assertEqual(payload["TEST"]["status"], "ARMED")
         finally:
-            r.adaptive._watch_state = original_state
+            r.adaptive._prune_watch = original_prune
             r.adaptive._write_json = original_write
 
 
