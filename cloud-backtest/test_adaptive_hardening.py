@@ -79,6 +79,12 @@ class AdaptiveHardeningTests(unittest.TestCase):
         snap = self._snap(regime="TREND_DOWN", bias="bearish", position=85, latest_direction="bearish")
         self.assertIn(h._directional_playbook(snap, "short"), {"SHORT_BREAKDOWN", "SHORT_RALLY_REJECTION", "SHORT_CONTINUATION"})
 
+    def test_persistent_regime_memory_does_not_replace_pure_candidate(self):
+        snaps = [self._snap(regime="TREND_UP") for _ in range(4)]
+        regime, _, details = h.adaptive._global_regime_candidate(snaps)
+        self.assertEqual(regime, "TREND_UP")
+        self.assertEqual(details["counts"]["TREND_UP"], 4)
+
 
 if __name__ == "__main__":
     unittest.main()
