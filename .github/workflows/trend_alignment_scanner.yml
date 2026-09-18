@@ -233,7 +233,9 @@ jobs:
 
           assert_only_state_changes() {
             local unexpected
-            unexpected="$(git diff --cached --name-only | grep -Ev '^(trend_scanner_state\.json|adaptive_watch_state\.json|adaptive_regime_state\.json|adaptive_global_regime_memory\.json|daily_risk_state\.json|adaptive_playbook_telemetry\.jsonl|resolved_trades\.jsonl|market_behavior_state\.json|research_formulations\.json|research_diagnostics\.json|research_schedule_state\.json|market_behavior_research/)' || true)"
+            # git reports repository-root-relative paths even though this step runs
+            # with working-directory: cloud-backtest. Normalize before allowlisting.
+            unexpected="$(git diff --cached --name-only | sed 's#^cloud-backtest/##' | grep -Ev '^(trend_scanner_state\.json|adaptive_watch_state\.json|adaptive_regime_state\.json|adaptive_global_regime_memory\.json|daily_risk_state\.json|adaptive_playbook_telemetry\.jsonl|resolved_trades\.jsonl|market_behavior_state\.json|research_formulations\.json|research_diagnostics\.json|research_schedule_state\.json|market_behavior_research/)' || true)"
             if [ -n "$unexpected" ]; then
               echo "Unexpected non-state files staged:"
               printf '%s\n' "$unexpected"
