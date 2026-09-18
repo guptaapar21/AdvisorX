@@ -34,6 +34,7 @@ GLOBAL_MEMORY_MAX_AGE_MINUTES = 9.0
 IST = timezone(timedelta(hours=5, minutes=30))
 
 _BASE_GLOBAL_REGIME = adaptive._global_regime_candidate
+_BASE_REGIME_CONTEXT = adaptive._regime_context
 _BASE_ADAPTIVE_GET = adaptive.adaptive_get_trade_suggestions_batch
 _BASE_ADAPTIVE_GATE = adaptive.adaptive_entry_quality_gate
 _BASE_ENRICH = adaptive._enrich_snapshots
@@ -432,6 +433,20 @@ def _global_regime_with_memory(snapshots: Iterable[Dict[str, Any]]) -> Tuple[str
     return _BASE_GLOBAL_REGIME(merged)
 
 
+def _regime_context_with_memory(snapshots: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+    """Use persistent memory for the production regime context without replacing
+    adaptive_playbook_layer._global_regime_candidate itself.
+
+    Keeping the base candidate function pure prevents persisted scanner state from
+    changing its standalone/test semantics while the production enrichment path
+    still receives the memory-assisted breadth calculation.
+    """
+    candidate, confidence, details = _global_regime_with_memory(snapshots)
+    active = adaptive._apply_regime_hysteresis(candidate, confidence)
+    active["details"] = details
+    return active
+
+
 def _reconcile_flagged_playbooks(flagged: Dict[str, Dict[str, Any]], snapshots: Iterable[Dict[str, Any]]) -> None:
     by_coin = {str(s.get("coin")): s for s in snapshots}
     for coin, signal in flagged.items():
@@ -613,7 +628,7 @@ def install() -> None:
     global _PATCHED
     if _PATCHED:
         return
-    adaptive._global_regime_candidate = _global_regime_with_memory
+    adaptive._regime_context = _regime_context_with_memory
     adaptive.live._original_get_trade_suggestions_batch = hardening_get_trade_suggestions_batch
     adaptive.live.apply_entry_quality_gate = hardening_entry_quality_gate
     adaptive._refresh_daily_risk = _refresh_daily_risk_ist
