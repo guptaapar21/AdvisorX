@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-23T16:48:48.556969+00:00",
+  "last_sent_at": "2026-09-23T16:51:45.564395+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-23T16:45:00Z",
+  "last_processed_candle_time": "2026-09-23T16:48:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -520,12 +520,6 @@
     ],
     "BTC": [
       {
-        "direction": "long",
-        "entry_price": 86801.57,
-        "take_trade": false,
-        "time": "2026-09-23T03:48:29.993007+00:00"
-      },
-      {
         "direction": "short",
         "entry_price": 86188.25,
         "take_trade": false,
@@ -548,6 +542,12 @@
         "entry_price": 84270.13,
         "take_trade": false,
         "time": "2026-09-23T16:09:31.989981+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 83918.74,
+        "take_trade": true,
+        "time": "2026-09-23T16:51:28.593468+00:00"
       }
     ],
     "DOGE": [
@@ -950,29 +950,178 @@
       "resolved_pnl": -585.12,
       "resolved_time": "2026-09-23T04:03:30.762457+00:00",
       "exit_reasoning": "The breakout above 2775 failed with a high rejection sweep and price has drifted below entry, invalidating the bullish continuation thesis."
+    },
+    {
+      "coin": "BTC",
+      "direction": "short",
+      "entry_price": 83918.74,
+      "stop_loss": 84350.0,
+      "target_price": 83000.0,
+      "trade_amount_inr": 158155.9,
+      "quantity": 0.018952448135979197,
+      "max_loss_this_trade_inr": 1050.0,
+      "conviction": 7,
+      "supporting_tags": [
+        "BOS",
+        "CONTINUATION",
+        "ADX_DI",
+        "EMA_STRUCTURE"
+      ],
+      "risk_tags": [
+        "EXHAUSTION"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 83918.74,
+        "direction": "short",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.5296,
+        "entry_vs_recent_swing_low_pct": -0.0244,
+        "entry_vs_recent_swing_high_atr": -2.868,
+        "entry_vs_recent_swing_low_atr": -0.132,
+        "entry_vs_latest_break_pct": -0.0244,
+        "entry_vs_latest_break_atr": -0.132,
+        "entry_range_position_pct": 32.36,
+        "entry_distance_to_range_high_pct": 1.043,
+        "entry_distance_to_range_low_pct": 0.499,
+        "nearest_boundary": "low",
+        "nearest_boundary_distance_pct": 0.499,
+        "nearest_boundary_distance_atr": 2.702,
+        "entry_location_class": "range_middle",
+        "latest_break_direction": "bearish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-23 16:48:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 0,
+          "break_freshness": "fresh",
+          "break_direction": "bearish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.024,
+          "extension_atr_from_break": 0.13,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 2,
+          "liquidity_sweep_count_3m": 3,
+          "high_rejection_sweeps_3m": 1,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 16,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        },
+        "adaptive": {
+          "global_regime": "TREND_DOWN",
+          "global_regime_candidate": "TREND_DOWN",
+          "global_regime_confidence": 0.839,
+          "global_regime_details": {
+            "btc_regime": "TREND_DOWN",
+            "btc_momentum_20": -0.3905622201558212,
+            "counts": {
+              "TREND_UP": 0,
+              "TREND_DOWN": 4,
+              "RANGE": 4,
+              "TRANSITION": 10
+            },
+            "positive_pct": 41.2,
+            "negative_pct": 58.8,
+            "measured": 17
+          },
+          "local_regime": "TREND_DOWN",
+          "local_regime_confidence": 0.8,
+          "volatility_state": "NORMAL",
+          "liquidity_state": "NORMAL",
+          "preferred_playbook": "SHORT_BREAKDOWN",
+          "allowed_playbooks": [
+            "SHORT_RALLY_REJECTION",
+            "SHORT_CONTINUATION",
+            "SHORT_BREAKDOWN"
+          ],
+          "setup_quality": {
+            "score": 5,
+            "max": 5,
+            "reasons": [
+              "3m_structure_aligned",
+              "recent_structural_event",
+              "fresh_or_mature_break"
+            ],
+            "watch_eligible": true
+          },
+          "event": {
+            "type": "STRUCTURAL_BREAK",
+            "level": 83939.23,
+            "confirmed": true
+          },
+          "lifecycle": "ARMED",
+          "active_watch": {
+            "coin": "BTC",
+            "direction": "short",
+            "playbook": "SHORT_BREAKDOWN",
+            "created_at": "2026-09-23T15:57:38.904295+00:00",
+            "last_seen_at": "2026-09-23T16:51:37.945766+00:00",
+            "trigger_type": "STRUCTURAL_BREAK",
+            "trigger_level": 83939.23,
+            "setup_score": 5,
+            "reasoning": "deterministic setup-quality watch",
+            "status": "ARMED",
+            "minutes_open": 54.0
+          },
+          "local_regime_confidence_evidence": {
+            "base": 0.5,
+            "evidence": [
+              "3m_bearish",
+              "15m_bearish",
+              "adx>=25"
+            ]
+          }
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 41.9,
+        "last_signal_direction": "short",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-23T16:51:28.593468+00:00",
+      "reasoning": "Bitcoin confirms a fresh bearish BOS below 83939 support in a strong downtrend, supported by high minus DI and ADX.",
+      "level_history": [
+        {
+          "from": "2026-09-23T16:51:28.593468+00:00",
+          "stop": 84350.0,
+          "target": 83000.0
+        }
+      ],
+      "peak_price": 83918.74,
+      "trough_price": 83918.74,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-23T16:51:28.593468+00:00",
+      "mae_time": "2026-09-23T16:51:28.593468+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-23T16:24:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-23T16:27:00Z": [
       "ACE",
       "ADA",
@@ -1094,6 +1243,26 @@
       "ZEC"
     ],
     "2026-09-23T16:45:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-23T16:48:00Z": [
       "ACE",
       "ADA",
       "AVAX",
