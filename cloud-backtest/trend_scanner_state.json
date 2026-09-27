@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-27T09:03:37.953743+00:00",
+  "last_sent_at": "2026-09-27T09:06:56.327504+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-09-27T09:00:00Z",
+  "last_processed_candle_time": "2026-09-27T09:03:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -297,12 +297,6 @@
     "AVAX": [
       {
         "direction": "long",
-        "entry_price": 10.747,
-        "take_trade": false,
-        "time": "2026-09-26T10:48:14.522065+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 10.886,
         "take_trade": false,
         "time": "2026-09-27T00:39:30.487095+00:00"
@@ -324,6 +318,12 @@
         "entry_price": 10.888,
         "take_trade": false,
         "time": "2026-09-27T05:57:29.134815+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 11.214,
+        "take_trade": true,
+        "time": "2026-09-27T09:06:32.165929+00:00"
       }
     ],
     "ZEC": [
@@ -360,12 +360,6 @@
     ],
     "BNB": [
       {
-        "direction": "long",
-        "entry_price": 772.0,
-        "take_trade": false,
-        "time": "2026-09-27T02:03:30.385379+00:00"
-      },
-      {
         "direction": "short",
         "entry_price": 773.13,
         "take_trade": false,
@@ -388,6 +382,12 @@
         "entry_price": 774.47,
         "take_trade": false,
         "time": "2026-09-27T06:42:30.560998+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 777.81,
+        "take_trade": false,
+        "time": "2026-09-27T09:06:32.165929+00:00"
       }
     ],
     "HEI": [
@@ -1346,29 +1346,180 @@
       "resolved_pnl": -290.2,
       "resolved_time": "2026-09-27T04:48:06.921126+00:00",
       "exit_reasoning": "Price immediately breached support and confirmed a bearish structural breakdown, invalidating the long reversal thesis."
+    },
+    {
+      "coin": "AVAX",
+      "direction": "short",
+      "entry_price": 11.214,
+      "stop_loss": 11.35,
+      "target_price": 11.0,
+      "trade_amount_inr": 77048.97,
+      "quantity": 69.09476534214818,
+      "max_loss_this_trade_inr": 1050.0,
+      "conviction": 7,
+      "supporting_tags": [
+        "RANGE_LOCATION",
+        "REJECTION",
+        "LIQUIDITY_SWEEP",
+        "BOS"
+      ],
+      "risk_tags": [
+        "MOMENTUM"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 11.214,
+        "direction": "short",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": 0.6153,
+        "entry_vs_recent_swing_low_pct": 1.2841,
+        "entry_vs_recent_swing_high_atr": 1.448,
+        "entry_vs_recent_swing_low_atr": 3.022,
+        "entry_vs_latest_break_pct": 0.6153,
+        "entry_vs_latest_break_atr": 1.448,
+        "entry_range_position_pct": 84.0,
+        "entry_distance_to_range_high_pct": 0.6064,
+        "entry_distance_to_range_low_pct": 3.1835,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.6064,
+        "nearest_boundary_distance_atr": 1.427,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-09-27 09:00:00",
+        "break_distance_class": "extended_1_to_2_atr"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 1,
+          "break_freshness": "fresh",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.619,
+          "extension_atr_from_break": 1.45,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 2,
+          "liquidity_sweep_count_3m": 2,
+          "high_rejection_sweeps_3m": 2,
+          "low_reclaim_sweeps_3m": 0,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": true,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 9,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        },
+        "adaptive": {
+          "global_regime": "TREND_DOWN",
+          "global_regime_candidate": "TREND_DOWN",
+          "global_regime_confidence": 0.72,
+          "global_regime_details": {
+            "btc_regime": "TREND_UP",
+            "btc_momentum_20": -0.1391181325159141,
+            "counts": {
+              "TREND_UP": 2,
+              "TREND_DOWN": 1,
+              "RANGE": 8,
+              "TRANSITION": 5
+            },
+            "positive_pct": 11.1,
+            "negative_pct": 88.9,
+            "measured": 18
+          },
+          "local_regime": "RANGE",
+          "local_regime_confidence": 0.9,
+          "volatility_state": "NORMAL",
+          "liquidity_state": "NORMAL",
+          "preferred_playbook": "RANGE_SHORT",
+          "allowed_playbooks": [
+            "RANGE_LONG",
+            "RANGE_SHORT",
+            "RANGE_REVERSAL",
+            "RANGE_BREAKOUT_WATCH"
+          ],
+          "setup_quality": {
+            "score": 5,
+            "max": 5,
+            "reasons": [
+              "range_structure",
+              "recent_structural_event",
+              "fresh_or_mature_break"
+            ],
+            "watch_eligible": true
+          },
+          "event": {
+            "type": "RANGE_HIGH_REJECTION",
+            "level": 11.282,
+            "confirmed": true
+          },
+          "lifecycle": "WATCH",
+          "active_watch": {
+            "coin": "AVAX",
+            "direction": "short",
+            "playbook": "RANGE_REVERSAL",
+            "created_at": "2026-09-27T09:02:08.323108+00:00",
+            "last_seen_at": "2026-09-27T09:06:41.646708+00:00",
+            "trigger_type": "RANGE_HIGH_REJECTION",
+            "trigger_level": 11.282,
+            "setup_score": 5,
+            "reasoning": "deterministic setup-quality watch",
+            "status": "WATCH",
+            "minutes_open": 4.6
+          },
+          "local_regime_confidence_evidence": {
+            "base": 0.5,
+            "evidence": [
+              "range_candidate",
+              "bounded_range_position",
+              "3m_non_directional",
+              "15m_non_directional"
+            ]
+          }
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": null,
+        "last_signal_direction": null,
+        "last_signal_take_trade": null,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-09-27T09:06:32.165929+00:00",
+      "reasoning": "AVAX has confirmed a strong range high rejection at 11.282 with active liquidity sweep and bearish structure alignment, offering a clean short setup toward range mid.",
+      "level_history": [
+        {
+          "from": "2026-09-27T09:06:32.165929+00:00",
+          "stop": 11.35,
+          "target": 11.0
+        }
+      ],
+      "peak_price": 11.214,
+      "trough_price": 11.214,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-09-27T09:06:32.165929+00:00",
+      "mae_time": "2026-09-27T09:06:32.165929+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-27T08:39:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-09-27T08:42:00Z": [
       "ACE",
       "ADA",
@@ -1490,6 +1641,26 @@
       "ZEC"
     ],
     "2026-09-27T09:00:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-09-27T09:03:00Z": [
       "ACE",
       "ADA",
       "AVAX",
