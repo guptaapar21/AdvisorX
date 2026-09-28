@@ -1,6 +1,6 @@
 {
   "coins": {},
-  "last_sent_at": "2026-09-28T06:46:07.227289+00:00",
+  "last_sent_at": "2026-09-28T06:48:35.790574+00:00",
   "last_content_signature": [],
   "last_processed_candle_time": "2026-09-28T06:03:00Z",
   "last_sent_candle_time": null,
@@ -585,188 +585,6 @@
   },
   "ledger": [
     {
-      "coin": "ADA",
-      "direction": "long",
-      "entry_price": 0.2506,
-      "stop_loss": 0.2495,
-      "target_price": 0.2536,
-      "trade_amount_inr": 152815.23,
-      "quantity": 6132.315081946577,
-      "max_loss_this_trade_inr": 900.0,
-      "conviction": 6,
-      "supporting_tags": [
-        "RANGE_LOCATION",
-        "REJECTION",
-        "REVERSAL"
-      ],
-      "risk_tags": [
-        "MOMENTUM",
-        "ADX_DI"
-      ],
-      "reason_tag_schema_version": "2026-08-15-tags-v1",
-      "entry_location_telemetry": {
-        "telemetry_only": true,
-        "proposed_entry": 0.2506,
-        "direction": "long",
-        "entry_vs_current_close_pct": 0.0,
-        "entry_vs_vwap_pct": null,
-        "entry_vs_vwap_atr": null,
-        "entry_vs_recent_swing_high_pct": -0.7981,
-        "entry_vs_recent_swing_low_pct": -0.1995,
-        "entry_vs_recent_swing_high_atr": -4.861,
-        "entry_vs_recent_swing_low_atr": -1.215,
-        "entry_vs_latest_break_pct": -0.1995,
-        "entry_vs_latest_break_atr": -1.215,
-        "entry_range_position_pct": 3.23,
-        "entry_distance_to_range_high_pct": 1.1971,
-        "entry_distance_to_range_low_pct": 0.0399,
-        "nearest_boundary": "low",
-        "nearest_boundary_distance_pct": 0.0399,
-        "nearest_boundary_distance_atr": 0.243,
-        "entry_location_class": "near_range_low",
-        "latest_break_direction": "bearish",
-        "latest_break_type": "BOS",
-        "latest_break_time": "2026-09-27 04:36:00",
-        "break_distance_class": "extended_1_to_2_atr"
-      },
-      "entry_quality_context": {
-        "continuation": {
-          "has_break": true,
-          "bars_since_break": 2,
-          "break_freshness": "fresh",
-          "break_direction": "bearish",
-          "break_type": "BOS",
-          "extension_pct_from_break": 0.199,
-          "extension_atr_from_break": 1.22,
-          "new_break_within_2_bars": true,
-          "failed_break_count_3m": 4,
-          "liquidity_sweep_count_3m": 2,
-          "high_rejection_sweeps_3m": 0,
-          "low_reclaim_sweeps_3m": 2,
-          "exhaustion_score_3m": 3,
-          "extended_from_break": true,
-          "late_continuation": false,
-          "continuation_quality": "fresh_continuation"
-        },
-        "session": {
-          "utc_hour": 4,
-          "label": "normal-history-window",
-          "historically_weak_window": false
-        },
-        "adaptive": {
-          "global_regime": "TRANSITION",
-          "global_regime_candidate": "TRANSITION",
-          "global_regime_confidence": 0.697,
-          "global_regime_details": {
-            "btc_regime": "RANGE",
-            "btc_momentum_20": -0.10465179788897716,
-            "counts": {
-              "TREND_UP": 1,
-              "TREND_DOWN": 2,
-              "RANGE": 8,
-              "TRANSITION": 7
-            },
-            "positive_pct": 23.5,
-            "negative_pct": 76.5,
-            "measured": 17
-          },
-          "local_regime": "RANGE",
-          "local_regime_confidence": 0.82,
-          "volatility_state": "NORMAL",
-          "liquidity_state": "NORMAL",
-          "preferred_playbook": "RANGE_LONG",
-          "allowed_playbooks": [
-            "RANGE_LONG",
-            "RANGE_SHORT",
-            "RANGE_REVERSAL",
-            "RANGE_BREAKOUT_WATCH"
-          ],
-          "setup_quality": {
-            "score": 5,
-            "max": 5,
-            "reasons": [
-              "range_structure",
-              "recent_structural_event",
-              "fresh_or_mature_break"
-            ],
-            "watch_eligible": true
-          },
-          "event": {
-            "type": "RANGE_LOW_RECLAIM",
-            "level": 0.2505,
-            "confirmed": true
-          },
-          "lifecycle": "ARMED",
-          "active_watch": {
-            "coin": "ADA",
-            "direction": "long",
-            "playbook": "RANGE_REVERSAL",
-            "created_at": "2026-09-27T04:22:08.184526+00:00",
-            "last_seen_at": "2026-09-27T04:46:32.072798+00:00",
-            "trigger_type": "RANGE_LOW_RECLAIM",
-            "trigger_level": 0.2505,
-            "setup_score": 5,
-            "reasoning": "deterministic setup-quality watch",
-            "status": "ARMED",
-            "minutes_open": 24.4
-          },
-          "local_regime_confidence_evidence": {
-            "base": 0.5,
-            "evidence": [
-              "range_candidate",
-              "bounded_range_position",
-              "15m_non_directional"
-            ]
-          }
-        }
-      },
-      "recent_signal_context": {
-        "recent_take_count_180m": 0,
-        "recent_long_take_count_180m": 0,
-        "recent_short_take_count_180m": 0,
-        "last_signal_minutes_ago": 60.6,
-        "last_signal_direction": "short",
-        "last_signal_take_trade": false,
-        "last_closed_trade_minutes_ago": null,
-        "last_closed_trade_direction": null,
-        "last_closed_trade_pnl_inr": null,
-        "last_closed_trade_r": null,
-        "same_direction_recent_close": false,
-        "same_direction_cooldown_active": false,
-        "same_direction_reentry_without_new_break": false
-      },
-      "status": "gemini_exit",
-      "time": "2026-09-27T04:46:19.677218+00:00",
-      "reasoning": "ADA has successfully tested and reclaimed the range low at 0.2505 with oversold RSI (32.46) and a low-reclaim trigger, offering a structured range reversal long setup targeting the range boundary.",
-      "level_history": [
-        {
-          "from": "2026-09-27T04:46:19.677218+00:00",
-          "stop": 0.2495,
-          "target": 0.2536
-        }
-      ],
-      "peak_price": 0.2507,
-      "trough_price": 0.2502,
-      "mfe_pnl_inr": 60.98,
-      "mae_pnl_inr": -243.92,
-      "mfe_r": 0.068,
-      "mfe_time": "2026-09-27T04:47:00+00:00",
-      "mae_time": "2026-09-27T04:47:00+00:00",
-      "mfe_giveback_pct": 200.0,
-      "mfe_mae_policy_version": "2026-09-10-trade-management-v4",
-      "profit_health_score": 4,
-      "profit_health_state": "severe",
-      "profit_health_reasons": [
-        "3m structure flipped",
-        "3m lost EMA9",
-        "recent failed break"
-      ],
-      "current_r": -0.068,
-      "resolved_pnl": -290.2,
-      "resolved_time": "2026-09-27T04:48:06.921126+00:00",
-      "exit_reasoning": "Price immediately breached support and confirmed a bearish structural breakdown, invalidating the long reversal thesis."
-    },
-    {
       "coin": "AVAX",
       "direction": "short",
       "entry_price": 11.214,
@@ -1149,14 +967,14 @@
     }
   ],
   "processed_candle_coins": {
-    "2026-09-28T06:15:00Z": [],
     "2026-09-28T06:18:00Z": [],
     "2026-09-28T06:24:00Z": [],
     "2026-09-28T06:27:00Z": [],
     "2026-09-28T06:30:00Z": [],
     "2026-09-28T06:33:00Z": [],
     "2026-09-28T06:36:00Z": [],
-    "2026-09-28T06:39:00Z": []
+    "2026-09-28T06:39:00Z": [],
+    "2026-09-28T06:42:00Z": []
   },
   "telegram_last_delivery_ok": true,
   "telegram_last_delivery_error": null,
