@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-10-01T00:22:01.087432+00:00",
+  "last_sent_at": "2026-10-01T00:24:44.414351+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-10-01T00:18:00Z",
+  "last_processed_candle_time": "2026-10-01T00:21:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -297,12 +297,6 @@
     "AVAX": [
       {
         "direction": "long",
-        "entry_price": 11.461,
-        "take_trade": false,
-        "time": "2026-09-29T20:57:29.462014+00:00"
-      },
-      {
-        "direction": "long",
         "entry_price": 11.462,
         "take_trade": false,
         "time": "2026-09-29T21:01:20.704795+00:00"
@@ -324,6 +318,12 @@
         "entry_price": 10.904,
         "take_trade": false,
         "time": "2026-09-30T22:03:17.584347+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 10.901,
+        "take_trade": true,
+        "time": "2026-10-01T00:24:03.321059+00:00"
       }
     ],
     "ZEC": [
@@ -765,29 +765,180 @@
       "resolved_pnl": -650.36,
       "resolved_time": "2026-09-29T23:36:36.743889+00:00",
       "exit_reasoning": "The prior long thesis has broken down as price sliced through the support level with a heavy volume breakdown on the 3m chart, invalidating the range-low reclaim setup."
+    },
+    {
+      "coin": "AVAX",
+      "direction": "short",
+      "entry_price": 10.901,
+      "stop_loss": 10.95,
+      "target_price": 10.8,
+      "trade_amount_inr": 175145.94,
+      "quantity": 161.57442651434863,
+      "max_loss_this_trade_inr": 1050.0,
+      "conviction": 7,
+      "supporting_tags": [
+        "BOS",
+        "EMA_STRUCTURE",
+        "ADX_DI",
+        "CONTINUATION"
+      ],
+      "risk_tags": [
+        "BTC_RELATIVE_STRENGTH"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 10.901,
+        "direction": "short",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.3761,
+        "entry_vs_recent_swing_low_pct": -0.0183,
+        "entry_vs_recent_swing_high_atr": -2.405,
+        "entry_vs_recent_swing_low_atr": -0.117,
+        "entry_vs_latest_break_pct": -0.0183,
+        "entry_vs_latest_break_atr": -0.117,
+        "entry_range_position_pct": 25.17,
+        "entry_distance_to_range_high_pct": 0.9816,
+        "entry_distance_to_range_low_pct": 0.3302,
+        "nearest_boundary": "low",
+        "nearest_boundary_distance_pct": 0.3302,
+        "nearest_boundary_distance_atr": 2.112,
+        "entry_location_class": "range_middle",
+        "latest_break_direction": "bearish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-10-01 00:21:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 0,
+          "break_freshness": "fresh",
+          "break_direction": "bearish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.018,
+          "extension_atr_from_break": 0.12,
+          "new_break_within_2_bars": true,
+          "failed_break_count_3m": 3,
+          "liquidity_sweep_count_3m": 2,
+          "high_rejection_sweeps_3m": 2,
+          "low_reclaim_sweeps_3m": 0,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "fresh_continuation"
+        },
+        "session": {
+          "utc_hour": 0,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        },
+        "adaptive": {
+          "global_regime": "TRANSITION",
+          "global_regime_candidate": "TRANSITION",
+          "global_regime_confidence": 0.68,
+          "global_regime_details": {
+            "btc_regime": "TRANSITION",
+            "btc_momentum_20": -0.36529140701478946,
+            "counts": {
+              "TREND_UP": 0,
+              "TREND_DOWN": 1,
+              "RANGE": 10,
+              "TRANSITION": 6
+            },
+            "positive_pct": 22.2,
+            "negative_pct": 77.8,
+            "measured": 18
+          },
+          "local_regime": "TREND_DOWN",
+          "local_regime_confidence": 0.9,
+          "volatility_state": "HIGH",
+          "liquidity_state": "ACTIVE",
+          "preferred_playbook": "SHORT_BREAKDOWN",
+          "allowed_playbooks": [
+            "SHORT_RALLY_REJECTION",
+            "SHORT_CONTINUATION",
+            "SHORT_BREAKDOWN"
+          ],
+          "setup_quality": {
+            "score": 5,
+            "max": 5,
+            "reasons": [
+              "3m_structure_aligned",
+              "recent_structural_event",
+              "active_volume",
+              "fresh_or_mature_break"
+            ],
+            "watch_eligible": true
+          },
+          "event": {
+            "type": "STRUCTURAL_BREAK",
+            "level": 10.903,
+            "confirmed": true
+          },
+          "lifecycle": "ARMED",
+          "active_watch": {
+            "coin": "AVAX",
+            "direction": "short",
+            "playbook": "SHORT_BREAKDOWN",
+            "created_at": "2026-10-01T00:21:50.845846+00:00",
+            "last_seen_at": "2026-10-01T00:24:19.367107+00:00",
+            "trigger_type": "STRUCTURAL_BREAK",
+            "trigger_level": 10.903,
+            "setup_score": 5,
+            "reasoning": "deterministic setup-quality watch",
+            "status": "ARMED",
+            "minutes_open": 2.5
+          },
+          "local_regime_confidence_evidence": {
+            "base": 0.5,
+            "evidence": [
+              "3m_bearish",
+              "15m_bearish",
+              "1h_bearish",
+              "efficiency>=0.35"
+            ]
+          }
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 140.8,
+        "last_signal_direction": "short",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-10-01T00:24:03.321059+00:00",
+      "reasoning": "AVAX shows clean bearish alignment across 3m, 15m, and 1h charts with a fresh bearish BOS at 10.903 and minus-DI dominance supporting continuation.",
+      "level_history": [
+        {
+          "from": "2026-10-01T00:24:03.321059+00:00",
+          "stop": 10.95,
+          "target": 10.8
+        }
+      ],
+      "peak_price": 10.901,
+      "trough_price": 10.901,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-10-01T00:24:03.321059+00:00",
+      "mae_time": "2026-10-01T00:24:03.321059+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-09-30T23:57:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-10-01T00:00:00Z": [
       "ACE",
       "ADA",
@@ -909,6 +1060,26 @@
       "ZEC"
     ],
     "2026-10-01T00:18:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-10-01T00:21:00Z": [
       "ACE",
       "ADA",
       "AVAX",
