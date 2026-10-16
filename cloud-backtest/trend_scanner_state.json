@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-10-16T02:57:37.105983+00:00",
+  "last_sent_at": "2026-10-16T03:00:36.283798+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-10-16T02:54:00Z",
+  "last_processed_candle_time": "2026-10-16T02:57:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -427,12 +427,6 @@
         "direction": "short",
         "entry_price": 0.3316,
         "take_trade": false,
-        "time": "2026-10-15T18:15:24.171978+00:00"
-      },
-      {
-        "direction": "short",
-        "entry_price": 0.3316,
-        "take_trade": false,
         "time": "2026-10-15T18:18:37.275969+00:00"
       },
       {
@@ -452,6 +446,12 @@
         "entry_price": 0.3345,
         "take_trade": false,
         "time": "2026-10-16T02:42:32.751766+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 0.3348,
+        "take_trade": true,
+        "time": "2026-10-16T03:00:17.656251+00:00"
       }
     ],
     "LTC": [
@@ -951,29 +951,177 @@
       "resolved_pnl": -170.93,
       "resolved_time": "2026-10-16T01:21:13.547911+00:00",
       "exit_reasoning": "Latest 3m structure formed a bearish BOS at 61.2 and price retreated to 61.12, invalidating the original bullish continuation thesis."
+    },
+    {
+      "coin": "TRX",
+      "direction": "long",
+      "entry_price": 0.3348,
+      "stop_loss": 0.334,
+      "target_price": 0.337,
+      "trade_amount_inr": 269958.53,
+      "quantity": 8108.686172901734,
+      "max_loss_this_trade_inr": 1050.0,
+      "conviction": 7,
+      "supporting_tags": [
+        "MOMENTUM",
+        "BREAKOUT",
+        "BOS",
+        "ADX_DI",
+        "EMA_STRUCTURE"
+      ],
+      "risk_tags": [],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.3348,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.0896,
+        "entry_vs_recent_swing_low_pct": 0.0299,
+        "entry_vs_recent_swing_high_atr": -1.599,
+        "entry_vs_recent_swing_low_atr": 0.533,
+        "entry_vs_latest_break_pct": 0.0,
+        "entry_vs_latest_break_atr": 0.0,
+        "entry_range_position_pct": 81.25,
+        "entry_distance_to_range_high_pct": 0.0896,
+        "entry_distance_to_range_low_pct": 0.3883,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.0896,
+        "nearest_boundary_distance_atr": 1.599,
+        "entry_location_class": "near_range_high",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-10-16 02:36:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 7,
+          "break_freshness": "late",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.0,
+          "extension_atr_from_break": 0.0,
+          "new_break_within_2_bars": false,
+          "failed_break_count_3m": 0,
+          "liquidity_sweep_count_3m": 2,
+          "high_rejection_sweeps_3m": 0,
+          "low_reclaim_sweeps_3m": 2,
+          "exhaustion_score_3m": 1,
+          "extended_from_break": false,
+          "late_continuation": true,
+          "continuation_quality": "mixed_or_unclear"
+        },
+        "session": {
+          "utc_hour": 2,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        },
+        "adaptive": {
+          "global_regime": "TRANSITION",
+          "global_regime_candidate": "TRANSITION",
+          "global_regime_confidence": 0.697,
+          "global_regime_details": {
+            "btc_regime": "RANGE",
+            "btc_momentum_20": -0.06230813449444872,
+            "counts": {
+              "TREND_UP": 1,
+              "TREND_DOWN": 0,
+              "RANGE": 9,
+              "TRANSITION": 7
+            },
+            "positive_pct": 64.7,
+            "negative_pct": 35.3,
+            "measured": 17
+          },
+          "local_regime": "TREND_UP",
+          "local_regime_confidence": 0.8,
+          "volatility_state": "HIGH",
+          "liquidity_state": "ACTIVE",
+          "preferred_playbook": "LONG_BREAKOUT",
+          "allowed_playbooks": [
+            "LONG_PULLBACK",
+            "LONG_CONTINUATION",
+            "LONG_BREAKOUT"
+          ],
+          "setup_quality": {
+            "score": 5,
+            "max": 5,
+            "reasons": [
+              "3m_structure_aligned",
+              "recent_structural_event",
+              "active_volume"
+            ],
+            "watch_eligible": true
+          },
+          "event": {
+            "type": "STRUCTURAL_BREAK",
+            "level": 0.3348,
+            "confirmed": true
+          },
+          "lifecycle": "ARMED",
+          "active_watch": {
+            "coin": "TRX",
+            "direction": "long",
+            "playbook": "LONG_BREAKOUT",
+            "created_at": "2026-10-16T01:30:31.702620+00:00",
+            "last_seen_at": "2026-10-16T03:00:30.560820+00:00",
+            "trigger_type": "STRUCTURAL_BREAK",
+            "trigger_level": 0.3348,
+            "setup_score": 5,
+            "reasoning": "deterministic setup-quality watch",
+            "status": "ARMED",
+            "minutes_open": 90.0
+          },
+          "local_regime_confidence_evidence": {
+            "base": 0.5,
+            "evidence": [
+              "3m_bullish",
+              "15m_bullish",
+              "adx>=25"
+            ]
+          }
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 17.7,
+        "last_signal_direction": "long",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-10-16T03:00:17.656251+00:00",
+      "reasoning": "TRX displays strong trend continuation with ADX above 50 and a confirmed breakout above 0.3348.",
+      "level_history": [
+        {
+          "from": "2026-10-16T03:00:17.656251+00:00",
+          "stop": 0.334,
+          "target": 0.337
+        }
+      ],
+      "peak_price": 0.3348,
+      "trough_price": 0.3348,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-10-16T03:00:17.656251+00:00",
+      "mae_time": "2026-10-16T03:00:17.656251+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-10-16T02:33:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-10-16T02:36:00Z": [
       "ACE",
       "ADA",
@@ -1095,6 +1243,26 @@
       "ZEC"
     ],
     "2026-10-16T02:54:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-10-16T02:57:00Z": [
       "ACE",
       "ADA",
       "AVAX",
