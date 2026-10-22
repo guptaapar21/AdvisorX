@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-10-22T19:48:34.911247+00:00",
+  "last_sent_at": "2026-10-22T19:52:44.816477+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-10-22T19:45:00Z",
+  "last_processed_candle_time": "2026-10-22T19:48:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -489,12 +489,6 @@
     "ZBT": [
       {
         "direction": "short",
-        "entry_price": 0.0698,
-        "take_trade": false,
-        "time": "2026-10-22T04:00:49.995713+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 0.068,
         "take_trade": false,
         "time": "2026-10-22T15:48:29.471633+00:00"
@@ -516,6 +510,12 @@
         "entry_price": 0.0674,
         "take_trade": false,
         "time": "2026-10-22T19:45:49.809248+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 0.0675,
+        "take_trade": true,
+        "time": "2026-10-22T19:52:13.977298+00:00"
       }
     ],
     "BTC": [
@@ -583,28 +583,180 @@
       }
     ]
   },
-  "ledger": [],
+  "ledger": [
+    {
+      "coin": "ZBT",
+      "direction": "short",
+      "entry_price": 0.0675,
+      "stop_loss": 0.06774,
+      "target_price": 0.0668,
+      "trade_amount_inr": 207692.31,
+      "quantity": 30942.5088186159,
+      "max_loss_this_trade_inr": 1050.0,
+      "conviction": 7,
+      "supporting_tags": [
+        "BREAKOUT",
+        "BOS",
+        "CONTINUATION",
+        "ADX_DI",
+        "EMA_STRUCTURE"
+      ],
+      "risk_tags": [
+        "RVOL"
+      ],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 0.0675,
+        "direction": "short",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.5926,
+        "entry_vs_recent_swing_low_pct": -0.2963,
+        "entry_vs_recent_swing_high_atr": -4.179,
+        "entry_vs_recent_swing_low_atr": -2.089,
+        "entry_vs_latest_break_pct": 0.0,
+        "entry_vs_latest_break_atr": 0.0,
+        "entry_range_position_pct": 25.0,
+        "entry_distance_to_range_high_pct": 1.3333,
+        "entry_distance_to_range_low_pct": 0.4444,
+        "nearest_boundary": "low",
+        "nearest_boundary_distance_pct": 0.4444,
+        "nearest_boundary_distance_atr": 3.134,
+        "entry_location_class": "range_middle",
+        "latest_break_direction": "bearish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-10-22 19:39:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 3,
+          "break_freshness": "mature",
+          "break_direction": "bearish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.0,
+          "extension_atr_from_break": 0.0,
+          "new_break_within_2_bars": false,
+          "failed_break_count_3m": 1,
+          "liquidity_sweep_count_3m": 0,
+          "high_rejection_sweeps_3m": 0,
+          "low_reclaim_sweeps_3m": 0,
+          "exhaustion_score_3m": 1,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "mature_continuation"
+        },
+        "session": {
+          "utc_hour": 19,
+          "label": "normal-history-window",
+          "historically_weak_window": false
+        },
+        "adaptive": {
+          "global_regime": "TREND_DOWN",
+          "global_regime_candidate": "TREND_DOWN",
+          "global_regime_confidence": 0.72,
+          "global_regime_details": {
+            "btc_regime": "TRANSITION",
+            "btc_momentum_20": 0.13242735233023328,
+            "counts": {
+              "TREND_UP": 0,
+              "TREND_DOWN": 3,
+              "RANGE": 10,
+              "TRANSITION": 5
+            },
+            "positive_pct": 29.4,
+            "negative_pct": 70.6,
+            "measured": 17
+          },
+          "local_regime": "TREND_DOWN",
+          "local_regime_confidence": 0.85,
+          "volatility_state": "HIGH",
+          "liquidity_state": "ACTIVE",
+          "preferred_playbook": "SHORT_BREAKDOWN",
+          "allowed_playbooks": [
+            "SHORT_RALLY_REJECTION",
+            "SHORT_CONTINUATION",
+            "SHORT_BREAKDOWN"
+          ],
+          "setup_quality": {
+            "score": 5,
+            "max": 5,
+            "reasons": [
+              "3m_structure_aligned",
+              "recent_structural_event",
+              "active_volume",
+              "fresh_or_mature_break"
+            ],
+            "watch_eligible": true
+          },
+          "event": {
+            "type": "STRUCTURAL_BREAK",
+            "level": 0.0675,
+            "confirmed": true
+          },
+          "lifecycle": "ARMED",
+          "active_watch": {
+            "coin": "ZBT",
+            "direction": "short",
+            "playbook": "SHORT_BREAKDOWN",
+            "created_at": "2026-10-22T19:46:15.165547+00:00",
+            "last_seen_at": "2026-10-22T19:52:22.918196+00:00",
+            "trigger_type": "STRUCTURAL_BREAK",
+            "trigger_level": 0.0675,
+            "setup_score": 5,
+            "reasoning": "deterministic setup-quality watch",
+            "status": "ARMED",
+            "minutes_open": 6.1
+          },
+          "local_regime_confidence_evidence": {
+            "base": 0.5,
+            "evidence": [
+              "3m_bearish",
+              "15m_bearish",
+              "1h_bearish"
+            ]
+          }
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 6.4,
+        "last_signal_direction": "short",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-10-22T19:52:13.977298+00:00",
+      "reasoning": "ZBT is armed at structural breakdown level 0.0675 with strong minus-DI dominance (48.92 vs 21.25) and active volume supporting bear continuation.",
+      "level_history": [
+        {
+          "from": "2026-10-22T19:52:13.977298+00:00",
+          "stop": 0.06774,
+          "target": 0.0668
+        }
+      ],
+      "peak_price": 0.0675,
+      "trough_price": 0.0675,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-10-22T19:52:13.977298+00:00",
+      "mae_time": "2026-10-22T19:52:13.977298+00:00",
+      "mfe_giveback_pct": 0.0
+    }
+  ],
   "processed_candle_coins": {
-    "2026-10-22T19:24:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-10-22T19:27:00Z": [
       "ACE",
       "ADA",
@@ -726,6 +878,26 @@
       "ZEC"
     ],
     "2026-10-22T19:45:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-10-22T19:48:00Z": [
       "ACE",
       "ADA",
       "AVAX",
