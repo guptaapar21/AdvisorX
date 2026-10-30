@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-10-30T23:30:47.667284+00:00",
+  "last_sent_at": "2026-10-30T23:34:49.056755+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-10-30T23:27:00Z",
+  "last_processed_candle_time": "2026-10-30T23:30:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -73,12 +73,6 @@
     "PAXG": [
       {
         "direction": "short",
-        "entry_price": 3890.17,
-        "take_trade": false,
-        "time": "2026-10-30T19:45:15.475509+00:00"
-      },
-      {
-        "direction": "short",
         "entry_price": 3892.0,
         "take_trade": false,
         "time": "2026-10-30T19:48:34.286150+00:00"
@@ -100,6 +94,12 @@
         "entry_price": 3901.4,
         "take_trade": false,
         "time": "2026-10-30T23:30:25.216391+00:00"
+      },
+      {
+        "direction": "short",
+        "entry_price": 3901.39,
+        "take_trade": false,
+        "time": "2026-10-30T23:34:26.499172+00:00"
       }
     ],
     "XRP": [
@@ -1116,7 +1116,7 @@
         "same_direction_cooldown_active": false,
         "same_direction_reentry_without_new_break": false
       },
-      "status": "pending",
+      "status": "gemini_exit",
       "time": "2026-10-30T22:51:25.878616+00:00",
       "reasoning": "Price is rejecting the 1.2553 range high with confirmed rejection candles, offering a clean short setup back toward range support.",
       "level_history": [
@@ -1126,27 +1126,30 @@
           "target": 1.244
         }
       ],
-      "peak_price": 1.255,
+      "peak_price": 1.2558,
       "trough_price": 1.2518,
       "mfe_pnl_inr": 416.88,
-      "mae_pnl_inr": -138.96,
+      "mae_pnl_inr": -277.92,
       "mfe_r": 0.463,
       "mfe_time": "2026-10-30T23:20:00+00:00",
-      "mae_time": "2026-10-30T23:08:00+00:00",
-      "mfe_giveback_pct": 108.3,
+      "mae_time": "2026-10-30T23:33:00+00:00",
+      "mfe_giveback_pct": 162.5,
       "mfe_mae_policy_version": "2026-09-10-trade-management-v4",
-      "profit_health_score": 3,
+      "profit_health_score": 4,
       "profit_health_state": "severe",
       "profit_health_reasons": [
         "3m lost EMA9",
         "ADX slope weakening",
+        "rejection wick against position",
         "recent failed break"
       ],
-      "current_r": -0.039
+      "current_r": -0.29,
+      "resolved_pnl": -587.34,
+      "resolved_time": "2026-10-30T23:34:26.499172+00:00",
+      "exit_reasoning": "Price has broken above the 1.2553 resistance with a confirmed bullish BOS, invalidating the original short rejection thesis."
     }
   ],
   "processed_candle_coins": {
-    "2026-10-30T23:06:00Z": [],
     "2026-10-30T23:09:00Z": [],
     "2026-10-30T23:12:00Z": [
       "ACE",
@@ -1249,6 +1252,26 @@
       "ZEC"
     ],
     "2026-10-30T23:27:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ],
+    "2026-10-30T23:30:00Z": [
       "ACE",
       "ADA",
       "AVAX",
