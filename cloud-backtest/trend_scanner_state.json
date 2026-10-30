@@ -1,6 +1,6 @@
 {
   "coins": {},
-  "last_sent_at": "2026-10-30T11:55:34.142727+00:00",
+  "last_sent_at": "2026-10-30T11:59:27.421912+00:00",
   "last_content_signature": [],
   "last_processed_candle_time": "2026-10-30T11:51:00Z",
   "last_sent_candle_time": null,
@@ -772,7 +772,7 @@
       "coin": "PAXG",
       "direction": "short",
       "entry_price": 3981.74,
-      "stop_loss": 3988.5,
+      "stop_loss": 3981.74,
       "target_price": 3968.0,
       "trade_amount_inr": 328355.85,
       "quantity": 0.829298245556268,
@@ -927,27 +927,37 @@
           "from": "2026-10-30T11:27:57.828904+00:00",
           "stop": 3988.5,
           "target": 3968.0
+        },
+        {
+          "from": "2026-10-30T11:57:45.943689+00:00",
+          "stop": 3981.74,
+          "target": 3968.0,
+          "source": "python_v4_profit_ladder",
+          "lock_r": 0.0,
+          "trigger_mfe_r": 0.75
         }
       ],
       "peak_price": 3986.81,
-      "trough_price": 3973.71,
-      "mfe_pnl_inr": 662.2,
+      "trough_price": 3971.0,
+      "mfe_pnl_inr": 885.68,
       "mae_pnl_inr": -418.1,
-      "mfe_r": 0.631,
-      "mfe_time": "2026-10-30T11:47:00+00:00",
+      "mfe_r": 0.844,
+      "mfe_time": "2026-10-30T11:55:00+00:00",
       "mae_time": "2026-10-30T11:35:00+00:00",
-      "mfe_giveback_pct": 8.0,
+      "mfe_giveback_pct": 8.7,
       "mfe_mae_policy_version": "2026-09-10-trade-management-v4",
-      "profit_health_score": 1,
-      "profit_health_state": "healthy",
+      "profit_health_score": 2,
+      "profit_health_state": "weakening",
       "profit_health_reasons": [
+        "rejection wick against position",
         "recent failed break"
       ],
-      "current_r": 0.58
+      "current_r": 0.77,
+      "revised_at": "2026-10-30T11:57:45.943689+00:00",
+      "profit_lock_r": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-10-30T11:27:00Z": [],
     "2026-10-30T11:30:00Z": [
       "ACE",
       "ADA",
@@ -1087,7 +1097,8 @@
       "XRP",
       "ZBT",
       "ZEC"
-    ]
+    ],
+    "2026-10-30T11:54:00Z": []
   },
   "telegram_last_delivery_ok": true,
   "telegram_last_delivery_error": null,
