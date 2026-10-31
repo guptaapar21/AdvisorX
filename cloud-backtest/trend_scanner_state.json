@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-10-31T09:23:33.738406+00:00",
+  "last_sent_at": "2026-10-31T09:28:14.310844+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-10-31T09:15:00Z",
+  "last_processed_candle_time": "2026-10-31T09:24:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -328,12 +328,6 @@
     ],
     "ZEC": [
       {
-        "direction": "short",
-        "entry_price": 1232.0,
-        "take_trade": false,
-        "time": "2026-10-30T13:45:05.866111+00:00"
-      },
-      {
         "direction": "long",
         "entry_price": 1208.0,
         "take_trade": false,
@@ -356,6 +350,12 @@
         "entry_price": 1274.6,
         "take_trade": false,
         "time": "2026-10-31T07:27:38.189447+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 1275.31,
+        "take_trade": false,
+        "time": "2026-10-31T09:27:06.000884+00:00"
       }
     ],
     "BNB": [
@@ -968,7 +968,7 @@
       "coin": "TRX",
       "direction": "short",
       "entry_price": 0.3187,
-      "stop_loss": 0.3205,
+      "stop_loss": 0.3187,
       "target_price": 0.315,
       "trade_amount_inr": 146895.37,
       "quantity": 4635.162149361192,
@@ -1124,24 +1124,33 @@
           "from": "2026-10-31T09:03:19.747788+00:00",
           "stop": 0.3205,
           "target": 0.315
+        },
+        {
+          "from": "2026-10-31T09:27:06.000884+00:00",
+          "stop": 0.3187,
+          "target": 0.315,
+          "source": "python_v4_profit_ladder",
+          "lock_r": 0.0,
+          "trigger_mfe_r": 0.75
         }
       ],
       "peak_price": 0.319,
-      "trough_price": 0.3177,
-      "mfe_pnl_inr": 460.92,
+      "trough_price": 0.3169,
+      "mfe_pnl_inr": 829.66,
       "mae_pnl_inr": -138.28,
-      "mfe_r": 0.439,
-      "mfe_time": "2026-10-31T09:14:00+00:00",
+      "mfe_r": 0.79,
+      "mfe_time": "2026-10-31T09:23:00+00:00",
       "mae_time": "2026-10-31T09:05:00+00:00",
-      "mfe_giveback_pct": 30.0,
+      "mfe_giveback_pct": 55.6,
       "mfe_mae_policy_version": "2026-09-10-trade-management-v4",
-      "profit_health_score": 2,
-      "profit_health_state": "weakening",
+      "profit_health_score": 1,
+      "profit_health_state": "healthy",
       "profit_health_reasons": [
-        "ADX slope weakening",
         "recent failed break"
       ],
-      "current_r": 0.307
+      "current_r": 0.351,
+      "revised_at": "2026-10-31T09:27:06.000884+00:00",
+      "profit_lock_r": 0.0
     },
     {
       "coin": "LTC",
@@ -1313,40 +1322,19 @@
       "mfe_r": 0.306,
       "mfe_time": "2026-10-31T09:16:00+00:00",
       "mae_time": "2026-10-31T09:17:00+00:00",
-      "mfe_giveback_pct": 41.7,
+      "mfe_giveback_pct": 0.0,
       "mfe_mae_policy_version": "2026-09-10-trade-management-v4",
-      "profit_health_score": 5,
+      "profit_health_score": 4,
       "profit_health_state": "severe",
       "profit_health_reasons": [
         "ADX slope weakening",
-        "rejection wick against position",
         "recent failed break",
         "15m structure against position"
       ],
-      "current_r": 0.179
+      "current_r": 0.306
     }
   ],
   "processed_candle_coins": {
-    "2026-10-31T08:57:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-10-31T09:00:00Z": [
       "ACE",
       "ADA",
@@ -1429,7 +1417,27 @@
       "ZBT",
       "ZEC"
     ],
-    "2026-10-31T09:18:00Z": []
+    "2026-10-31T09:18:00Z": [],
+    "2026-10-31T09:24:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ]
   },
   "telegram_last_delivery_ok": true,
   "telegram_last_delivery_error": null,
