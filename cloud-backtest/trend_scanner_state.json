@@ -1,6 +1,6 @@
 {
   "coins": {},
-  "last_sent_at": "2026-10-31T05:56:19.506416+00:00",
+  "last_sent_at": "2026-10-31T05:59:06.438247+00:00",
   "last_content_signature": [],
   "last_processed_candle_time": "2026-10-31T05:39:00Z",
   "last_sent_candle_time": null,
@@ -585,190 +585,6 @@
   },
   "ledger": [
     {
-      "coin": "HEI",
-      "direction": "short",
-      "entry_price": 0.0966,
-      "stop_loss": 0.0975,
-      "target_price": 0.0945,
-      "trade_amount_inr": 97071.49,
-      "quantity": 10105.398731316292,
-      "max_loss_this_trade_inr": 1050.0,
-      "conviction": 7,
-      "supporting_tags": [
-        "RANGE_LOCATION",
-        "REJECTION",
-        "RVOL"
-      ],
-      "risk_tags": [
-        "MOMENTUM"
-      ],
-      "reason_tag_schema_version": "2026-08-15-tags-v1",
-      "entry_location_telemetry": {
-        "telemetry_only": true,
-        "proposed_entry": 0.0966,
-        "direction": "short",
-        "entry_vs_current_close_pct": 0.0,
-        "entry_vs_vwap_pct": null,
-        "entry_vs_vwap_atr": null,
-        "entry_vs_recent_swing_high_pct": 0.6211,
-        "entry_vs_recent_swing_low_pct": 0.9317,
-        "entry_vs_recent_swing_high_atr": 2.975,
-        "entry_vs_recent_swing_low_atr": 4.462,
-        "entry_vs_latest_break_pct": 0.207,
-        "entry_vs_latest_break_atr": 0.992,
-        "entry_range_position_pct": 100.0,
-        "entry_distance_to_range_high_pct": 0.0,
-        "entry_distance_to_range_low_pct": 2.6915,
-        "nearest_boundary": "high",
-        "nearest_boundary_distance_pct": 0.0,
-        "nearest_boundary_distance_atr": 0.0,
-        "entry_location_class": "near_range_high",
-        "latest_break_direction": "bullish",
-        "latest_break_type": "BOS",
-        "latest_break_time": "2026-10-30 03:48:00",
-        "break_distance_class": "moderately_away"
-      },
-      "entry_quality_context": {
-        "continuation": {
-          "has_break": true,
-          "bars_since_break": 2,
-          "break_freshness": "fresh",
-          "break_direction": "bullish",
-          "break_type": "BOS",
-          "extension_pct_from_break": 0.207,
-          "extension_atr_from_break": 0.99,
-          "new_break_within_2_bars": true,
-          "failed_break_count_3m": 2,
-          "liquidity_sweep_count_3m": 2,
-          "high_rejection_sweeps_3m": 2,
-          "low_reclaim_sweeps_3m": 0,
-          "exhaustion_score_3m": 3,
-          "extended_from_break": false,
-          "late_continuation": false,
-          "continuation_quality": "fresh_continuation"
-        },
-        "session": {
-          "utc_hour": 3,
-          "label": "normal-history-window",
-          "historically_weak_window": false
-        },
-        "adaptive": {
-          "global_regime": "TRANSITION",
-          "global_regime_candidate": "TRANSITION",
-          "global_regime_confidence": 0.83,
-          "global_regime_details": {
-            "btc_regime": "TRANSITION",
-            "btc_momentum_20": 0.9986691732013941,
-            "counts": {
-              "TREND_UP": 0,
-              "TREND_DOWN": 0,
-              "RANGE": 3,
-              "TRANSITION": 15
-            },
-            "positive_pct": 88.9,
-            "negative_pct": 11.1,
-            "measured": 18
-          },
-          "local_regime": "RANGE",
-          "local_regime_confidence": 0.9,
-          "volatility_state": "EXTREME",
-          "liquidity_state": "ACTIVE",
-          "preferred_playbook": "RANGE_SHORT",
-          "allowed_playbooks": [
-            "RANGE_LONG",
-            "RANGE_SHORT",
-            "RANGE_REVERSAL",
-            "RANGE_BREAKOUT_WATCH"
-          ],
-          "setup_quality": {
-            "score": 5,
-            "max": 5,
-            "reasons": [
-              "range_structure",
-              "recent_structural_event",
-              "active_volume",
-              "fresh_or_mature_break"
-            ],
-            "watch_eligible": true
-          },
-          "event": {
-            "type": "RANGE_HIGH_REJECTION",
-            "level": 0.0966,
-            "confirmed": true
-          },
-          "lifecycle": "ARMED",
-          "active_watch": {
-            "coin": "HEI",
-            "direction": "short",
-            "playbook": "RANGE_REVERSAL",
-            "created_at": "2026-10-30T03:23:21.130640+00:00",
-            "last_seen_at": "2026-10-30T03:57:14.723479+00:00",
-            "trigger_type": "RANGE_HIGH_REJECTION",
-            "trigger_level": 0.0966,
-            "setup_score": 5,
-            "reasoning": "deterministic setup-quality watch",
-            "status": "ARMED",
-            "minutes_open": 33.9
-          },
-          "local_regime_confidence_evidence": {
-            "base": 0.5,
-            "evidence": [
-              "range_candidate",
-              "bounded_range_position",
-              "3m_non_directional",
-              "15m_non_directional"
-            ]
-          }
-        }
-      },
-      "recent_signal_context": {
-        "recent_take_count_180m": 0,
-        "recent_long_take_count_180m": 0,
-        "recent_short_take_count_180m": 0,
-        "last_signal_minutes_ago": null,
-        "last_signal_direction": null,
-        "last_signal_take_trade": null,
-        "last_closed_trade_minutes_ago": null,
-        "last_closed_trade_direction": null,
-        "last_closed_trade_pnl_inr": null,
-        "last_closed_trade_r": null,
-        "same_direction_recent_close": false,
-        "same_direction_cooldown_active": false,
-        "same_direction_reentry_without_new_break": false
-      },
-      "status": "gemini_exit",
-      "time": "2026-10-30T03:57:03.111238+00:00",
-      "reasoning": "HEI is cleanly rejecting the range high at 0.0966 with very high volume and active volatility.",
-      "level_history": [
-        {
-          "from": "2026-10-30T03:57:03.111238+00:00",
-          "stop": 0.0975,
-          "target": 0.0945
-        }
-      ],
-      "peak_price": 0.0968,
-      "trough_price": 0.096,
-      "mfe_pnl_inr": 602.93,
-      "mae_pnl_inr": -200.98,
-      "mfe_r": 0.574,
-      "mfe_time": "2026-10-30T04:03:00+00:00",
-      "mae_time": "2026-10-30T04:11:00+00:00",
-      "mfe_giveback_pct": 116.7,
-      "mfe_mae_policy_version": "2026-09-10-trade-management-v4",
-      "profit_health_score": 5,
-      "profit_health_state": "severe",
-      "profit_health_reasons": [
-        "3m structure flipped",
-        "3m lost EMA9",
-        "ADX slope weakening",
-        "recent failed break"
-      ],
-      "current_r": -0.096,
-      "resolved_pnl": -246.1,
-      "resolved_time": "2026-10-30T04:13:06.726914+00:00",
-      "exit_reasoning": "Price has broken above the entry high, flipping the 3m structure bullish and invalidating the range-rejection short thesis."
-    },
-    {
       "coin": "PAXG",
       "direction": "short",
       "entry_price": 3981.74,
@@ -1150,26 +966,6 @@
     }
   ],
   "processed_candle_coins": {
-    "2026-10-31T05:27:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-10-31T05:33:00Z": [
       "ACE",
       "ADA",
@@ -1214,7 +1010,8 @@
     "2026-10-31T05:42:00Z": [],
     "2026-10-31T05:45:00Z": [],
     "2026-10-31T05:48:00Z": [],
-    "2026-10-31T05:51:00Z": []
+    "2026-10-31T05:51:00Z": [],
+    "2026-10-31T05:54:00Z": []
   },
   "telegram_last_delivery_ok": true,
   "telegram_last_delivery_error": null,
