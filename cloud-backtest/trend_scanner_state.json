@@ -1,8 +1,8 @@
 {
   "coins": {},
-  "last_sent_at": "2026-11-05T06:59:21.495680+00:00",
+  "last_sent_at": "2026-11-05T07:02:05.868907+00:00",
   "last_content_signature": [],
-  "last_processed_candle_time": "2026-11-05T06:48:00Z",
+  "last_processed_candle_time": "2026-11-05T06:57:00Z",
   "last_sent_candle_time": null,
   "pending_telegram": null,
   "call_history": {
@@ -328,12 +328,6 @@
     ],
     "ZEC": [
       {
-        "direction": "short",
-        "entry_price": 1305.74,
-        "take_trade": false,
-        "time": "2026-11-04T23:40:47.250175+00:00"
-      },
-      {
         "direction": "long",
         "entry_price": 1284.0,
         "take_trade": false,
@@ -356,6 +350,12 @@
         "entry_price": 1324.42,
         "take_trade": false,
         "time": "2026-11-05T04:36:55.754273+00:00"
+      },
+      {
+        "direction": "long",
+        "entry_price": 1326.44,
+        "take_trade": true,
+        "time": "2026-11-05T07:00:35.461378+00:00"
       }
     ],
     "BNB": [
@@ -764,29 +764,179 @@
       "resolved_pnl": -538.5,
       "resolved_time": "2026-11-05T04:27:36.981042+00:00",
       "exit_reasoning": "Bull continuation thesis invalidated as price broke structure bearishly below entry with rejection wicks."
+    },
+    {
+      "coin": "ZEC",
+      "direction": "long",
+      "entry_price": 1326.44,
+      "stop_loss": 1317.0,
+      "target_price": 1341.5,
+      "trade_amount_inr": 121855.07,
+      "quantity": 0.9238359788788402,
+      "max_loss_this_trade_inr": 1050.0,
+      "conviction": 7,
+      "supporting_tags": [
+        "BOS",
+        "CONTINUATION",
+        "ADX_DI",
+        "EMA_STRUCTURE",
+        "MOMENTUM"
+      ],
+      "risk_tags": [],
+      "reason_tag_schema_version": "2026-08-15-tags-v1",
+      "entry_location_telemetry": {
+        "telemetry_only": true,
+        "proposed_entry": 1326.44,
+        "direction": "long",
+        "entry_vs_current_close_pct": 0.0,
+        "entry_vs_vwap_pct": null,
+        "entry_vs_vwap_atr": null,
+        "entry_vs_recent_swing_high_pct": -0.6619,
+        "entry_vs_recent_swing_low_pct": 0.297,
+        "entry_vs_recent_swing_high_atr": -2.32,
+        "entry_vs_recent_swing_low_atr": 1.041,
+        "entry_vs_latest_break_pct": 0.003,
+        "entry_vs_latest_break_atr": 0.011,
+        "entry_range_position_pct": 68.77,
+        "entry_distance_to_range_high_pct": 0.6619,
+        "entry_distance_to_range_low_pct": 1.4573,
+        "nearest_boundary": "high",
+        "nearest_boundary_distance_pct": 0.6619,
+        "nearest_boundary_distance_atr": 2.32,
+        "entry_location_class": "range_middle",
+        "latest_break_direction": "bullish",
+        "latest_break_type": "BOS",
+        "latest_break_time": "2026-11-05 06:45:00",
+        "break_distance_class": "near_break"
+      },
+      "entry_quality_context": {
+        "continuation": {
+          "has_break": true,
+          "bars_since_break": 4,
+          "break_freshness": "mature",
+          "break_direction": "bullish",
+          "break_type": "BOS",
+          "extension_pct_from_break": 0.003,
+          "extension_atr_from_break": 0.01,
+          "new_break_within_2_bars": false,
+          "failed_break_count_3m": 2,
+          "liquidity_sweep_count_3m": 2,
+          "high_rejection_sweeps_3m": 1,
+          "low_reclaim_sweeps_3m": 1,
+          "exhaustion_score_3m": 3,
+          "extended_from_break": false,
+          "late_continuation": false,
+          "continuation_quality": "mature_continuation"
+        },
+        "session": {
+          "utc_hour": 6,
+          "label": "weak-history-window",
+          "historically_weak_window": true
+        },
+        "adaptive": {
+          "global_regime": "TREND_UP",
+          "global_regime_candidate": "TREND_UP",
+          "global_regime_confidence": 0.72,
+          "global_regime_details": {
+            "btc_regime": "TRANSITION",
+            "btc_momentum_20": 0.3101367773461705,
+            "counts": {
+              "TREND_UP": 1,
+              "TREND_DOWN": 0,
+              "RANGE": 10,
+              "TRANSITION": 5
+            },
+            "positive_pct": 83.3,
+            "negative_pct": 16.7,
+            "measured": 18
+          },
+          "local_regime": "TREND_UP",
+          "local_regime_confidence": 0.85,
+          "volatility_state": "NORMAL",
+          "liquidity_state": "NORMAL",
+          "preferred_playbook": "LONG_BREAKOUT",
+          "allowed_playbooks": [
+            "LONG_PULLBACK",
+            "LONG_CONTINUATION",
+            "LONG_BREAKOUT"
+          ],
+          "setup_quality": {
+            "score": 5,
+            "max": 5,
+            "reasons": [
+              "3m_structure_aligned",
+              "recent_structural_event",
+              "active_volume",
+              "fresh_or_mature_break"
+            ],
+            "watch_eligible": true
+          },
+          "event": {
+            "type": "STRUCTURAL_BREAK",
+            "level": 1326.4,
+            "confirmed": true
+          },
+          "lifecycle": "ARMED",
+          "active_watch": {
+            "coin": "ZEC",
+            "direction": "long",
+            "playbook": "LONG_BREAKOUT",
+            "created_at": "2026-11-05T06:42:21.486848+00:00",
+            "last_seen_at": "2026-11-05T07:00:44.179558+00:00",
+            "trigger_type": "STRUCTURAL_BREAK",
+            "trigger_level": 1326.4,
+            "setup_score": 5,
+            "reasoning": "deterministic setup-quality watch",
+            "status": "ARMED",
+            "minutes_open": 18.4
+          },
+          "local_regime_confidence_evidence": {
+            "base": 0.5,
+            "evidence": [
+              "3m_bullish",
+              "15m_bullish",
+              "adx>=25",
+              "efficiency>=0.35"
+            ]
+          }
+        }
+      },
+      "recent_signal_context": {
+        "recent_take_count_180m": 0,
+        "recent_long_take_count_180m": 0,
+        "recent_short_take_count_180m": 0,
+        "last_signal_minutes_ago": 143.7,
+        "last_signal_direction": "short",
+        "last_signal_take_trade": false,
+        "last_closed_trade_minutes_ago": null,
+        "last_closed_trade_direction": null,
+        "last_closed_trade_pnl_inr": null,
+        "last_closed_trade_r": null,
+        "same_direction_recent_close": false,
+        "same_direction_cooldown_active": false,
+        "same_direction_reentry_without_new_break": false
+      },
+      "status": "pending",
+      "time": "2026-11-05T07:00:35.461378+00:00",
+      "reasoning": "ZEC shows clean bullish continuation with aligned EMAs, strong ADX, and a confirmed breakout above 1326.4.",
+      "level_history": [
+        {
+          "from": "2026-11-05T07:00:35.461378+00:00",
+          "stop": 1317.0,
+          "target": 1341.5
+        }
+      ],
+      "peak_price": 1326.44,
+      "trough_price": 1326.44,
+      "mfe_pnl_inr": 0.0,
+      "mae_pnl_inr": 0.0,
+      "mfe_r": 0.0,
+      "mfe_time": "2026-11-05T07:00:35.461378+00:00",
+      "mae_time": "2026-11-05T07:00:35.461378+00:00",
+      "mfe_giveback_pct": 0.0
     }
   ],
   "processed_candle_coins": {
-    "2026-11-05T06:30:00Z": [
-      "ACE",
-      "ADA",
-      "AVAX",
-      "BICO",
-      "BNB",
-      "BTC",
-      "DOGE",
-      "ETH",
-      "HEI",
-      "HYPE",
-      "LINK",
-      "LTC",
-      "PAXG",
-      "SOL",
-      "TRX",
-      "XRP",
-      "ZBT",
-      "ZEC"
-    ],
     "2026-11-05T06:33:00Z": [
       "ACE",
       "ADA",
@@ -888,7 +1038,27 @@
       "ZBT",
       "ZEC"
     ],
-    "2026-11-05T06:54:00Z": []
+    "2026-11-05T06:54:00Z": [],
+    "2026-11-05T06:57:00Z": [
+      "ACE",
+      "ADA",
+      "AVAX",
+      "BICO",
+      "BNB",
+      "BTC",
+      "DOGE",
+      "ETH",
+      "HEI",
+      "HYPE",
+      "LINK",
+      "LTC",
+      "PAXG",
+      "SOL",
+      "TRX",
+      "XRP",
+      "ZBT",
+      "ZEC"
+    ]
   },
   "telegram_last_delivery_ok": true,
   "telegram_last_delivery_error": null,
