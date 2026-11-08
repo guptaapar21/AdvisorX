@@ -775,8 +775,8 @@
     }
   ],
   "fee_pct": 0.15,
-  "generated_at": "2026-11-08T12:04:10.853759+00:00",
-  "holdout_rows": 129350,
+  "generated_at": "2026-11-08T12:36:47.016020+00:00",
+  "holdout_rows": 129402,
   "rejected": [
     {
       "fdr_passed": false,
@@ -1762,6 +1762,35 @@
       "fdr_q": 1.0,
       "hypothesis": {
         "conditions": {
+          "activity_percentile_min": 85
+        },
+        "direction": "bearish",
+        "event_family": "failed_break_resistance",
+        "horizon_min": 180,
+        "name": "failed_break_resistance | extreme_activity"
+      },
+      "status": "validation_failed",
+      "validation": {
+        "avg_net_return": -0.1192555440687712,
+        "block_sign_p_value": 0.9914149318815768,
+        "coin_count": 18,
+        "fdr_q": 1.0,
+        "max_drawdown": 174.26291664368424,
+        "median_net_return": -0.05985915492958113,
+        "n": 1291,
+        "positive_block_fraction": 0.45027124773960214,
+        "positive_coin_fraction": 0.1111111111111111,
+        "positive_rate": 0.47172734314484893,
+        "profit_factor": 0.8016033378101639,
+        "time_block_count": 553,
+        "worst_return": -16.227384923282173
+      }
+    },
+    {
+      "fdr_passed": false,
+      "fdr_q": 1.0,
+      "hypothesis": {
+        "conditions": {
           "activity_percentile_min": 95
         },
         "direction": "bullish",
@@ -1842,35 +1871,6 @@
         "profit_factor": 0.4612030650318943,
         "time_block_count": 811,
         "worst_return": -3.648112860167532
-      }
-    },
-    {
-      "fdr_passed": false,
-      "fdr_q": 1.0,
-      "hypothesis": {
-        "conditions": {
-          "activity_percentile_min": 85
-        },
-        "direction": "bearish",
-        "event_family": "failed_break_resistance",
-        "horizon_min": 180,
-        "name": "failed_break_resistance | extreme_activity"
-      },
-      "status": "validation_failed",
-      "validation": {
-        "avg_net_return": -0.120747233879044,
-        "block_sign_p_value": 0.9924062535438094,
-        "coin_count": 18,
-        "fdr_q": 1.0,
-        "max_drawdown": 174.26291664368424,
-        "median_net_return": -0.06014677406129933,
-        "n": 1290,
-        "positive_block_fraction": 0.4492753623188406,
-        "positive_coin_fraction": 0.1111111111111111,
-        "positive_rate": 0.47131782945736433,
-        "profit_factor": 0.7992773223520481,
-        "time_block_count": 552,
-        "worst_return": -16.227384923282173
       }
     },
     {
@@ -2020,6 +2020,62 @@
       "fdr_passed": false,
       "fdr_q": 1.0,
       "hypothesis": {
+        "conditions": {},
+        "direction": "bearish",
+        "event_family": "long_wick_resistance_rejection",
+        "horizon_min": 180,
+        "name": "long_wick_resistance_rejection | none"
+      },
+      "status": "validation_failed",
+      "validation": {
+        "avg_net_return": -0.1299079393790624,
+        "block_sign_p_value": 0.9999999999983012,
+        "coin_count": 18,
+        "fdr_q": 1.0,
+        "max_drawdown": 707.4380659627606,
+        "median_net_return": -0.13061510311055916,
+        "n": 5120,
+        "positive_block_fraction": 0.3851276359600444,
+        "positive_coin_fraction": 0.05555555555555555,
+        "positive_rate": 0.4025390625,
+        "profit_factor": 0.7126220248903945,
+        "time_block_count": 901,
+        "worst_return": -22.598979591836738
+      }
+    },
+    {
+      "fdr_passed": false,
+      "fdr_q": 1.0,
+      "hypothesis": {
+        "conditions": {
+          "wick_ratio_min": 0.45
+        },
+        "direction": "bearish",
+        "event_family": "long_wick_resistance_rejection",
+        "horizon_min": 180,
+        "name": "long_wick_resistance_rejection | strong_wick"
+      },
+      "status": "validation_failed",
+      "validation": {
+        "avg_net_return": -0.1299079393790624,
+        "block_sign_p_value": 0.9999999999983012,
+        "coin_count": 18,
+        "fdr_q": 1.0,
+        "max_drawdown": 707.4380659627606,
+        "median_net_return": -0.13061510311055916,
+        "n": 5120,
+        "positive_block_fraction": 0.3851276359600444,
+        "positive_coin_fraction": 0.05555555555555555,
+        "positive_rate": 0.4025390625,
+        "profit_factor": 0.7126220248903945,
+        "time_block_count": 901,
+        "worst_return": -22.598979591836738
+      }
+    },
+    {
+      "fdr_passed": false,
+      "fdr_q": 1.0,
+      "hypothesis": {
         "conditions": {
           "activity_percentile_min": 85
         },
@@ -2042,62 +2098,6 @@
         "positive_rate": 0.4341021416803954,
         "profit_factor": 0.720065047451592,
         "time_block_count": 569,
-        "worst_return": -22.598979591836738
-      }
-    },
-    {
-      "fdr_passed": false,
-      "fdr_q": 1.0,
-      "hypothesis": {
-        "conditions": {},
-        "direction": "bearish",
-        "event_family": "long_wick_resistance_rejection",
-        "horizon_min": 180,
-        "name": "long_wick_resistance_rejection | none"
-      },
-      "status": "validation_failed",
-      "validation": {
-        "avg_net_return": -0.13031852771222657,
-        "block_sign_p_value": 0.9999999999987013,
-        "coin_count": 18,
-        "fdr_q": 1.0,
-        "max_drawdown": 707.4380659627606,
-        "median_net_return": -0.1306923685272597,
-        "n": 5118,
-        "positive_block_fraction": 0.3844444444444444,
-        "positive_coin_fraction": 0.05555555555555555,
-        "positive_rate": 0.4023055881203595,
-        "profit_factor": 0.7118263470087219,
-        "time_block_count": 900,
-        "worst_return": -22.598979591836738
-      }
-    },
-    {
-      "fdr_passed": false,
-      "fdr_q": 1.0,
-      "hypothesis": {
-        "conditions": {
-          "wick_ratio_min": 0.45
-        },
-        "direction": "bearish",
-        "event_family": "long_wick_resistance_rejection",
-        "horizon_min": 180,
-        "name": "long_wick_resistance_rejection | strong_wick"
-      },
-      "status": "validation_failed",
-      "validation": {
-        "avg_net_return": -0.13031852771222657,
-        "block_sign_p_value": 0.9999999999987013,
-        "coin_count": 18,
-        "fdr_q": 1.0,
-        "max_drawdown": 707.4380659627606,
-        "median_net_return": -0.1306923685272597,
-        "n": 5118,
-        "positive_block_fraction": 0.3844444444444444,
-        "positive_coin_fraction": 0.05555555555555555,
-        "positive_rate": 0.4023055881203595,
-        "profit_factor": 0.7118263470087219,
-        "time_block_count": 900,
         "worst_return": -22.598979591836738
       }
     },
@@ -2425,6 +2425,64 @@
       "fdr_q": 1.0,
       "hypothesis": {
         "conditions": {
+          "delta_abs_min": 0.65
+        },
+        "direction": "bearish",
+        "event_family": "long_wick_resistance_rejection",
+        "horizon_min": 180,
+        "name": "long_wick_resistance_rejection | strong_delta_proxy"
+      },
+      "status": "validation_failed",
+      "validation": {
+        "avg_net_return": -0.13375240625990256,
+        "block_sign_p_value": 0.9999998762480218,
+        "coin_count": 18,
+        "fdr_q": 1.0,
+        "max_drawdown": 494.4636063758057,
+        "median_net_return": -0.13481718688627525,
+        "n": 3474,
+        "positive_block_fraction": 0.4105392156862745,
+        "positive_coin_fraction": 0.16666666666666666,
+        "positive_rate": 0.41824985607369025,
+        "profit_factor": 0.7202273529332106,
+        "time_block_count": 816,
+        "worst_return": -11.20637657361795
+      }
+    },
+    {
+      "fdr_passed": false,
+      "fdr_q": 1.0,
+      "hypothesis": {
+        "conditions": {
+          "delta_abs_min": 0.9
+        },
+        "direction": "bearish",
+        "event_family": "long_wick_resistance_rejection",
+        "horizon_min": 180,
+        "name": "long_wick_resistance_rejection | very_strong_delta_proxy"
+      },
+      "status": "validation_failed",
+      "validation": {
+        "avg_net_return": -0.13375240625990256,
+        "block_sign_p_value": 0.9999998762480218,
+        "coin_count": 18,
+        "fdr_q": 1.0,
+        "max_drawdown": 494.4636063758057,
+        "median_net_return": -0.13481718688627525,
+        "n": 3474,
+        "positive_block_fraction": 0.4105392156862745,
+        "positive_coin_fraction": 0.16666666666666666,
+        "positive_rate": 0.41824985607369025,
+        "profit_factor": 0.7202273529332106,
+        "time_block_count": 816,
+        "worst_return": -11.20637657361795
+      }
+    },
+    {
+      "fdr_passed": false,
+      "fdr_q": 1.0,
+      "hypothesis": {
+        "conditions": {
           "event_score_min": 4
         },
         "direction": "bullish",
@@ -2505,64 +2563,6 @@
         "profit_factor": 0.6221111768381529,
         "time_block_count": 973,
         "worst_return": -8.195212765957447
-      }
-    },
-    {
-      "fdr_passed": false,
-      "fdr_q": 1.0,
-      "hypothesis": {
-        "conditions": {
-          "delta_abs_min": 0.65
-        },
-        "direction": "bearish",
-        "event_family": "long_wick_resistance_rejection",
-        "horizon_min": 180,
-        "name": "long_wick_resistance_rejection | strong_delta_proxy"
-      },
-      "status": "validation_failed",
-      "validation": {
-        "avg_net_return": -0.1340242822329608,
-        "block_sign_p_value": 0.9999998993302068,
-        "coin_count": 18,
-        "fdr_q": 1.0,
-        "max_drawdown": 494.4636063758057,
-        "median_net_return": -0.13487935315464009,
-        "n": 3473,
-        "positive_block_fraction": 0.4098159509202454,
-        "positive_coin_fraction": 0.16666666666666666,
-        "positive_rate": 0.4180823495537,
-        "profit_factor": 0.719739361380866,
-        "time_block_count": 815,
-        "worst_return": -11.20637657361795
-      }
-    },
-    {
-      "fdr_passed": false,
-      "fdr_q": 1.0,
-      "hypothesis": {
-        "conditions": {
-          "delta_abs_min": 0.9
-        },
-        "direction": "bearish",
-        "event_family": "long_wick_resistance_rejection",
-        "horizon_min": 180,
-        "name": "long_wick_resistance_rejection | very_strong_delta_proxy"
-      },
-      "status": "validation_failed",
-      "validation": {
-        "avg_net_return": -0.1340242822329608,
-        "block_sign_p_value": 0.9999998993302068,
-        "coin_count": 18,
-        "fdr_q": 1.0,
-        "max_drawdown": 494.4636063758057,
-        "median_net_return": -0.13487935315464009,
-        "n": 3473,
-        "positive_block_fraction": 0.4098159509202454,
-        "positive_coin_fraction": 0.16666666666666666,
-        "positive_rate": 0.4180823495537,
-        "profit_factor": 0.719739361380866,
-        "time_block_count": 815,
-        "worst_return": -11.20637657361795
       }
     },
     {
@@ -2890,6 +2890,35 @@
       "fdr_q": 1.0,
       "hypothesis": {
         "conditions": {
+          "activity_ratio_min": 1.8
+        },
+        "direction": "bearish",
+        "event_family": "failed_break_resistance",
+        "horizon_min": 180,
+        "name": "failed_break_resistance | high_activity"
+      },
+      "status": "validation_failed",
+      "validation": {
+        "avg_net_return": -0.1351071061996692,
+        "block_sign_p_value": 0.9985222313953692,
+        "coin_count": 18,
+        "fdr_q": 1.0,
+        "max_drawdown": 248.09727225932016,
+        "median_net_return": -0.08189363069789685,
+        "n": 1752,
+        "positive_block_fraction": 0.44200626959247646,
+        "positive_coin_fraction": 0.16666666666666666,
+        "positive_rate": 0.4600456621004566,
+        "profit_factor": 0.7818878820347104,
+        "time_block_count": 638,
+        "worst_return": -16.227384923282173
+      }
+    },
+    {
+      "fdr_passed": false,
+      "fdr_q": 1.0,
+      "hypothesis": {
+        "conditions": {
           "delta_abs_min": 0.65,
           "event_score_min": 4
         },
@@ -3119,35 +3148,6 @@
       "fdr_q": 1.0,
       "hypothesis": {
         "conditions": {
-          "activity_ratio_min": 1.8
-        },
-        "direction": "bearish",
-        "event_family": "failed_break_resistance",
-        "horizon_min": 180,
-        "name": "failed_break_resistance | high_activity"
-      },
-      "status": "validation_failed",
-      "validation": {
-        "avg_net_return": -0.13621511957338867,
-        "block_sign_p_value": 0.9987126607850483,
-        "coin_count": 18,
-        "fdr_q": 1.0,
-        "max_drawdown": 248.09727225932016,
-        "median_net_return": -0.08270524899056747,
-        "n": 1751,
-        "positive_block_fraction": 0.4411302982731554,
-        "positive_coin_fraction": 0.16666666666666666,
-        "positive_rate": 0.4597372929754426,
-        "profit_factor": 0.7802246587489898,
-        "time_block_count": 637,
-        "worst_return": -16.227384923282173
-      }
-    },
-    {
-      "fdr_passed": false,
-      "fdr_q": 1.0,
-      "hypothesis": {
-        "conditions": {
           "event_score_min": 4
         },
         "direction": "bullish",
@@ -3276,18 +3276,18 @@
       },
       "status": "validation_failed",
       "validation": {
-        "avg_net_return": -0.138112897663254,
+        "avg_net_return": -0.13803550155025182,
         "block_sign_p_value": 1.0,
         "coin_count": 18,
         "fdr_q": 1.0,
         "max_drawdown": 876.2752403051036,
-        "median_net_return": -0.13352248996850324,
-        "n": 6328,
-        "positive_block_fraction": 0.36012526096033404,
+        "median_net_return": -0.13340015833695182,
+        "n": 6331,
+        "positive_block_fraction": 0.3607924921793535,
         "positive_coin_fraction": 0.0,
-        "positive_rate": 0.36251580278128953,
-        "profit_factor": 0.5588871018761592,
-        "time_block_count": 958,
+        "positive_rate": 0.3626599273416522,
+        "profit_factor": 0.5589720316411505,
+        "time_block_count": 959,
         "worst_return": -7.706270096463028
       }
     },
@@ -3334,19 +3334,77 @@
       },
       "status": "validation_failed",
       "validation": {
-        "avg_net_return": -0.1387690724052256,
-        "block_sign_p_value": 0.9999990247547974,
+        "avg_net_return": -0.13870333237849827,
+        "block_sign_p_value": 0.9999988394562529,
         "coin_count": 18,
         "fdr_q": 1.0,
         "max_drawdown": 804.8995357683053,
-        "median_net_return": -0.115714285714299,
-        "n": 5761,
-        "positive_block_fraction": 0.42328042328042326,
+        "median_net_return": -0.11555011620433035,
+        "n": 5762,
+        "positive_block_fraction": 0.42389006342494717,
         "positive_coin_fraction": 0.0,
-        "positive_rate": 0.4046172539489672,
-        "profit_factor": 0.6230346601268477,
-        "time_block_count": 945,
+        "positive_rate": 0.40472058313085735,
+        "profit_factor": 0.6231478394960651,
+        "time_block_count": 946,
         "worst_return": -11.667925247902367
+      }
+    },
+    {
+      "fdr_passed": false,
+      "fdr_q": 1.0,
+      "hypothesis": {
+        "conditions": {
+          "delta_abs_min": 0.65
+        },
+        "direction": "bearish",
+        "event_family": "failed_break_resistance",
+        "horizon_min": 60,
+        "name": "failed_break_resistance | strong_delta_proxy"
+      },
+      "status": "validation_failed",
+      "validation": {
+        "avg_net_return": -0.13885110904477738,
+        "block_sign_p_value": 0.9999999520432951,
+        "coin_count": 18,
+        "fdr_q": 1.0,
+        "max_drawdown": 1503.70155736815,
+        "median_net_return": -0.11905628679674204,
+        "n": 10698,
+        "positive_block_fraction": 0.41521068859198357,
+        "positive_coin_fraction": 0.0,
+        "positive_rate": 0.4009160590764629,
+        "profit_factor": 0.6337569229945018,
+        "time_block_count": 973,
+        "worst_return": -13.407828114590274
+      }
+    },
+    {
+      "fdr_passed": false,
+      "fdr_q": 1.0,
+      "hypothesis": {
+        "conditions": {
+          "delta_abs_min": 0.9
+        },
+        "direction": "bearish",
+        "event_family": "failed_break_resistance",
+        "horizon_min": 60,
+        "name": "failed_break_resistance | very_strong_delta_proxy"
+      },
+      "status": "validation_failed",
+      "validation": {
+        "avg_net_return": -0.13885110904477738,
+        "block_sign_p_value": 0.9999999520432951,
+        "coin_count": 18,
+        "fdr_q": 1.0,
+        "max_drawdown": 1503.70155736815,
+        "median_net_return": -0.11905628679674204,
+        "n": 10698,
+        "positive_block_fraction": 0.41521068859198357,
+        "positive_coin_fraction": 0.0,
+        "positive_rate": 0.4009160590764629,
+        "profit_factor": 0.6337569229945018,
+        "time_block_count": 973,
+        "worst_return": -13.407828114590274
       }
     },
     {
@@ -3374,64 +3432,6 @@
         "profit_factor": 0.4064542503505287,
         "time_block_count": 978,
         "worst_return": -7.714191533657178
-      }
-    },
-    {
-      "fdr_passed": false,
-      "fdr_q": 1.0,
-      "hypothesis": {
-        "conditions": {
-          "delta_abs_min": 0.65
-        },
-        "direction": "bearish",
-        "event_family": "failed_break_resistance",
-        "horizon_min": 60,
-        "name": "failed_break_resistance | strong_delta_proxy"
-      },
-      "status": "validation_failed",
-      "validation": {
-        "avg_net_return": -0.13909056283912188,
-        "block_sign_p_value": 0.9999999604966464,
-        "coin_count": 18,
-        "fdr_q": 1.0,
-        "max_drawdown": 1503.70155736815,
-        "median_net_return": -0.11914228656894463,
-        "n": 10692,
-        "positive_block_fraction": 0.41460905349794236,
-        "positive_coin_fraction": 0.0,
-        "positive_rate": 0.4007669285447063,
-        "profit_factor": 0.6333048060930961,
-        "time_block_count": 972,
-        "worst_return": -13.407828114590274
-      }
-    },
-    {
-      "fdr_passed": false,
-      "fdr_q": 1.0,
-      "hypothesis": {
-        "conditions": {
-          "delta_abs_min": 0.9
-        },
-        "direction": "bearish",
-        "event_family": "failed_break_resistance",
-        "horizon_min": 60,
-        "name": "failed_break_resistance | very_strong_delta_proxy"
-      },
-      "status": "validation_failed",
-      "validation": {
-        "avg_net_return": -0.13909056283912188,
-        "block_sign_p_value": 0.9999999604966464,
-        "coin_count": 18,
-        "fdr_q": 1.0,
-        "max_drawdown": 1503.70155736815,
-        "median_net_return": -0.11914228656894463,
-        "n": 10692,
-        "positive_block_fraction": 0.41460905349794236,
-        "positive_coin_fraction": 0.0,
-        "positive_rate": 0.4007669285447063,
-        "profit_factor": 0.6333048060930961,
-        "time_block_count": 972,
-        "worst_return": -13.407828114590274
       }
     },
     {
@@ -3497,6 +3497,35 @@
       "fdr_q": 1.0,
       "hypothesis": {
         "conditions": {
+          "event_score_min": 4
+        },
+        "direction": "bearish",
+        "event_family": "long_wick_resistance_rejection",
+        "horizon_min": 60,
+        "name": "long_wick_resistance_rejection | strong_event"
+      },
+      "status": "validation_failed",
+      "validation": {
+        "avg_net_return": -0.14045709779776186,
+        "block_sign_p_value": 0.9999999999999993,
+        "coin_count": 18,
+        "fdr_q": 1.0,
+        "max_drawdown": 952.1280949895086,
+        "median_net_return": -0.1336539023684879,
+        "n": 6752,
+        "positive_block_fraction": 0.3724066390041494,
+        "positive_coin_fraction": 0.0,
+        "positive_rate": 0.365521327014218,
+        "profit_factor": 0.554997545395022,
+        "time_block_count": 964,
+        "worst_return": -7.706270096463028
+      }
+    },
+    {
+      "fdr_passed": false,
+      "fdr_q": 1.0,
+      "hypothesis": {
+        "conditions": {
           "activity_percentile_min": 85
         },
         "direction": "bullish",
@@ -3519,35 +3548,6 @@
         "profit_factor": 0.7007564376441895,
         "time_block_count": 928,
         "worst_return": -12.850051626226128
-      }
-    },
-    {
-      "fdr_passed": false,
-      "fdr_q": 1.0,
-      "hypothesis": {
-        "conditions": {
-          "event_score_min": 4
-        },
-        "direction": "bearish",
-        "event_family": "long_wick_resistance_rejection",
-        "horizon_min": 60,
-        "name": "long_wick_resistance_rejection | strong_event"
-      },
-      "status": "validation_failed",
-      "validation": {
-        "avg_net_return": -0.14053074239574975,
-        "block_sign_p_value": 0.9999999999999996,
-        "coin_count": 18,
-        "fdr_q": 1.0,
-        "max_drawdown": 952.1280949895086,
-        "median_net_return": -0.13366298313692107,
-        "n": 6749,
-        "positive_block_fraction": 0.37175493250259606,
-        "positive_coin_fraction": 0.0,
-        "positive_rate": 0.36538746480960144,
-        "profit_factor": 0.5549181877524038,
-        "time_block_count": 963,
-        "worst_return": -7.706270096463028
       }
     },
     {
@@ -3668,9 +3668,9 @@
     }
   ],
   "research_only": true,
-  "rows": 431166,
+  "rows": 431337,
   "schema_version": "research_diagnostics_v1",
   "status": "ok",
   "validated": [],
-  "validation_rows": 301816
+  "validation_rows": 301935
 }
